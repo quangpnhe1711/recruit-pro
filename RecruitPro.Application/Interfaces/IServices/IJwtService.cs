@@ -8,6 +8,8 @@ namespace RecruitPro.Application.Interfaces.IServices
 {
     public interface IJwtService
     {
-        string GenerateToken(Guid userId, string email, List<string> roles);
+        string GenerateAccessToken(Guid userId, string email, List<string> roles);
+
+        string GenerateRefreshToken();
     }
 }

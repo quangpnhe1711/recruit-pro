@@ -38,9 +38,6 @@ namespace RecruitPro.Application.Services
                 AvatarUrl = user.AvatarUrl,
                 Roles = user.UserRoles.Select(ur => ur.Role.Name).ToList()
             };
-            loginResponseDto.AccessToken = 
-            
-
 
             return null;
         }
