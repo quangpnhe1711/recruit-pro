@@ -1,4 +1,4 @@
-﻿namespace RecruitPro.API.Configurations;
+﻿namespace RecruitPro.Application.Configurations;
 
 public class JwtSettings
 {

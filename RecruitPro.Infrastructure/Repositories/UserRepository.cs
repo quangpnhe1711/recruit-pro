@@ -26,7 +26,9 @@ namespace RecruitPro.Infrastructure.Repositories
 
         public Task<User?> GetByEmailAsync(string email)
         {
-            return _context.Users.FirstOrDefaultAsync(u => u.Email == email);
+            return _context.Users.Include(u => u.UserRoles)
+                .ThenInclude(ur => ur.Role)
+                .FirstOrDefaultAsync(u => u.Email == email);
         }
 
         public Task<User?> GetByIdAsync(Guid id)

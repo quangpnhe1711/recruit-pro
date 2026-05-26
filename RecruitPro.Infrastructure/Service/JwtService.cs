@@ -1,56 +1,67 @@
-﻿using Microsoft.Extensions.Configuration;
+﻿using Microsoft.Extensions.Options;
+using RecruitPro.Application.Configurations;
 using RecruitPro.Application.Interfaces.IServices;
+using RecruitPro.Domain.Entities;
+using Microsoft.IdentityModel.Tokens;
+using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
-using System.Threading.Tasks;
-using System.IdentityModel.Tokens.Jwt;
-using Microsoft.IdentityModel.Tokens;
 
 namespace RecruitPro.Infrastructure.Service
 {
     public class JwtService : IJwtService
     {
-        private readonly IConfiguration configuration;
+        private readonly JwtSettings _jwtSettings;
 
-        public JwtService(IConfiguration configuration)
+        public JwtService(IOptions<JwtSettings> options)
         {
-            this.configuration = configuration;
+            _jwtSettings = options.Value;
         }
 
-        public string GenerateAccessToken(Guid userId, string email, List<string> roles)
+        public string GenerateAccessToken(User user)
         {
-            var claims = new List<Claim> {
-            new Claim(JwtRegisteredClaimNames.Sub, userId.ToString()),
-            new Claim(JwtRegisteredClaimNames.Email, email),
-            new Claim(JwtRegisteredClaimNames.Jti,Guid.NewGuid().ToString())
+            var claims = new List<Claim>
+            {
+                new Claim(
+                    JwtRegisteredClaimNames.Sub,
+                    user.Id.ToString()),
+
+                new Claim(
+                    JwtRegisteredClaimNames.Email,
+                    user.Email),
+
+                new Claim(
+                    JwtRegisteredClaimNames.Jti,
+                    Guid.NewGuid().ToString())
             };
 
-            //Add role claims
-            foreach (var role in roles)
+            // Add role claims
+            foreach (var role in user.UserRoles.Select(ur => ur.Role.Name))
             {
-                claims.Add(new Claim(ClaimTypes.Role, role));
+                claims.Add(
+                    new Claim(
+                        ClaimTypes.Role,
+                        role));
             }
 
-            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(configuration["Jwt:Key"]));
+            var key = new SymmetricSecurityKey(
+                Encoding.UTF8.GetBytes(_jwtSettings.Key));
+
             var credentials = new SigningCredentials(
-                    key,
-                    SecurityAlgorithms.HmacSha256
-                    );
+                key,
+                SecurityAlgorithms.HmacSha256);
+
             var token = new JwtSecurityToken(
-            issuer: configuration["Jwt:Issuer"],
-            audience: configuration["Jwt:Audience"],
-            claims: claims,
-            expires: DateTime.UtcNow.AddMinutes(
-                Convert.ToInt32(
-                    configuration["Jwt:ExpiryMinutes"]
-                )
-            ),
-            signingCredentials: credentials
-        );
+                issuer: _jwtSettings.Issuer,
+                audience: _jwtSettings.Audience,
+                claims: claims,
+                expires: DateTime.UtcNow.AddMinutes(
+                    _jwtSettings.ExpiryMinutes),
+                signingCredentials: credentials
+            );
 
             return new JwtSecurityTokenHandler()
                 .WriteToken(token);
-
         }
 
         public string GenerateRefreshToken()

@@ -1,4 +1,5 @@
-﻿using RecruitPro.Application.DTOs.Response;
+﻿using RecruitPro.Application.DTOs.Request;
+using RecruitPro.Application.DTOs.Response;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -9,6 +10,6 @@ namespace RecruitPro.Application.Interfaces.IServices
 {
     public interface IAuthService
     {
-        Task<ApiResponse<LoginResponseDto>> LoginAsync(string email, string password);
+        Task<ApiResponse<LoginResponseDto>> LoginAsync(LoginRequest request);
     }
 }
