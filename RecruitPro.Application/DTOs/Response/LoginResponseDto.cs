@@ -10,8 +10,6 @@ namespace RecruitPro.Application.DTOs.Response
     {
         public string AccessToken { get; set; } = null!;
 
-        public DateTime ExpiresAt { get; set; }
-
         public UserDto User { get; set; } = null!;
     }
 }

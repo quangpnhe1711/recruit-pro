@@ -5,6 +5,8 @@ using RecruitPro.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using RecruitPro.Application.Configurations;
+using RecruitPro.Infrastructure.Extensions;
+using RecruitPro.Application.Extensions;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -29,6 +31,10 @@ builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("JwtSet
 
 // register repo
 builder.Services.AddInfrastructureServices();
+
+//register services
+builder.Services.AddApplicationBusinessLogicServices();
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.

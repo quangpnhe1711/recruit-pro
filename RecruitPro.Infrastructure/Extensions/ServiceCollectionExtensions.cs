@@ -1,7 +1,10 @@
-﻿using RecruitPro.Application.Interfaces.IRepositories;
+﻿using Microsoft.Extensions.DependencyInjection;
+using RecruitPro.Application.Interfaces.IRepositories;
+using RecruitPro.Application.Interfaces.IServices;
+using RecruitPro.Application.Services;
 using RecruitPro.Infrastructure.Repositories;
 
-namespace RecruitPro.API.Extensions
+namespace RecruitPro.Infrastructure.Extensions
 {
     public static class ServiceCollectionExtensions
     {
