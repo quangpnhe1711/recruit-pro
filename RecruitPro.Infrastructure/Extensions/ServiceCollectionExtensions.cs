@@ -3,6 +3,7 @@ using RecruitPro.Application.Interfaces.IRepositories;
 using RecruitPro.Application.Interfaces.IServices;
 using RecruitPro.Application.Services;
 using RecruitPro.Infrastructure.Repositories;
+using RecruitPro.Infrastructure.Service;
 
 namespace RecruitPro.Infrastructure.Extensions
 {
@@ -12,9 +13,11 @@ namespace RecruitPro.Infrastructure.Extensions
         AddInfrastructureServices(
         this IServiceCollection services)
         {
-            services.AddScoped<
-                IUserRepository,
-                UserRepository>();
+            // register repositories
+            services.AddScoped<IUserRepository,UserRepository>();
+
+            // register external services
+            services.AddScoped<IJwtService, JwtService>();
 
             return services;
         }

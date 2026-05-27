@@ -1,12 +1,11 @@
 using RecruitPro.Application.Interfaces;
 using RecruitPro.Infrastructure.Repositories;
-using RecruitPro.API.Extensions;
 using RecruitPro.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
 using RecruitPro.Application.Configurations;
 using RecruitPro.Infrastructure.Extensions;
 using RecruitPro.Application.Extensions;
+using RecruitPro.API.Middlewares;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -23,10 +22,10 @@ builder.Services.AddSwaggerGen();
 
 // add db context
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseNpgsql(builder.Configuration.GetConnectionString("Mycnn")));
 
 // config jwt settings
-builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("JwtSettings"));
+builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("Jwt"));
 
 
 // register repo
@@ -34,6 +33,9 @@ builder.Services.AddInfrastructureServices();
 
 //register services
 builder.Services.AddApplicationBusinessLogicServices();
+
+//register auto mapper
+builder.Services.AddAutoMapper(AppDomain.CurrentDomain.GetAssemblies());
 
 var app = builder.Build();
 
@@ -44,6 +46,9 @@ if (app.Environment.IsDevelopment())
 
     app.UseSwaggerUI();
 }
+
+//Use middleware
+app.UseMiddleware<ExceptionMiddleware>();
 
 app.UseHttpsRedirection();
 

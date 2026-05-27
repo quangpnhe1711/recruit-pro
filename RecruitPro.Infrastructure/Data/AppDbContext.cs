@@ -41,9 +41,9 @@ public partial class AppDbContext : DbContext
 
     public virtual DbSet<User> Users { get; set; }
 
-    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
-#warning To protect potentially sensitive information in your connection string, you should move it out of source code. You can avoid scaffolding the connection string by using the Name= syntax to read it from configuration - see https://go.microsoft.com/fwlink/?linkid=2131148. For more guidance on storing connection strings, see https://go.microsoft.com/fwlink/?LinkId=723263.
-        => optionsBuilder.UseNpgsql("Host=localhost;Port=5433;Database=recruit_pro;Username=postgres;Password=123456");
+    public virtual DbSet<RolePermission> RolePermissions { get; set; }
+
+    public virtual DbSet<UserRole> UserRoles { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -266,6 +266,34 @@ public partial class AppDbContext : DbContext
                 .HasConstraintName("notifications_user_id_fkey");
         });
 
+        modelBuilder.Entity<RolePermission>(entity =>
+        {
+            entity.HasKey(e => new { e.RoleId, e.PermissionId })
+                .HasName("role_permissions_pkey");
+
+            entity.ToTable("role_permissions");
+
+            entity.Property(e => e.RoleId)
+                .HasColumnName("role_id");
+
+            entity.Property(e => e.PermissionId)
+                .HasColumnName("permission_id");
+
+            entity.Property(e => e.AssignedAt)
+                .HasDefaultValueSql("now()")
+                .HasColumnName("assigned_at");
+
+            entity.HasOne(d => d.Role)
+                .WithMany(p => p.RolePermissions)
+                .HasForeignKey(d => d.RoleId)
+                .HasConstraintName("role_permissions_role_id_fkey");
+
+            entity.HasOne(d => d.Permission)
+                .WithMany(p => p.RolePermissions)
+                .HasForeignKey(d => d.PermissionId)
+                .HasConstraintName("role_permissions_permission_id_fkey");
+        });
+
         modelBuilder.Entity<Permission>(entity =>
         {
             entity.HasKey(e => e.Id).HasName("permissions_pkey");
@@ -376,8 +404,53 @@ public partial class AppDbContext : DbContext
             entity.Property(e => e.UpdatedAt)
                 .HasDefaultValueSql("CURRENT_TIMESTAMP")
                 .HasColumnType("timestamp without time zone")
-                .HasColumnName("updated_at");
+                .HasColumnName("updated_at"); 
 
+        });
+
+        modelBuilder.Entity<UserRole>(entity =>
+        {
+            entity.HasKey(e => new { e.UserId, e.RoleId })
+                .HasName("user_roles_pkey");
+
+            entity.ToTable("user_roles");
+
+            entity.Property(e => e.UserId)
+                .HasColumnName("user_id");
+
+            entity.Property(e => e.RoleId)
+                .HasColumnName("role_id");
+
+            entity.Property(e => e.AssignedAt)
+                .HasColumnName("assigned_at");
+
+            entity.HasOne(d => d.User)
+                .WithMany(p => p.UserRoles)
+                .HasForeignKey(d => d.UserId)
+                .HasConstraintName("user_roles_user_id_fkey");
+
+            entity.HasOne(d => d.Role)
+                .WithMany(p => p.UserRoles)
+                .HasForeignKey(d => d.RoleId)
+                .HasConstraintName("user_roles_role_id_fkey");
+        });
+
+        modelBuilder.Entity<Role>(entity =>
+        {
+            entity.HasKey(e => e.Id).HasName("roles_pkey");
+
+            entity.ToTable("roles");
+
+            entity.Property(e => e.Id)
+                .HasDefaultValueSql("gen_random_uuid()")
+                .HasColumnName("id");
+
+            entity.Property(e => e.Name)
+                .HasMaxLength(100)
+                .HasColumnName("name");
+
+            entity.Property(e => e.Description)
+                .HasColumnName("description");
         });
 
         OnModelCreatingPartial(modelBuilder);

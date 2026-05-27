@@ -18,7 +18,7 @@ namespace RecruitPro.Infrastructure.Service
             _jwtSettings = options.Value;
         }
 
-        public string GenerateAccessToken(User user)
+        public string GenerateToken(User user, string type)
         {
             var claims = new List<Claim>
             {
@@ -55,8 +55,8 @@ namespace RecruitPro.Infrastructure.Service
                 issuer: _jwtSettings.Issuer,
                 audience: _jwtSettings.Audience,
                 claims: claims,
-                expires: DateTime.UtcNow.AddMinutes(
-                    _jwtSettings.ExpiryMinutes),
+                expires: DateTime.UtcNow.AddMinutes("Access".Equals(type, StringComparison.OrdinalIgnoreCase) ?
+                _jwtSettings.ExpiryMinutes : _jwtSettings.RefreshTokenExpiryMinutes),
                 signingCredentials: credentials
             );
 
