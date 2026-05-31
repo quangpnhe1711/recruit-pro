@@ -1,17 +1,18 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using NpgsqlTypes;
 
 namespace RecruitPro.Domain.Enums
 {
     public enum JobStatus
     {
+        [PgName("DRAFT")]
         Draft,
+        [PgName("PENDING_APPROVAL")]
         PendingApproval,
+        [PgName("APPROVED")]
         Approved,
+        [PgName("CLOSED")]
         Closed,
+        [PgName("REJECTED")]
         Rejected
     }
 }

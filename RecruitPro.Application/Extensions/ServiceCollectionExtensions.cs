@@ -15,9 +15,9 @@ namespace RecruitPro.Application.Extensions
       AddApplicationBusinessLogicServices(
       this IServiceCollection services)
         {
-            services.AddScoped<
-                IAuthService,
-                AuthService>();
+            services.AddScoped<IAuthService, AuthService>();
+            services.AddScoped<ICandidateProfileService, CandidateProfileService>();
+            services.AddScoped<IJobService, JobService>();
 
             return services;
         }

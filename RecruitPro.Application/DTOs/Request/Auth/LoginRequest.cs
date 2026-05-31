@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace RecruitPro.Application.DTOs.Request
+namespace RecruitPro.Application.DTOs.Request.Auth
 {
     public class LoginRequest
     {

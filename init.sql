@@ -17,12 +17,12 @@ COMMENT ON EXTENSION pgcrypto IS 'cryptographic functions';
 --
 
 CREATE TYPE public.application_status AS ENUM (
-    'Pending',
-    'Reviewing',
-    'Interviewing',
-    'ManagerReview',
-    'Accepted',
-    'Rejected'
+    'PENDING',
+    'REVIEWING',
+    'INTERVIEWING',
+    'MANAGER_REVIEW',
+    'ACCEPTED',
+    'REJECTED'
 );
 
 
@@ -34,12 +34,16 @@ ALTER TYPE public.application_status OWNER TO postgres;
 --
 
 CREATE TYPE public.employment_type AS ENUM (
-    'FullTime',
-    'PartTime',
-    'Remote',
-    'Hybrid',
-    'Internship',
-    'Contract'
+    'FULL_TIME',
+    'PART_TIME',
+    'INTERNSHIP',
+    'CONTRACT'
+);
+
+CREATE TYPE public.work_mode AS ENUM (
+    'ONSITE',
+    'HYBRID',
+    'REMOTE'
 );
 
 
@@ -51,9 +55,9 @@ ALTER TYPE public.employment_type OWNER TO postgres;
 --
 
 CREATE TYPE public.interview_status AS ENUM (
-    'Scheduled',
-    'Completed',
-    'Cancelled'
+    'SCHEDULED',
+    'COMPLETED',
+    'CANCELLED'
 );
 
 
@@ -65,11 +69,11 @@ ALTER TYPE public.interview_status OWNER TO postgres;
 --
 
 CREATE TYPE public.job_status AS ENUM (
-    'Draft',
-    'PendingApproval',
-    'Approved',
-    'Closed',
-    'Rejected'
+    'DRAFT',
+    'PENDING_APPROVAL',
+    'APPROVED',
+    'CLOSED',
+    'REJECTED'
 );
 
 
@@ -81,8 +85,8 @@ ALTER TYPE public.job_status OWNER TO postgres;
 --
 
 CREATE TYPE public.meeting_type AS ENUM (
-    'Online',
-    'Offline'
+    'ONLINE',
+    'OFFLINE'
 );
 
 
@@ -94,10 +98,10 @@ ALTER TYPE public.meeting_type OWNER TO postgres;
 --
 
 CREATE TYPE public.notification_type AS ENUM (
-    'System',
-    'Job',
-    'Interview',
-    'Application'
+    'SYSTEM',
+    'JOB',
+    'INTERVIEW',
+    'APPLICATION'
 );
 
 
@@ -109,9 +113,9 @@ ALTER TYPE public.notification_type OWNER TO postgres;
 --
 
 CREATE TYPE public.user_status AS ENUM (
-    'Active',
-    'Inactive',
-    'Blocked'
+    'ACTIVE',
+    'INACTIVE',
+    'BLOCKED'
 );
 
 
@@ -131,7 +135,7 @@ CREATE TABLE public.applications (
     candidate_id uuid NOT NULL,
     job_id uuid NOT NULL,
     reviewed_by uuid,
-    status public.application_status DEFAULT 'Pending'::public.application_status,
+    status public.application_status DEFAULT 'PENDING'::public.application_status,
     applied_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -199,7 +203,7 @@ CREATE TABLE public.interviews (
     meeting_link text,
     location text,
     notes text,
-    status public.interview_status DEFAULT 'Scheduled'::public.interview_status
+    status public.interview_status DEFAULT 'SCHEDULED'::public.interview_status
 );
 
 
@@ -212,9 +216,12 @@ ALTER TABLE public.interviews OWNER TO postgres;
 
 CREATE TABLE public.job_skills (
     job_id uuid NOT NULL,
-    skill_id uuid NOT NULL
-);
+    skill_id uuid NOT NULL,
 
+    min_years_experience integer,
+
+    is_required boolean NOT NULL DEFAULT true
+);
 
 ALTER TABLE public.job_skills OWNER TO postgres;
 
@@ -225,20 +232,47 @@ ALTER TABLE public.job_skills OWNER TO postgres;
 
 CREATE TABLE public.jobs (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
+
     department_id uuid,
+
     created_by uuid NOT NULL,
+
     approved_by uuid,
+
     title character varying(255) NOT NULL,
-    description text,
+
+    description text NOT NULL,
+
     requirements text,
-    location character varying(255),
+
+    benefits text,
+
+    location character varying(255) NOT NULL,
+
+    work_mode public.work_mode NOT NULL DEFAULT 'ONSITE',
+
+    employment_type public.employment_type NOT NULL,
+
+    min_experience_years integer DEFAULT 0,
+
+    vacancy_count integer DEFAULT 1,
+
     salary_min numeric(15,2),
+
     salary_max numeric(15,2),
-    employment_type public.employment_type,
+
     deadline timestamp without time zone,
-    status public.job_status DEFAULT 'Draft'::public.job_status,
+
+    status public.job_status DEFAULT 'DRAFT',
+
     created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT salary_check CHECK (((salary_max IS NULL) OR (salary_min IS NULL) OR (salary_max >= salary_min)))
+
+    CONSTRAINT salary_check
+    CHECK (
+        salary_max IS NULL
+        OR salary_min IS NULL
+        OR salary_max >= salary_min
+    )
 );
 
 
@@ -375,7 +409,7 @@ CREATE TABLE public.users (
     full_name character varying(255) NOT NULL,
     phone character varying(20),
     avatar_url text,
-    status public.user_status DEFAULT 'Active'::public.user_status,
+    status public.user_status DEFAULT 'ACTIVE'::public.user_status,
     created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
     updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP
 );
@@ -389,7 +423,7 @@ ALTER TABLE public.users OWNER TO postgres;
 -- Data for Name: applications; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
-INSERT INTO public.applications VALUES ('75afffb4-ad67-4974-807c-0308a90f07bf', '366cb75c-aecd-4f54-aedb-b76cf475d81a', '59a5221b-43bb-489f-83b7-d41c347e37f9', 'e781ccd9-e6f8-4ce1-b15d-e142f8977a4e', 'Reviewing', '2026-05-27 09:23:30.793214');
+INSERT INTO public.applications VALUES ('75afffb4-ad67-4974-807c-0308a90f07bf', '366cb75c-aecd-4f54-aedb-b76cf475d81a', '59a5221b-43bb-489f-83b7-d41c347e37f9', 'e781ccd9-e6f8-4ce1-b15d-e142f8977a4e', 'REVIEWING', '2026-05-27 09:23:30.793214');
 
 
 --
@@ -431,7 +465,7 @@ INSERT INTO public.departments VALUES ('3067eaeb-3893-468f-b854-08f1319448c9', '
 -- Data for Name: interviews; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
-INSERT INTO public.interviews VALUES ('ce4c916b-dfe9-455c-9fbc-f8f3bfa6c994', '75afffb4-ad67-4974-807c-0308a90f07bf', '2026-05-30 09:23:38.11334', 'Online', 'https://meet.google.com/sample-room', NULL, 'Technical interview round 1', 'Scheduled');
+INSERT INTO public.interviews VALUES ('ce4c916b-dfe9-455c-9fbc-f8f3bfa6c994', '75afffb4-ad67-4974-807c-0308a90f07bf', '2026-05-30 09:23:38.11334', 'ONLINE', 'https://meet.google.com/sample-room', NULL, 'Technical interview round 1', 'SCHEDULED');
 
 
 --
@@ -440,9 +474,25 @@ INSERT INTO public.interviews VALUES ('ce4c916b-dfe9-455c-9fbc-f8f3bfa6c994', '7
 -- Data for Name: job_skills; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
-INSERT INTO public.job_skills VALUES ('59a5221b-43bb-489f-83b7-d41c347e37f9', 'b2f56bd0-c4b6-4442-b6e4-d341563c1e7a');
-INSERT INTO public.job_skills VALUES ('59a5221b-43bb-489f-83b7-d41c347e37f9', 'e70f15bc-9e3c-4dc1-92db-4b53028d5c67');
-INSERT INTO public.job_skills VALUES ('59a5221b-43bb-489f-83b7-d41c347e37f9', 'b1779c35-b7c4-47bb-a69b-43131c084a0f');
+INSERT INTO public.job_skills VALUES
+(
+    '59a5221b-43bb-489f-83b7-d41c347e37f9',
+    'b2f56bd0-c4b6-4442-b6e4-d341563c1e7a',
+    2,
+    true
+),
+(
+    '59a5221b-43bb-489f-83b7-d41c347e37f9',
+    'e70f15bc-9e3c-4dc1-92db-4b53028d5c67',
+    1,
+    true
+),
+(
+    '59a5221b-43bb-489f-83b7-d41c347e37f9',
+    'b1779c35-b7c4-47bb-a69b-43131c084a0f',
+    1,
+    false
+);
 
 
 --
@@ -451,7 +501,45 @@ INSERT INTO public.job_skills VALUES ('59a5221b-43bb-489f-83b7-d41c347e37f9', 'b
 -- Data for Name: jobs; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
-INSERT INTO public.jobs VALUES ('59a5221b-43bb-489f-83b7-d41c347e37f9', 'fafe312f-0c2f-4e69-a009-4ae38fd1218f', 'e781ccd9-e6f8-4ce1-b15d-e142f8977a4e', '721b1851-349a-48aa-acae-feed1c1843ed', 'Java Backend Developer', 'Develop backend services using Spring Boot', 'Java, Spring Boot, PostgreSQL', 'Ha Noi', 1000.00, 2000.00, 'FullTime', '2026-06-26 09:23:30.793214', 'Approved', '2026-05-27 09:23:30.793214');
+INSERT INTO public.jobs (
+    id,
+    department_id,
+    created_by,
+    approved_by,
+    title,
+    description,
+    requirements,
+    benefits,
+    location,
+    work_mode,
+    employment_type,
+    min_experience_years,
+    vacancy_count,
+    salary_min,
+    salary_max,
+    deadline,
+    status,
+    created_at
+) VALUES (
+    '59a5221b-43bb-489f-83b7-d41c347e37f9',
+    'fafe312f-0c2f-4e69-a009-4ae38fd1218f',
+    'e781ccd9-e6f8-4ce1-b15d-e142f8977a4e',
+    '721b1851-349a-48aa-acae-feed1c1843ed',
+    'Java Backend Developer',
+    'Develop backend services using Spring Boot',
+    'Java, Spring Boot, PostgreSQL',
+    NULL,
+    'Ha Noi',
+    'ONSITE',
+    'FULL_TIME',
+    2,
+    1,
+    1000.00,
+    2000.00,
+    '2026-06-26 09:23:30.793214',
+    'APPROVED',
+    '2026-05-27 09:23:30.793214'
+);
 
 
 --
@@ -624,10 +712,10 @@ INSERT INTO public.user_roles VALUES ('92e1a5c1-d3bd-4512-b1df-c6d69d4a41e0', '0
 -- Data for Name: users; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
-INSERT INTO public.users VALUES ('4071353e-5816-4746-a8b6-c0bc3113c44d', 'candidate@recruitpro.com', '$2a$06$kfKji00bWzacW3O75zipqeuZ.8ACaLYhuQZdGMcP6HGg4mbBqxlsG', 'Candidate User', '0900000001', NULL, 'Active', '2026-05-27 09:23:08.229887', '2026-05-27 09:23:08.229887');
-INSERT INTO public.users VALUES ('e781ccd9-e6f8-4ce1-b15d-e142f8977a4e', 'hr@recruitpro.com', '$2a$06$CTRpfzxL3P9C3r9yf7VxDOJC5N/0zHkJyb9UXUFID9WqDVJb/Xevm', 'HR User', '0900000002', NULL, 'Active', '2026-05-27 09:23:08.229887', '2026-05-27 09:23:08.229887');
-INSERT INTO public.users VALUES ('721b1851-349a-48aa-acae-feed1c1843ed', 'manager@recruitpro.com', '$2a$06$XAl77ynjzT2/NgvgpqOIhuQZFPWF2OD62LwHiarMb0tsteso4xUe.', 'Manager User', '0900000003', NULL, 'Active', '2026-05-27 09:23:08.229887', '2026-05-27 09:23:08.229887');
-INSERT INTO public.users VALUES ('92e1a5c1-d3bd-4512-b1df-c6d69d4a41e0', 'admin@recruitpro.com', '$2a$06$ZJJc7qoUG81fppCQLRBtU.Gun0NYxBfaWz8L6NAhvV59Jkui5RHZ2', 'System Admin', '0900000004', NULL, 'Active', '2026-05-27 09:23:08.229887', '2026-05-27 09:23:08.229887');
+INSERT INTO public.users VALUES ('4071353e-5816-4746-a8b6-c0bc3113c44d', 'candidate@recruitpro.com', '$2a$06$kfKji00bWzacW3O75zipqeuZ.8ACaLYhuQZdGMcP6HGg4mbBqxlsG', 'Candidate User', '0900000001', NULL, 'ACTIVE', '2026-05-27 09:23:08.229887', '2026-05-27 09:23:08.229887');
+INSERT INTO public.users VALUES ('e781ccd9-e6f8-4ce1-b15d-e142f8977a4e', 'hr@recruitpro.com', '$2a$06$CTRpfzxL3P9C3r9yf7VxDOJC5N/0zHkJyb9UXUFID9WqDVJb/Xevm', 'HR User', '0900000002', NULL, 'ACTIVE', '2026-05-27 09:23:08.229887', '2026-05-27 09:23:08.229887');
+INSERT INTO public.users VALUES ('721b1851-349a-48aa-acae-feed1c1843ed', 'manager@recruitpro.com', '$2a$06$XAl77ynjzT2/NgvgpqOIhuQZFPWF2OD62LwHiarMb0tsteso4xUe.', 'Manager User', '0900000003', NULL, 'ACTIVE', '2026-05-27 09:23:08.229887', '2026-05-27 09:23:08.229887');
+INSERT INTO public.users VALUES ('92e1a5c1-d3bd-4512-b1df-c6d69d4a41e0', 'admin@recruitpro.com', '$2a$06$ZJJc7qoUG81fppCQLRBtU.Gun0NYxBfaWz8L6NAhvV59Jkui5RHZ2', 'System Admin', '0900000004', NULL, 'ACTIVE', '2026-05-27 09:23:08.229887', '2026-05-27 09:23:08.229887');
 
 
 --
@@ -1004,5 +1092,3 @@ ALTER TABLE ONLY public.user_roles
 --
 -- PostgreSQL database dump complete
 --
-
-

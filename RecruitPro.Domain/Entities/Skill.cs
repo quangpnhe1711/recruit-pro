@@ -11,5 +11,6 @@ public partial class Skill
 
     public virtual ICollection<CandidateProfile> Candidates { get; set; } = new List<CandidateProfile>();
 
-    public virtual ICollection<Job> Jobs { get; set; } = new List<Job>();
+    public virtual ICollection<JobSkill> JobSkills { get; set; }
+        = new List<JobSkill>();
 }

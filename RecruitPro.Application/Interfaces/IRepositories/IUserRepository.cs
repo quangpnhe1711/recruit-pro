@@ -13,8 +13,7 @@ namespace RecruitPro.Application.Interfaces.IRepositories
 
         Task<User?> GetByIdAsync(Guid id);
 
-        Task AddAsynce(User user);
+        Task AddAsync(User user);
 
-        Task SaveChangesAsync();
     }
 }

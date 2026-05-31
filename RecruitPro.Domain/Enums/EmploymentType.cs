@@ -1,18 +1,16 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using NpgsqlTypes;
 
 namespace RecruitPro.Domain.Enums
 {
     public enum EmploymentType
     {
+        [PgName("FULL_TIME")]
         FullTime,
+        [PgName("PART_TIME")]
         PartTime,
-        Remote,
-        Hybrid,
+        [PgName("INTERNSHIP")]
         Internship,
+        [PgName("CONTRACT")]
         Contract
     }
 }

@@ -7,14 +7,22 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\RecruitPro.Application\RecruitPro.Application.csproj" />
-    <ProjectReference Include="..\RecruitPro.Domain\RecruitPro.Domain.csproj" />
+    <Compile Remove="Configurations\**" />
+    <Compile Remove="Entities\**" />
+    <EmbeddedResource Remove="Configurations\**" />
+    <EmbeddedResource Remove="Entities\**" />
+    <None Remove="Configurations\**" />
+    <None Remove="Entities\**" />
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\RecruitPro.Application\RecruitPro.Application.csproj" />
+    <ProjectReference Include="..\RecruitPro.Domain\RecruitPro.Domain.csproj" />
+  </ItemGroup>
+	
+
+  <ItemGroup>
     <Folder Include="Data\" />
-    <Folder Include="Configurations\" />
-    <Folder Include="Entities\" />
   </ItemGroup>
 
   <ItemGroup>
@@ -28,7 +36,7 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.0" />
+    <PackageReference Include="Minio" Version="7.0.0" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.0" />
   </ItemGroup>
 

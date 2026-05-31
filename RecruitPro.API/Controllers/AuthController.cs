@@ -1,11 +1,10 @@
 ﻿using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity.Data;
 using Microsoft.AspNetCore.Mvc;
-using RecruitPro.Application.DTOs.Request;
 using RecruitPro.Application.DTOs.Response;
 using RecruitPro.Application.Interfaces.IServices;
 using RecruitPro.Application.Services;
-using LoginRequest = RecruitPro.Application.DTOs.Request.LoginRequest;
+using LoginRequest = RecruitPro.Application.DTOs.Request.Auth.LoginRequest;
 
 namespace RecruitPro.API.Controllers
 {

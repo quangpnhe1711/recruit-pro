@@ -1,17 +1,11 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace RecruitPro.Application.DTOs.Response
+﻿namespace RecruitPro.Application.DTOs.Response
 {
-    public class LoginResponseDto
+    public sealed record LoginResponseDto
     {
-        public string AccessToken { get; set; } = null!;
+        public UserDto User { get; init; } = null!;
 
-        public string RefreshToken { get; set; } = null!;
+        public string AccessToken { get; init; } = string.Empty;
 
-        public UserDto User { get; set; } = null!;
+        public string RefreshToken { get; init; } = string.Empty;
     }
 }

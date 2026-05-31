@@ -49,12 +49,13 @@ public partial class AppDbContext : DbContext
     {
         modelBuilder
             .HasPostgresEnum("application_status", new[] { "Pending", "Reviewing", "Interviewing", "ManagerReview", "Accepted", "Rejected" })
-            .HasPostgresEnum("employment_type", new[] { "FullTime", "PartTime", "Remote", "Hybrid", "Internship", "Contract" })
+            .HasPostgresEnum("employment_type", new[] { "FullTime", "PartTime", "Internship", "Contract" })
             .HasPostgresEnum("interview_status", new[] { "Scheduled", "Completed", "Cancelled" })
             .HasPostgresEnum("job_status", new[] { "Draft", "PendingApproval", "Approved", "Closed", "Rejected" })
             .HasPostgresEnum("meeting_type", new[] { "Online", "Offline" })
             .HasPostgresEnum("notification_type", new[] { "System", "Job", "Interview", "Application" })
             .HasPostgresEnum("user_status", new[] { "Active", "Inactive", "Blocked" })
+            .HasPostgresEnum("work_mode", new[] { "OnSite", "Remote", "Hybrid" })
             .HasPostgresExtension("pgcrypto");
 
         modelBuilder.Entity<JobApplication>(entity =>
@@ -73,6 +74,7 @@ public partial class AppDbContext : DbContext
             entity.Property(e => e.CandidateId).HasColumnName("candidate_id");
             entity.Property(e => e.JobId).HasColumnName("job_id");
             entity.Property(e => e.ReviewedBy).HasColumnName("reviewed_by");
+
 
             entity.HasOne(d => d.Candidate).WithMany(p => p.Applications)
                 .HasForeignKey(d => d.CandidateId)
@@ -206,6 +208,26 @@ public partial class AppDbContext : DbContext
             entity.Property(e => e.Title)
                 .HasMaxLength(255)
                 .HasColumnName("title");
+            entity.Property(e => e.Benefits)
+                .HasColumnName("benefits");
+
+            entity.Property(e => e.MinExperienceYears)
+                  .HasColumnName("min_experience_years");
+
+            entity.Property(e => e.VacancyCount)
+                  .HasColumnName("vacancy_count");
+
+            entity.Property(e => e.Status)
+                   .HasColumnName("status")
+                   .HasColumnType("job_status");
+
+            entity.Property(e => e.EmploymentType)
+                  .HasColumnName("employment_type")
+                  .HasColumnType("employment_type");
+
+            entity.Property(e => e.WorkMode)
+                  .HasColumnName("work_mode")
+                  .HasColumnType("work_mode");
 
             entity.HasOne(d => d.ApprovedByNavigation).WithMany(p => p.JobApprovedByNavigations)
                 .HasForeignKey(d => d.ApprovedBy)
@@ -219,23 +241,28 @@ public partial class AppDbContext : DbContext
             entity.HasOne(d => d.Department).WithMany(p => p.Jobs)
                 .HasForeignKey(d => d.DepartmentId)
                 .HasConstraintName("jobs_department_id_fkey");
+        });
 
-            entity.HasMany(d => d.Skills).WithMany(p => p.Jobs)
-                .UsingEntity<Dictionary<string, object>>(
-                    "JobSkill",
-                    r => r.HasOne<Skill>().WithMany()
-                        .HasForeignKey("SkillId")
-                        .HasConstraintName("job_skills_skill_id_fkey"),
-                    l => l.HasOne<Job>().WithMany()
-                        .HasForeignKey("JobId")
-                        .HasConstraintName("job_skills_job_id_fkey"),
-                    j =>
-                    {
-                        j.HasKey("JobId", "SkillId").HasName("job_skills_pkey");
-                        j.ToTable("job_skills");
-                        j.IndexerProperty<Guid>("JobId").HasColumnName("job_id");
-                        j.IndexerProperty<Guid>("SkillId").HasColumnName("skill_id");
-                    });
+        modelBuilder.Entity<JobSkill>(entity =>
+        {
+            entity.HasKey(e => new { e.JobId, e.SkillId }).HasName("job_skills_pkey");
+
+            entity.ToTable("job_skills");
+
+            entity.Property(e => e.JobId).HasColumnName("job_id");
+            entity.Property(e => e.SkillId).HasColumnName("skill_id");
+            entity.Property(e => e.MinYearsExperience).HasColumnName("min_years_experience");
+            entity.Property(e => e.IsRequired)
+                .HasDefaultValue(true)
+                .HasColumnName("is_required");
+
+            entity.HasOne(d => d.Job).WithMany(p => p.JobSkills)
+                .HasForeignKey(d => d.JobId)
+                .HasConstraintName("job_skills_job_id_fkey");
+
+            entity.HasOne(d => d.Skill).WithMany(p => p.JobSkills)
+                .HasForeignKey(d => d.SkillId)
+                .HasConstraintName("job_skills_skill_id_fkey");
         });
 
         modelBuilder.Entity<Notification>(entity =>
@@ -404,7 +431,7 @@ public partial class AppDbContext : DbContext
             entity.Property(e => e.UpdatedAt)
                 .HasDefaultValueSql("CURRENT_TIMESTAMP")
                 .HasColumnType("timestamp without time zone")
-                .HasColumnName("updated_at"); 
+                .HasColumnName("updated_at");
 
         });
 

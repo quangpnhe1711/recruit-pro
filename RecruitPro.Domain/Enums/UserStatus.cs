@@ -1,15 +1,14 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using NpgsqlTypes;
 
 namespace RecruitPro.Domain.Enums
 {
     public enum UserStatus
     {
+        [PgName("ACTIVE")]
         Active,
+        [PgName("INACTIVE")]
         Inactive,
+        [PgName("BLOCKED")]
         Blocked
     }
 }

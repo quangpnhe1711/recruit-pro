@@ -1,11 +1,11 @@
-﻿using RecruitPro.Application.DTOs.Request;
-using RecruitPro.Application.DTOs.Response;
+﻿using RecruitPro.Application.DTOs.Response;
 using RecruitPro.Application.Interfaces.IRepositories;
 using RecruitPro.Application.Interfaces.IServices;
 using RecruitPro.Domain.Entities;
 using Microsoft.AspNetCore.Identity;
 using RecruitPro.Application.Exceptions;
 using AutoMapper;
+using RecruitPro.Application.DTOs.Request.Auth;
 
 namespace RecruitPro.Application.Services
 {
@@ -35,12 +35,14 @@ namespace RecruitPro.Application.Services
                 throw new UnauthorizeException("Invalid email or password.");
             }
 
-            var loginResponseDto = new LoginResponseDto
+            var accessToken = _jwtService.GenerateToken(user, "Access");
+            var refreshToken = _jwtService.GenerateToken(user, "Refresh");
+
+            var loginResponseDto = _mapper.Map<LoginResponseDto>(user, options =>
             {
-                User = _mapper.Map<UserDto>(user),
-                AccessToken = _jwtService.GenerateToken(user, "Access"),
-                RefreshToken = _jwtService.GenerateToken(user, "Refresh")
-            };
+                options.Items["AccessToken"] = accessToken;
+                options.Items["RefreshToken"] = refreshToken;
+            });
 
             return ApiResponse<LoginResponseDto>.Ok(loginResponseDto);
         }

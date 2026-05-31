@@ -1,16 +1,16 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using NpgsqlTypes;
 
 namespace RecruitPro.Domain.Enums
 {
     public enum NotificationType
     {
+        [PgName("SYSTEM")]
         System,
+        [PgName("JOB")]
         Job,
+        [PgName("INTERVIEW")]
         Interview,
+        [PgName("APPLICATION")]
         Application
     }
 }

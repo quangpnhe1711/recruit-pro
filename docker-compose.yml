@@ -3,10 +3,8 @@ version: '3.9'
 services:
 
   postgres:
-    image: postgres:16
-
+    image: postgres:18
     container_name: recruitpro_postgres
-
     restart: always
 
     environment:
@@ -15,11 +13,30 @@ services:
       POSTGRES_DB: recruit_pro
 
     ports:
-      - "5432:5432"
+      - "5433:5432"
 
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+
+  minio:
+    image: quay.io/minio/minio
+    container_name: recruitpro_minio
+    restart: always
+
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+
+    command: server /data --console-address ":9001"
+
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+
+    volumes:
+      - minio_data:/data
 
 volumes:
   postgres_data:
+  minio_data:

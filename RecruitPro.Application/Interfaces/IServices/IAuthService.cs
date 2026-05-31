@@ -1,4 +1,4 @@
-﻿using RecruitPro.Application.DTOs.Request;
+﻿using RecruitPro.Application.DTOs.Request.Auth;
 using RecruitPro.Application.DTOs.Response;
 using System;
 using System.Collections.Generic;

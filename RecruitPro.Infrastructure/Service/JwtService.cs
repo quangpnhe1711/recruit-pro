@@ -55,7 +55,7 @@ namespace RecruitPro.Infrastructure.Service
                 issuer: _jwtSettings.Issuer,
                 audience: _jwtSettings.Audience,
                 claims: claims,
-                expires: DateTime.UtcNow.AddMinutes("Access".Equals(type, StringComparison.OrdinalIgnoreCase) ?
+                expires: DateTime.Now.AddMinutes("Access".Equals(type, StringComparison.OrdinalIgnoreCase) ?
                 _jwtSettings.ExpiryMinutes : _jwtSettings.RefreshTokenExpiryMinutes),
                 signingCredentials: credentials
             );

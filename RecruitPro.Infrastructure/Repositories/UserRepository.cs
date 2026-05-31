@@ -19,7 +19,7 @@ namespace RecruitPro.Infrastructure.Repositories
             _context = context;
         }
 
-        public async Task AddAsynce(User user)
+        public async Task AddAsync(User user)
         {
             await _context.Users.AddAsync(user);
         }
@@ -36,9 +36,5 @@ namespace RecruitPro.Infrastructure.Repositories
             return _context.Users.FirstOrDefaultAsync(u => u.Id == id);
         }
 
-        public async Task SaveChangesAsync()
-        {
-            await _context.SaveChangesAsync();
-        }
     }
 }

@@ -6,6 +6,8 @@ using RecruitPro.Application.Configurations;
 using RecruitPro.Infrastructure.Extensions;
 using RecruitPro.Application.Extensions;
 using RecruitPro.API.Middlewares;
+using RecruitPro.Domain.Enums;
+using Npgsql;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -20,12 +22,22 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// add db context
+// add db context and config enum
+var dataSourceBuilder =
+    new NpgsqlDataSourceBuilder(builder.Configuration.GetConnectionString("Mycnn"));
+
+NpgsqlEnumConfiguration.ConfigureEnums(dataSourceBuilder);
+
+var dataSource = dataSourceBuilder.Build();
+
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("Mycnn")));
+    options.UseNpgsql(dataSource).EnableSensitiveDataLogging().LogTo(Console.WriteLine, LogLevel.Information));
 
 // config jwt settings
 builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("Jwt"));
+
+// config minio settings
+builder.Services.Configure<MinioSettings>(builder.Configuration.GetSection("MinioSettings"));
 
 // cors config
 builder.Services.AddCors(options =>
