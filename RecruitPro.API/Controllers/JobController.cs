@@ -16,9 +16,9 @@ namespace RecruitPro.API.Controllers
         }
 
         [HttpGet]
-        public async Task<IActionResult> GetJobs()
+        public async Task<IActionResult> GetJobs([FromQuery] int pageSize = 10, [FromQuery] int currentPage = 1)
         {
-            ApiResponse<JobsListingResponseDto> result = await _jobService.GetAllJobsAsync();
+            ApiResponse<JobsListingResponseDto> result = await _jobService.GetJobsAsync(currentPage, pageSize);
 
             return StatusCode(result.StatusCode, result.Success ? result.Data : result.Message);
         }

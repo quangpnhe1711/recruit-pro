@@ -17,17 +17,17 @@ namespace RecruitPro.Application.Services
             _mapper = mapper;
         }
 
-        public async Task<ApiResponse<JobsListingResponseDto>> GetAllJobsAsync()
+        public async Task<ApiResponse<JobsListingResponseDto>> GetJobsAsync(int currentPage = 1, int pageSize = 10)
         {
-            IReadOnlyList<Job> jobs = await _jobRepository.GetAllApprovedAsync();
+            var (jobs, total) = await _jobRepository.GetApprovedPagedAsync(currentPage, pageSize);
             List<JobCardDto> jobCards = _mapper.Map<List<JobCardDto>>(jobs);
 
-            var response = new JobsListingResponseDto
+                        var response = new JobsListingResponseDto
             {
                 Jobs = jobCards,
-                Total = jobCards.Count,
-                Page = 1,
-                Limit = jobCards.Count
+                Total = total,
+                Page = currentPage,
+                Limit = pageSize
             };
 
             return ApiResponse<JobsListingResponseDto>.Ok(response);

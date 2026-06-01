@@ -4,6 +4,6 @@ namespace RecruitPro.Application.Interfaces.IRepositories
 {
     public interface IJobRepository
     {
-        Task<IReadOnlyList<Job>> GetAllApprovedAsync();
+        Task<(IReadOnlyList<Job> Jobs, int Total)> GetApprovedPagedAsync(int currentPage, int pageSize);
     }
 }

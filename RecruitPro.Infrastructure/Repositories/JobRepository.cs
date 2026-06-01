@@ -15,16 +15,24 @@ namespace RecruitPro.Infrastructure.Repositories
             _context = context;
         }
 
-        public async Task<IReadOnlyList<Job>> GetAllApprovedAsync()
+        public async Task<(IReadOnlyList<Job> Jobs, int Total)> GetApprovedPagedAsync(int currentPage, int pageSize)
         {
-            return await _context.Jobs
+            var query = _context.Jobs
                 .AsNoTracking()
                 .Include(job => job.Department)
                 .Include(job => job.JobSkills)
                     .ThenInclude(jobSkill => jobSkill.Skill)
-                .Where(job => job.Status == JobStatus.Approved)
+                .Where(job => job.Status == JobStatus.Approved);
+
+            int total = await query.CountAsync();
+
+            var jobs = await query
                 .OrderByDescending(job => job.CreatedAt)
+                .Skip((currentPage - 1) * pageSize)
+                .Take(pageSize)
                 .ToListAsync();
+
+            return (jobs, total);
         }
     }
 }

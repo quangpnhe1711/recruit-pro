@@ -9,6 +9,6 @@ namespace RecruitPro.Application.Interfaces.IServices
 {
     public interface IJobService
     {
-        public Task<ApiResponse<JobsListingResponseDto>> GetAllJobsAsync();
+        public Task<ApiResponse<JobsListingResponseDto>> GetJobsAsync(int currentPage = 1, int pageSize = 10);
     }
 }
