@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 using RecruitPro.Domain.Entities;
+using RecruitPro.Domain.Enums;
 using JobApplication = RecruitPro.Domain.Entities.Application;
 
 namespace RecruitPro.Infrastructure.Data;
@@ -27,6 +28,8 @@ public partial class AppDbContext : DbContext
 
     public virtual DbSet<Job> Jobs { get; set; }
 
+    public virtual DbSet<JobSkill> JobSkills { get; set; }
+
     public virtual DbSet<Notification> Notifications { get; set; }
 
     public virtual DbSet<Permission> Permissions { get; set; }
@@ -35,28 +38,22 @@ public partial class AppDbContext : DbContext
 
     public virtual DbSet<Role> Roles { get; set; }
 
+    public virtual DbSet<RolePermission> RolePermissions { get; set; }
+
     public virtual DbSet<Skill> Skills { get; set; }
 
     public virtual DbSet<SystemLog> SystemLogs { get; set; }
 
     public virtual DbSet<User> Users { get; set; }
 
-    public virtual DbSet<RolePermission> RolePermissions { get; set; }
-
     public virtual DbSet<UserRole> UserRoles { get; set; }
+
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+        => optionsBuilder.UseNpgsql("Host=localhost;Port=5433;Database=recruit_pro;Username=postgres;Password=123456");
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        modelBuilder
-            .HasPostgresEnum("application_status", new[] { "Pending", "Reviewing", "Interviewing", "ManagerReview", "Accepted", "Rejected" })
-            .HasPostgresEnum("employment_type", new[] { "FullTime", "PartTime", "Internship", "Contract" })
-            .HasPostgresEnum("interview_status", new[] { "Scheduled", "Completed", "Cancelled" })
-            .HasPostgresEnum("job_status", new[] { "Draft", "PendingApproval", "Approved", "Closed", "Rejected" })
-            .HasPostgresEnum("meeting_type", new[] { "Online", "Offline" })
-            .HasPostgresEnum("notification_type", new[] { "System", "Job", "Interview", "Application" })
-            .HasPostgresEnum("user_status", new[] { "Active", "Inactive", "Blocked" })
-            .HasPostgresEnum("work_mode", new[] { "OnSite", "Remote", "Hybrid" })
-            .HasPostgresExtension("pgcrypto");
+        modelBuilder.HasPostgresExtension("pgcrypto");
 
         modelBuilder.Entity<JobApplication>(entity =>
         {
@@ -71,22 +68,26 @@ public partial class AppDbContext : DbContext
                 .HasDefaultValueSql("CURRENT_TIMESTAMP")
                 .HasColumnType("timestamp without time zone")
                 .HasColumnName("applied_at");
-            entity.Property(e => e.CandidateId).HasColumnName("candidate_id");
             entity.Property(e => e.JobId).HasColumnName("job_id");
             entity.Property(e => e.ReviewedBy).HasColumnName("reviewed_by");
-
-
-            entity.HasOne(d => d.Candidate).WithMany(p => p.Applications)
-                .HasForeignKey(d => d.CandidateId)
-                .HasConstraintName("applications_candidate_id_fkey");
+            entity.Property(e => e.UserId).HasColumnName("user_id");
+            entity.Property(e => e.Status)
+                .HasConversion<string>()
+                .HasMaxLength(50)
+                .HasColumnType("character varying(50)")
+                .HasColumnName("status");
 
             entity.HasOne(d => d.Job).WithMany(p => p.Applications)
                 .HasForeignKey(d => d.JobId)
                 .HasConstraintName("applications_job_id_fkey");
 
-            entity.HasOne(d => d.ReviewedByNavigation).WithMany(p => p.Applications)
+            entity.HasOne(d => d.ReviewedByNavigation).WithMany(p => p.ApplicationReviewedByNavigations)
                 .HasForeignKey(d => d.ReviewedBy)
                 .HasConstraintName("applications_reviewed_by_fkey");
+
+            entity.HasOne(d => d.User).WithMany(p => p.Applications)
+                .HasForeignKey(d => d.UserId)
+                .HasConstraintName("applications_user_id_fkey");
         });
 
         modelBuilder.Entity<CandidateProfile>(entity =>
@@ -167,8 +168,18 @@ public partial class AppDbContext : DbContext
                 .HasColumnType("timestamp without time zone")
                 .HasColumnName("interview_date");
             entity.Property(e => e.Location).HasColumnName("location");
+            entity.Property(e => e.MeetingType)
+                .HasConversion<string>()
+                .HasMaxLength(50)
+                .HasColumnType("character varying(50)")
+                .HasColumnName("meeting_type");
             entity.Property(e => e.MeetingLink).HasColumnName("meeting_link");
             entity.Property(e => e.Notes).HasColumnName("notes");
+            entity.Property(e => e.Status)
+                .HasConversion<string>()
+                .HasMaxLength(50)
+                .HasColumnType("character varying(50)")
+                .HasColumnName("status");
 
             entity.HasOne(d => d.Application).WithMany(p => p.Interviews)
                 .HasForeignKey(d => d.ApplicationId)
@@ -185,6 +196,24 @@ public partial class AppDbContext : DbContext
                 .HasDefaultValueSql("gen_random_uuid()")
                 .HasColumnName("id");
             entity.Property(e => e.ApprovedBy).HasColumnName("approved_by");
+            entity.Property(e => e.Benefits).HasColumnName("benefits");
+            entity.Property(e => e.Status)
+                .HasConversion<string>()
+                .HasMaxLength(50)
+                .HasColumnType("character varying(50)")
+                .HasColumnName("status");
+
+            entity.Property(e => e.EmploymentType)
+                .HasConversion<string>()
+                .HasMaxLength(50)
+                .HasColumnType("character varying(50)")
+                .HasColumnName("employment_type");
+
+            entity.Property(e => e.WorkMode)
+                .HasConversion<string>()
+                .HasMaxLength(50)
+                .HasColumnType("character varying(50)")
+                .HasColumnName("work_mode");
             entity.Property(e => e.CreatedAt)
                 .HasDefaultValueSql("CURRENT_TIMESTAMP")
                 .HasColumnType("timestamp without time zone")
@@ -198,6 +227,9 @@ public partial class AppDbContext : DbContext
             entity.Property(e => e.Location)
                 .HasMaxLength(255)
                 .HasColumnName("location");
+            entity.Property(e => e.MinExperienceYears)
+                .HasDefaultValue(0)
+                .HasColumnName("min_experience_years");
             entity.Property(e => e.Requirements).HasColumnName("requirements");
             entity.Property(e => e.SalaryMax)
                 .HasPrecision(15, 2)
@@ -205,29 +237,15 @@ public partial class AppDbContext : DbContext
             entity.Property(e => e.SalaryMin)
                 .HasPrecision(15, 2)
                 .HasColumnName("salary_min");
+            entity.Property(e => e.ShortPitch)
+                .HasMaxLength(500)
+                .HasColumnName("short_pitch");
             entity.Property(e => e.Title)
                 .HasMaxLength(255)
                 .HasColumnName("title");
-            entity.Property(e => e.Benefits)
-                .HasColumnName("benefits");
-
-            entity.Property(e => e.MinExperienceYears)
-                  .HasColumnName("min_experience_years");
-
             entity.Property(e => e.VacancyCount)
-                  .HasColumnName("vacancy_count");
-
-            entity.Property(e => e.Status)
-                   .HasColumnName("status")
-                   .HasColumnType("job_status");
-
-            entity.Property(e => e.EmploymentType)
-                  .HasColumnName("employment_type")
-                  .HasColumnType("employment_type");
-
-            entity.Property(e => e.WorkMode)
-                  .HasColumnName("work_mode")
-                  .HasColumnType("work_mode");
+                .HasDefaultValue(1)
+                .HasColumnName("vacancy_count");
 
             entity.HasOne(d => d.ApprovedByNavigation).WithMany(p => p.JobApprovedByNavigations)
                 .HasForeignKey(d => d.ApprovedBy)
@@ -251,10 +269,10 @@ public partial class AppDbContext : DbContext
 
             entity.Property(e => e.JobId).HasColumnName("job_id");
             entity.Property(e => e.SkillId).HasColumnName("skill_id");
-            entity.Property(e => e.MinYearsExperience).HasColumnName("min_years_experience");
             entity.Property(e => e.IsRequired)
                 .HasDefaultValue(true)
                 .HasColumnName("is_required");
+            entity.Property(e => e.MinYearsExperience).HasColumnName("min_years_experience");
 
             entity.HasOne(d => d.Job).WithMany(p => p.JobSkills)
                 .HasForeignKey(d => d.JobId)
@@ -291,34 +309,6 @@ public partial class AppDbContext : DbContext
                 .HasForeignKey(d => d.UserId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("notifications_user_id_fkey");
-        });
-
-        modelBuilder.Entity<RolePermission>(entity =>
-        {
-            entity.HasKey(e => new { e.RoleId, e.PermissionId })
-                .HasName("role_permissions_pkey");
-
-            entity.ToTable("role_permissions");
-
-            entity.Property(e => e.RoleId)
-                .HasColumnName("role_id");
-
-            entity.Property(e => e.PermissionId)
-                .HasColumnName("permission_id");
-
-            entity.Property(e => e.AssignedAt)
-                .HasDefaultValueSql("now()")
-                .HasColumnName("assigned_at");
-
-            entity.HasOne(d => d.Role)
-                .WithMany(p => p.RolePermissions)
-                .HasForeignKey(d => d.RoleId)
-                .HasConstraintName("role_permissions_role_id_fkey");
-
-            entity.HasOne(d => d.Permission)
-                .WithMany(p => p.RolePermissions)
-                .HasForeignKey(d => d.PermissionId)
-                .HasConstraintName("role_permissions_permission_id_fkey");
         });
 
         modelBuilder.Entity<Permission>(entity =>
@@ -361,6 +351,43 @@ public partial class AppDbContext : DbContext
                 .HasConstraintName("refresh_tokens_user_id_fkey");
         });
 
+        modelBuilder.Entity<Role>(entity =>
+        {
+            entity.HasKey(e => e.Id).HasName("roles_pkey");
+
+            entity.ToTable("roles");
+
+            entity.HasIndex(e => e.Name, "roles_name_key").IsUnique();
+
+            entity.Property(e => e.Id)
+                .HasDefaultValueSql("gen_random_uuid()")
+                .HasColumnName("id");
+            entity.Property(e => e.Description).HasColumnName("description");
+            entity.Property(e => e.Name)
+                .HasMaxLength(100)
+                .HasColumnName("name");
+        });
+
+        modelBuilder.Entity<RolePermission>(entity =>
+        {
+            entity.HasKey(e => new { e.RoleId, e.PermissionId }).HasName("role_permissions_pkey");
+
+            entity.ToTable("role_permissions");
+
+            entity.Property(e => e.RoleId).HasColumnName("role_id");
+            entity.Property(e => e.PermissionId).HasColumnName("permission_id");
+            entity.Property(e => e.AssignedAt)
+                .HasDefaultValueSql("now()")
+                .HasColumnName("assigned_at");
+
+            entity.HasOne(d => d.Permission).WithMany(p => p.RolePermissions)
+                .HasForeignKey(d => d.PermissionId)
+                .HasConstraintName("role_permissions_permission_id_fkey");
+
+            entity.HasOne(d => d.Role).WithMany(p => p.RolePermissions)
+                .HasForeignKey(d => d.RoleId)
+                .HasConstraintName("role_permissions_role_id_fkey");
+        });
 
         modelBuilder.Entity<Skill>(entity =>
         {
@@ -432,52 +459,28 @@ public partial class AppDbContext : DbContext
                 .HasDefaultValueSql("CURRENT_TIMESTAMP")
                 .HasColumnType("timestamp without time zone")
                 .HasColumnName("updated_at");
-
         });
 
         modelBuilder.Entity<UserRole>(entity =>
         {
-            entity.HasKey(e => new { e.UserId, e.RoleId })
-                .HasName("user_roles_pkey");
+            entity.HasKey(e => new { e.UserId, e.RoleId }).HasName("user_roles_pkey");
 
             entity.ToTable("user_roles");
 
-            entity.Property(e => e.UserId)
-                .HasColumnName("user_id");
-
-            entity.Property(e => e.RoleId)
-                .HasColumnName("role_id");
-
+            entity.Property(e => e.UserId).HasColumnName("user_id");
+            entity.Property(e => e.RoleId).HasColumnName("role_id");
             entity.Property(e => e.AssignedAt)
+                .HasDefaultValueSql("CURRENT_TIMESTAMP")
+                .HasColumnType("timestamp without time zone")
                 .HasColumnName("assigned_at");
 
-            entity.HasOne(d => d.User)
-                .WithMany(p => p.UserRoles)
-                .HasForeignKey(d => d.UserId)
-                .HasConstraintName("user_roles_user_id_fkey");
-
-            entity.HasOne(d => d.Role)
-                .WithMany(p => p.UserRoles)
+            entity.HasOne(d => d.Role).WithMany(p => p.UserRoles)
                 .HasForeignKey(d => d.RoleId)
                 .HasConstraintName("user_roles_role_id_fkey");
-        });
 
-        modelBuilder.Entity<Role>(entity =>
-        {
-            entity.HasKey(e => e.Id).HasName("roles_pkey");
-
-            entity.ToTable("roles");
-
-            entity.Property(e => e.Id)
-                .HasDefaultValueSql("gen_random_uuid()")
-                .HasColumnName("id");
-
-            entity.Property(e => e.Name)
-                .HasMaxLength(100)
-                .HasColumnName("name");
-
-            entity.Property(e => e.Description)
-                .HasColumnName("description");
+            entity.HasOne(d => d.User).WithMany(p => p.UserRoles)
+                .HasForeignKey(d => d.UserId)
+                .HasConstraintName("user_roles_user_id_fkey");
         });
 
         OnModelCreatingPartial(modelBuilder);

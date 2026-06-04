@@ -25,8 +25,6 @@ public partial class CandidateProfile
 
     public string? LinkedinUrl { get; set; }
 
-    public virtual ICollection<Application> Applications { get; set; } = new List<Application>();
-
     public virtual User User { get; set; } = null!;
 
     public virtual ICollection<Skill> Skills { get; set; } = new List<Skill>();

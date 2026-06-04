@@ -7,12 +7,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Remove="Constants\**" />
-    <EmbeddedResource Remove="Constants\**" />
-    <None Remove="Constants\**" />
-  </ItemGroup>
-
-  <ItemGroup>
     <PackageReference Include="Npgsql" Version="8.0.3" />
   </ItemGroup>
 

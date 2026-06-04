@@ -11,5 +11,7 @@ namespace RecruitPro.Application.Interfaces.IServices
     public interface IAuthService
     {
         Task<ApiResponse<LoginResponseDto>> LoginAsync(LoginRequest request);
+        Task<ApiResponse<LoginResponseDto>> CandidateLoginAsync(string email, string password);
+        Task<ApiResponse<LoginResponseDto>> InternalLoginAsync(string employeeIdOrEmail, string password);
     }
 }

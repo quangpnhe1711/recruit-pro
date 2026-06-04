@@ -12,13 +12,6 @@ namespace RecruitPro.Infrastructure.Migrations
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.AlterDatabase()
-                .Annotation("Npgsql:Enum:application_status", "Pending,Reviewing,Interviewing,ManagerReview,Accepted,Rejected")
-                .Annotation("Npgsql:Enum:employment_type", "FullTime,PartTime,Remote,Hybrid,Internship,Contract")
-                .Annotation("Npgsql:Enum:interview_status", "Scheduled,Completed,Cancelled")
-                .Annotation("Npgsql:Enum:job_status", "Draft,PendingApproval,Approved,Closed,Rejected")
-                .Annotation("Npgsql:Enum:meeting_type", "Online,Offline")
-                .Annotation("Npgsql:Enum:notification_type", "System,Job,Interview,Application")
-                .Annotation("Npgsql:Enum:user_status", "Active,Inactive,Blocked")
                 .Annotation("Npgsql:PostgresExtension:pgcrypto", ",,");
 
             migrationBuilder.CreateTable(
@@ -151,6 +144,7 @@ namespace RecruitPro.Infrastructure.Migrations
                     created_by = table.Column<Guid>(type: "uuid", nullable: false),
                     approved_by = table.Column<Guid>(type: "uuid", nullable: true),
                     title = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: false),
+                    short_pitch = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: true),
                     description = table.Column<string>(type: "text", nullable: true),
                     requirements = table.Column<string>(type: "text", nullable: true),
                     location = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: true),
@@ -294,7 +288,7 @@ namespace RecruitPro.Infrastructure.Migrations
                 columns: table => new
                 {
                     id = table.Column<Guid>(type: "uuid", nullable: false, defaultValueSql: "gen_random_uuid()"),
-                    candidate_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    user_id = table.Column<Guid>(type: "uuid", nullable: false),
                     job_id = table.Column<Guid>(type: "uuid", nullable: false),
                     reviewed_by = table.Column<Guid>(type: "uuid", nullable: true),
                     applied_at = table.Column<DateTime>(type: "timestamp without time zone", nullable: true, defaultValueSql: "CURRENT_TIMESTAMP")
@@ -303,9 +297,9 @@ namespace RecruitPro.Infrastructure.Migrations
                 {
                     table.PrimaryKey("applications_pkey", x => x.id);
                     table.ForeignKey(
-                        name: "applications_candidate_id_fkey",
-                        column: x => x.candidate_id,
-                        principalTable: "candidate_profiles",
+                        name: "applications_user_id_fkey",
+                        column: x => x.user_id,
+                        principalTable: "users",
                         principalColumn: "id",
                         onDelete: ReferentialAction.Cascade);
                     table.ForeignKey(
@@ -368,9 +362,9 @@ namespace RecruitPro.Infrastructure.Migrations
                 });
 
             migrationBuilder.CreateIndex(
-                name: "IX_applications_candidate_id",
+                name: "IX_applications_user_id",
                 table: "applications",
-                column: "candidate_id");
+                column: "user_id");
 
             migrationBuilder.CreateIndex(
                 name: "IX_applications_job_id",

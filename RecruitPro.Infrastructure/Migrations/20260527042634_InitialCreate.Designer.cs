@@ -23,21 +23,14 @@ namespace RecruitPro.Infrastructure.Migrations
                 .HasAnnotation("ProductVersion", "8.0.0")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
-            NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "application_status", new[] { "Pending", "Reviewing", "Interviewing", "ManagerReview", "Accepted", "Rejected" });
-            NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "employment_type", new[] { "FullTime", "PartTime", "Remote", "Hybrid", "Internship", "Contract" });
-            NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "interview_status", new[] { "Scheduled", "Completed", "Cancelled" });
-            NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "job_status", new[] { "Draft", "PendingApproval", "Approved", "Closed", "Rejected" });
-            NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "meeting_type", new[] { "Online", "Offline" });
-            NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "notification_type", new[] { "System", "Job", "Interview", "Application" });
-            NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "user_status", new[] { "Active", "Inactive", "Blocked" });
             NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "pgcrypto");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
             modelBuilder.Entity("CandidateSkill", b =>
                 {
-                    b.Property<Guid>("CandidateId")
+                    b.Property<Guid>("UserId")
                         .HasColumnType("uuid")
-                        .HasColumnName("candidate_id");
+                        .HasColumnName("user_id");
 
                     b.Property<Guid>("SkillId")
                         .HasColumnType("uuid")
@@ -98,7 +91,7 @@ namespace RecruitPro.Infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("applications_pkey");
 
-                    b.HasIndex("CandidateId");
+                    b.HasIndex("UserId");
 
                     b.HasIndex("JobId");
 
@@ -284,6 +277,11 @@ namespace RecruitPro.Infrastructure.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)")
                         .HasColumnName("title");
+
+                    b.Property<string>("ShortPitch")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("short_pitch");
 
                     b.HasKey("Id")
                         .HasName("jobs_pkey");
@@ -619,12 +617,12 @@ namespace RecruitPro.Infrastructure.Migrations
 
             modelBuilder.Entity("RecruitPro.Domain.Entities.Application", b =>
                 {
-                    b.HasOne("RecruitPro.Domain.Entities.CandidateProfile", "Candidate")
+                    b.HasOne("RecruitPro.Domain.Entities.User", "User")
                         .WithMany("Applications")
-                        .HasForeignKey("CandidateId")
+                        .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
-                        .HasConstraintName("applications_candidate_id_fkey");
+                        .HasConstraintName("applications_user_id_fkey");
 
                     b.HasOne("RecruitPro.Domain.Entities.Job", "Job")
                         .WithMany("Applications")
@@ -638,7 +636,7 @@ namespace RecruitPro.Infrastructure.Migrations
                         .HasForeignKey("ReviewedBy")
                         .HasConstraintName("applications_reviewed_by_fkey");
 
-                    b.Navigation("Candidate");
+                    b.Navigation("User");
 
                     b.Navigation("Job");
 

@@ -1,9 +1,10 @@
+namespace RecruitPro.Application.Interfaces.IRepositories;
 using RecruitPro.Domain.Entities;
 
-namespace RecruitPro.Application.Interfaces.IRepositories
+public interface ICandidateProfileRepository
 {
-    public interface ICandidateProfileRepository
-    {
-        Task<CandidateProfile> SaveAsync(CandidateProfile profile);
-    }
+    Task<CandidateProfile> SaveAsync(CandidateProfile profile);
+    Task<CandidateProfile?> GetByUserIdAsync(Guid userId);
+    Task<CandidateProfile?> GetByIdAsync(Guid candidateId);
+    Task UpdateAsync(CandidateProfile profile);
 }

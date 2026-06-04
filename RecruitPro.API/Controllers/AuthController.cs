@@ -1,17 +1,15 @@
-﻿using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Identity.Data;
 using Microsoft.AspNetCore.Mvc;
+using RecruitPro.Application.DTOs.Request.Auth;
 using RecruitPro.Application.DTOs.Response;
 using RecruitPro.Application.Interfaces.IServices;
-using RecruitPro.Application.Services;
 using LoginRequest = RecruitPro.Application.DTOs.Request.Auth.LoginRequest;
 
 namespace RecruitPro.API.Controllers
 {
     [Route("api/auth")]
     [ApiController]
-    public class AuthController : ControllerBase { 
-
+    public class AuthController : ControllerBase
+    {
         private readonly IAuthService _authService;
 
         public AuthController(IAuthService authService)
@@ -19,11 +17,25 @@ namespace RecruitPro.API.Controllers
             _authService = authService;
         }
 
-        [Route("login")]
-        [HttpPost]
-        public async Task<ApiResponse<LoginResponseDto>> Login(LoginRequest request)
+        [HttpPost("login")]
+        public async Task<IActionResult> Login([FromBody] LoginRequest request)
         {
-            return await _authService.LoginAsync(request);
+            var result = await _authService.LoginAsync(request);
+            return StatusCode(result.StatusCode, result);
+        }
+
+        [HttpPost("candidate/login")]
+        public async Task<IActionResult> CandidateLogin([FromBody] CandidateLoginRequest request)
+        {
+            var result = await _authService.CandidateLoginAsync(request.Email, request.Password);
+            return StatusCode(result.StatusCode, result);
+        }
+
+        [HttpPost("internal/login")]
+        public async Task<IActionResult> InternalLogin([FromBody] InternalLoginRequest request)
+        {
+            var result = await _authService.InternalLoginAsync(request.EmployeeIdOrEmail, request.Password);
+            return StatusCode(result.StatusCode, result);
         }
     }
 }

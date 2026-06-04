@@ -17,6 +17,7 @@ namespace RecruitPro.Application.Extensions
         {
             services.AddScoped<IAuthService, AuthService>();
             services.AddScoped<ICandidateProfileService, CandidateProfileService>();
+            services.AddScoped<IHrService, HrService>();
             services.AddScoped<IJobService, JobService>();
 
             return services;

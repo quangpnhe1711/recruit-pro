@@ -1,23 +1,19 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
-namespace RecruitPro.Domain.Entities
+namespace RecruitPro.Domain.Entities;
+
+public partial class JobSkill
 {
-    public class JobSkill
-    {
-        public Guid JobId { get; set; }
+    public Guid JobId { get; set; }
 
-        public Guid SkillId { get; set; }
+    public Guid SkillId { get; set; }
 
-        public int? MinYearsExperience { get; set; }
+    public int? MinYearsExperience { get; set; }
 
-        public bool IsRequired { get; set; }
+    public bool IsRequired { get; set; }
 
-        public Job Job { get; set; } = null!;
+    public virtual Job Job { get; set; } = null!;
 
-        public Skill Skill { get; set; } = null!;
-    }
+    public virtual Skill Skill { get; set; } = null!;
 }

@@ -13,7 +13,11 @@ namespace RecruitPro.Application.Interfaces.IRepositories
 
         Task<User?> GetByIdAsync(Guid id);
 
+        Task<IReadOnlyList<User>> GetUsersInRolesAsync(params string[] roles);
+
         Task AddAsync(User user);
+
+        Task UpdateAsync(User user);
 
     }
 }

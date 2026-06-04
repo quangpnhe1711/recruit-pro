@@ -14,6 +14,7 @@ namespace RecruitPro.Infrastructure.Extensions
             // register repositories
             services.AddScoped<IUserRepository, UserRepository>();
             services.AddScoped<ICandidateProfileRepository, CandidateProfileRepository>();
+            services.AddScoped<IHrRepository, HrRepository>();
             services.AddScoped<IJobRepository, JobRepository>();
 
             // register UnitOfWork
