@@ -5,6 +5,9 @@ using Microsoft.EntityFrameworkCore;
 using RecruitPro.Application.Configurations;
 using RecruitPro.Infrastructure.Extensions;
 using RecruitPro.Application.Extensions;
+using RecruitPro.Application.Validators;
+using FluentValidation;
+using RecruitPro.API.Filters;
 using RecruitPro.API.Middlewares;
 
 
@@ -15,7 +18,18 @@ builder.Services.AddJwtAuthentication(builder.Configuration);
 
 // Add services to the container.
 
-builder.Services.AddControllers();
+builder.Services.AddControllers(options =>
+{
+    options.Filters.Add<ValidationActionFilter>();
+});
+builder.Services.AddScoped<IValidator<RecruitPro.Application.DTOs.Request.Jobs.CreateJobRequest>, CreateJobRequestValidator>();
+builder.Services.AddScoped<IValidator<RecruitPro.Application.DTOs.Request.Jobs.PatchJobRequest>, PatchJobRequestValidator>();
+builder.Services.AddScoped<IValidator<RecruitPro.Application.DTOs.Request.Interviews.CreateInterviewRequest>, CreateInterviewRequestValidator>();
+builder.Services.AddScoped<IValidator<RecruitPro.Application.DTOs.Request.Interviews.UpdateInterviewStatusRequest>, UpdateInterviewStatusRequestValidator>();
+builder.Services.AddScoped<IValidator<RecruitPro.Application.DTOs.Request.Candidate.UpdateCandidateProfileRequest>, UpdateCandidateProfileRequestValidator>();
+builder.Services.AddScoped<IValidator<RecruitPro.Application.DTOs.Request.Candidate.UpdateCandidateSkillsRequest>, UpdateCandidateSkillsRequestValidator>();
+builder.Services.AddScoped<IValidator<RecruitPro.Application.DTOs.Request.Candidate.UpsertCandidateExperienceRequest>, UpsertCandidateExperienceRequestValidator>();
+builder.Services.AddScoped<IValidator<RecruitPro.Application.DTOs.Request.SendApplicationEmailRequest>, SendApplicationEmailRequestValidator>();
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();

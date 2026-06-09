@@ -1,25 +1,22 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using RecruitPro.Application.DTOs.Response;
 using RecruitPro.Application.DTOs.Request;
 using RecruitPro.Application.DTOs.Request.Jobs;
+using RecruitPro.Application.DTOs.Response;
 
-namespace RecruitPro.Application.Interfaces.IServices
+namespace RecruitPro.Application.Interfaces.IServices;
+
+public interface IJobService
 {
-    public interface IJobService
-    {
-        public Task<ApiResponse<JobsListingResponseDto>> GetJobsAsync(int currentPage = 1, int pageSize = 10);
-        public Task<ApiResponse<JobDetailDto>> GetJobDetailAsync(string jobId);
-        public Task<ApiResponse<PaginatedResponseDto<ApplicationListItemDto>>> GetJobApplicationsAsync(string jobId, int page = 1, int pageSize = 10);
-        public Task<ApiResponse<HiringFunnelStatisticsDto>> GetJobStatisticsAsync(string jobId);
-        public Task<ApiResponse<JobDetailDto>> UpdateJobStatusAsync(string jobId, UpdateJobStatusRequest request);
-        public Task<ApiResponse<JobSearchResponseDto>> SearchJobsAsync(JobQueryRequest request);
-        public Task<ApiResponse<JobFiltersResponseDto>> GetFiltersAsync();
-        public Task<ApiResponse<JobDetailScreenDto>> GetJobScreenDetailAsync(string jobId);
-        public Task<ApiResponse<IReadOnlyList<RecentJobApplicationDto>>> GetRecentApplicationsAsync(string jobId);
-        public Task<ApiResponse<ApplyJobResponseDto>> ApplyAsync(Guid userId, string jobId, ApplyJobRequest request);
-    }
+    Task<ApiResponse<JobsListingResponseDto>> GetJobsAsync(int currentPage = 1, int pageSize = 10);
+    Task<ApiResponse<JobDetailDto>> GetJobDetailAsync(string jobId);
+    Task<ApiResponse<HiringFunnelStatisticsDto>> GetJobStatisticsAsync(string jobId);
+    Task<ApiResponse<JobDetailDto>> UpdateJobStatusAsync(string jobId, UpdateJobStatusRequest request);
+    Task<ApiResponse<JobSearchResponseDto>> SearchJobsAsync(JobQueryRequest request);
+    Task<ApiResponse<JobFiltersResponseDto>> GetFiltersAsync();
+    Task<ApiResponse<IReadOnlyList<DepartmentDto>>> GetDepartmentsAsync();
+    Task<ApiResponse<IReadOnlyList<SkillLookupDto>>> GetSkillsAsync();
+    Task<ApiResponse<JobDetailScreenDto>> GetJobScreenDetailAsync(string jobId);
+    Task<ApiResponse<HrJobsResponseDto>> GetHrJobsAsync(HrJobQueryRequest request);
+    Task<ApiResponse<HrCreateJobResponseDto>> CreateJobAsync(CreateJobRequest request, Guid currentUserId);
+    Task<ApiResponse<HrJobStatusResponseDto>> PatchJobAsync(string jobId, PatchJobRequest request);
+    Task<ApiResponse<string>> DeleteJobAsync(string jobId);
 }

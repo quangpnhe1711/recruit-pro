@@ -6,11 +6,6 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
-  <ItemGroup>
-    <Compile Remove="Validators\**" />
-    <EmbeddedResource Remove="Validators\**" />
-    <None Remove="Validators\**" />
-  </ItemGroup>
 	<ItemGroup>
 		<ProjectReference Include="..\RecruitPro.Domain\RecruitPro.Domain.csproj" />
 	</ItemGroup>

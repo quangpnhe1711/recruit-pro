@@ -22,6 +22,7 @@ namespace RecruitPro.Infrastructure.Repositories
         public Task<User?> GetByEmailAsync(string email)
         {
             return _context.Users
+                .AsNoTracking()
                 .Include(u => u.UserRoles)
                     .ThenInclude(ur => ur.Role)
                 .Include(u => u.CandidateProfile)
@@ -31,6 +32,7 @@ namespace RecruitPro.Infrastructure.Repositories
         public Task<User?> GetByIdAsync(Guid id)
         {
             return _context.Users
+                .AsNoTracking()
                 .Include(u => u.UserRoles)
                     .ThenInclude(ur => ur.Role)
                 .Include(u => u.CandidateProfile)
@@ -40,6 +42,7 @@ namespace RecruitPro.Infrastructure.Repositories
         public async Task<IReadOnlyList<User>> GetUsersInRolesAsync(params string[] roles)
         {
             return await _context.Users
+                .AsNoTracking()
                 .Include(u => u.UserRoles)
                     .ThenInclude(ur => ur.Role)
                 .Where(u => u.UserRoles.Any(ur => roles.Contains(ur.Role.Name)))

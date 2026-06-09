@@ -1,54 +1,51 @@
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using RecruitPro.Application.DTOs.Request.Interviews;
 using RecruitPro.Application.Interfaces.IServices;
 
 namespace RecruitPro.API.Controllers;
 
-[Authorize(Roles = "HR,Manager,SystemAdmin")]
-[Route("api/hr/interviews")]
 [ApiController]
-public class HrInterviewsController : ControllerBase
+public class InterviewController : ControllerBase
 {
-    private readonly IHrService _hrService;
+    private readonly IInterviewService _interviewService;
 
-    public HrInterviewsController(IHrService hrService)
+    public InterviewController(IInterviewService interviewService)
     {
-        _hrService = hrService;
+        _interviewService = interviewService;
     }
 
-    [HttpGet]
+    [HttpGet("api/hr/interviews")]
     public async Task<IActionResult> GetInterviews([FromQuery] int page = 1, [FromQuery] int pageSize = 10, [FromQuery] string? keyword = null, [FromQuery] string? status = null, [FromQuery] DateTime? startDate = null, [FromQuery] DateTime? endDate = null)
     {
-        var result = await _hrService.GetInterviewsAsync(page, pageSize, keyword, status, startDate, endDate);
+        var result = await _interviewService.GetInterviewsAsync(page, pageSize, keyword, status, startDate, endDate);
         return StatusCode(result.StatusCode, result);
     }
 
-    [HttpGet("schedule-data")]
-    public async Task<IActionResult> GetScheduleData()
+    [HttpGet("api/hr/interviews/schedule-data")]
+    public async Task<IActionResult> GetScheduleData([FromQuery] string? applicationId = null)
     {
-        var result = await _hrService.GetScheduleDataAsync();
+        var result = await _interviewService.GetScheduleDataAsync(applicationId);
         return StatusCode(result.StatusCode, result);
     }
 
-    [HttpPost]
+    [HttpPost("api/hr/interviews")]
     public async Task<IActionResult> CreateInterview([FromBody] CreateInterviewRequest request)
     {
-        var result = await _hrService.CreateInterviewAsync(request);
+        var result = await _interviewService.CreateInterviewAsync(request);
         return StatusCode(result.StatusCode, result);
     }
 
-    [HttpPatch("{interviewId}/status")]
+    [HttpPatch("api/hr/interviews/{interviewId}/status")]
     public async Task<IActionResult> UpdateInterviewStatus(string interviewId, [FromBody] UpdateInterviewStatusRequest request)
     {
-        var result = await _hrService.UpdateInterviewStatusAsync(interviewId, request);
+        var result = await _interviewService.UpdateInterviewStatusAsync(interviewId, request);
         return StatusCode(result.StatusCode, result);
     }
 
-    [HttpDelete("{interviewId}")]
+    [HttpDelete("api/hr/interviews/{interviewId}")]
     public async Task<IActionResult> DeleteInterview(string interviewId)
     {
-        var result = await _hrService.DeleteInterviewAsync(interviewId);
+        var result = await _interviewService.DeleteInterviewAsync(interviewId);
         return StatusCode(result.StatusCode, result);
     }
 }

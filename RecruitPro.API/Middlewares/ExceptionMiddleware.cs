@@ -1,4 +1,5 @@
-﻿using RecruitPro.Application.DTOs.Response;
+using FluentValidation;
+using RecruitPro.Application.DTOs.Response;
 using RecruitPro.Application.Exceptions;
 
 namespace RecruitPro.API.Middlewares
@@ -23,14 +24,11 @@ namespace RecruitPro.API.Middlewares
             catch (Exception ex)
             {
                 _logger.LogError(ex, ex.Message);
-
                 await HandleExceptionAsync(context, ex);
             }
         }
 
-        private static async Task HandleExceptionAsync(
-            HttpContext context,
-            Exception exception)
+        private static async Task HandleExceptionAsync(HttpContext context, Exception exception)
         {
             context.Response.ContentType = "application/json";
 
@@ -40,7 +38,6 @@ namespace RecruitPro.API.Middlewares
             if (exception is BaseException customException)
             {
                 statusCode = customException.StatusCode;
-
                 response = statusCode switch
                 {
                     400 => ApiResponse<object>.BadRequest(customException.Message),
@@ -49,17 +46,24 @@ namespace RecruitPro.API.Middlewares
                     _ => ApiResponse<object>.Error(customException.Message)
                 };
             }
+            else if (exception is ValidationException validationException)
+            {
+                statusCode = 400;
+                Dictionary<string, string[]> errors = validationException.Errors
+                    .GroupBy(error => error.PropertyName)
+                    .ToDictionary(
+                        group => group.Key,
+                        group => group.Select(error => error.ErrorMessage).Distinct().ToArray());
+
+                response = ApiResponse<object>.ValidationError("Validation failed.", errors);
+            }
             else
             {
                 statusCode = 500;
-
-                response = ApiResponse<object>.Error(
-                    "Đã xảy ra lỗi hệ thống"
-                );
+                response = ApiResponse<object>.Error("Đã xảy ra lỗi hệ thống");
             }
 
             context.Response.StatusCode = statusCode;
-
             await context.Response.WriteAsJsonAsync(response);
         }
     }

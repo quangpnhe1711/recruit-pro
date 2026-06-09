@@ -27,6 +27,10 @@ namespace RecruitPro.Infrastructure.Service
                     user.Id.ToString()),
 
                 new Claim(
+                    ClaimTypes.NameIdentifier,
+                    user.Id.ToString()),
+
+                new Claim(
                     JwtRegisteredClaimNames.Email,
                     user.Email),
 
@@ -62,11 +66,6 @@ namespace RecruitPro.Infrastructure.Service
 
             return new JwtSecurityTokenHandler()
                 .WriteToken(token);
-        }
-
-        public string GenerateRefreshToken()
-        {
-            throw new NotImplementedException();
         }
     }
 }

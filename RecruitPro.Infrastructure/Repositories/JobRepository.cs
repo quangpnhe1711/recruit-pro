@@ -4,7 +4,6 @@ using RecruitPro.Domain.Constants;
 using RecruitPro.Domain.Entities;
 using RecruitPro.Domain.Enums;
 using RecruitPro.Infrastructure.Data;
-using JobApplication = RecruitPro.Domain.Entities.Application;
 
 namespace RecruitPro.Infrastructure.Repositories
 {
@@ -19,10 +18,11 @@ namespace RecruitPro.Infrastructure.Repositories
 
         public async Task<(IReadOnlyList<Job> Jobs, int Total)> GetApprovedPagedAsync(int currentPage, int pageSize)
         {
-            var query = BuildJobQuery()
-     .Where(job => !Constants.NOT_SHOW_JOB_STATUS.Contains(job.Status));
-            var total = await query.CountAsync();
-            var jobs = await query
+            IQueryable<Job> query = BuildJobQuery()
+                .Where(job => !Constants.NOT_SHOW_JOB_STATUS.Contains(job.Status));
+
+            int total = await query.CountAsync();
+            List<Job> jobs = await query
                 .OrderByDescending(job => job.CreatedAt)
                 .Skip((currentPage - 1) * pageSize)
                 .Take(pageSize)
@@ -33,12 +33,12 @@ namespace RecruitPro.Infrastructure.Repositories
 
         public async Task<(IReadOnlyList<Job> Jobs, int Total)> SearchApprovedAsync(string? keyword, IReadOnlyCollection<string> employmentTypes, IReadOnlyCollection<string> skills, string? sortBy, int currentPage, int pageSize)
         {
-            var query = BuildJobQuery()
+            IQueryable<Job> query = BuildJobQuery()
                 .Where(job => !Constants.NOT_SHOW_JOB_STATUS.Contains(job.Status));
-                
+
             if (!string.IsNullOrWhiteSpace(keyword))
             {
-                var loweredKeyword = keyword.Trim().ToLowerInvariant();
+                string loweredKeyword = keyword.Trim().ToLowerInvariant();
                 query = query.Where(job =>
                     job.Title.ToLower().Contains(loweredKeyword) ||
                     (job.Description != null && job.Description.ToLower().Contains(loweredKeyword)) ||
@@ -47,10 +47,10 @@ namespace RecruitPro.Infrastructure.Repositories
 
             if (employmentTypes.Count > 0)
             {
-                var mappedTypes = employmentTypes
+                List<EmploymentType> mappedTypes = employmentTypes
                     .Select(ParseEmploymentType)
-                    .Where(x => x.HasValue)
-                    .Select(x => x!.Value)
+                    .Where(value => value.HasValue)
+                    .Select(value => value!.Value)
                     .ToList();
 
                 if (mappedTypes.Count > 0)
@@ -61,8 +61,8 @@ namespace RecruitPro.Infrastructure.Repositories
 
             if (skills.Count > 0)
             {
-                var loweredSkills = skills.Select(x => x.Trim().ToLowerInvariant()).ToList();
-                query = query.Where(job => job.JobSkills.Any(js => loweredSkills.Contains(js.Skill.Name.ToLower())));
+                List<string> loweredSkills = skills.Select(value => value.Trim().ToLowerInvariant()).ToList();
+                query = query.Where(job => job.JobSkills.Any(jobSkill => loweredSkills.Contains(jobSkill.Skill.Name.ToLower())));
             }
 
             query = sortBy?.Trim().ToLowerInvariant() switch
@@ -70,8 +70,9 @@ namespace RecruitPro.Infrastructure.Repositories
                 "salarydesc" => query.OrderByDescending(job => job.SalaryMax).ThenByDescending(job => job.CreatedAt),
                 _ => query.OrderByDescending(job => job.CreatedAt)
             };
-            var total = await query.CountAsync();
-            var jobs = await query
+
+            int total = await query.CountAsync();
+            List<Job> jobs = await query
                 .Skip((currentPage - 1) * pageSize)
                 .Take(pageSize)
                 .ToListAsync();
@@ -81,22 +82,22 @@ namespace RecruitPro.Infrastructure.Repositories
 
         public async Task<(IReadOnlyList<Job> Jobs, int Total)> GetPagedAsync(string? department, string? approvalStatus, int currentPage, int pageSize)
         {
-            var query = BuildJobQuery();
+            IQueryable<Job> query = BuildJobQuery();
 
             if (!string.IsNullOrWhiteSpace(department))
             {
-                var loweredDepartment = department.Trim().ToLowerInvariant();
+                string loweredDepartment = department.Trim().ToLowerInvariant();
                 query = query.Where(job => job.Department != null && job.Department.Name.ToLower().Contains(loweredDepartment));
             }
 
-            var parsedStatus = ParseJobStatus(approvalStatus);
+            JobStatus? parsedStatus = ParseJobStatus(approvalStatus);
             if (parsedStatus.HasValue)
             {
                 query = query.Where(job => job.Status == parsedStatus.Value);
             }
 
-            var total = await query.CountAsync();
-            var jobs = await query
+            int total = await query.CountAsync();
+            List<Job> jobs = await query
                 .OrderByDescending(job => job.CreatedAt)
                 .Skip((currentPage - 1) * pageSize)
                 .Take(pageSize)
@@ -105,62 +106,60 @@ namespace RecruitPro.Infrastructure.Repositories
             return (jobs, total);
         }
 
-        public async Task<Job?> GetByIdAsync(Guid id)
+        public Task<int> CountApprovedJobsAsync()
         {
-            return await BuildJobQuery().FirstOrDefaultAsync(job => job.Id == id);
+            return _context.Jobs.AsNoTracking().CountAsync(job => job.Status == JobStatus.Approved);
         }
 
-        public async Task<(IReadOnlyList<JobApplication> Applications, int Total)> GetJobApplicationsAsync(Guid jobId, int currentPage, int pageSize)
+        public async Task<IReadOnlyList<Job>> GetPendingApprovalJobsAsync(int take)
         {
-            var query = BuildApplicationQuery().Where(app => app.JobId == jobId);
-            var total = await query.CountAsync();
-            var applications = await query
-                .OrderByDescending(app => app.AppliedAt)
-                .Skip((currentPage - 1) * pageSize)
-                .Take(pageSize)
-                .ToListAsync();
-
-            return (applications, total);
-        }
-
-        public async Task<IReadOnlyList<JobApplication>> GetApplicationsByJobIdAsync(Guid jobId)
-        {
-            return await BuildApplicationQuery()
-                .Where(app => app.JobId == jobId)
-                .ToListAsync();
-        }
-
-        public async Task<IReadOnlyList<JobApplication>> GetApplicationsByUserIdAsync(Guid userId)
-        {
-            return await BuildApplicationQuery()
-                .Where(app => app.UserId == userId)
-                .OrderByDescending(app => app.AppliedAt)
-                .ToListAsync();
-        }
-
-        public async Task<IReadOnlyList<JobApplication>> GetRecentApplicationsByJobIdAsync(Guid jobId, int take)
-        {
-            return await BuildApplicationQuery()
-                .Where(app => app.JobId == jobId)
-                .OrderByDescending(app => app.AppliedAt)
+            return await _context.Jobs
+                .AsNoTracking()
+                .Include(job => job.Department)
+                .Where(job => job.Status == JobStatus.PendingApproval)
+                .OrderByDescending(job => job.CreatedAt)
                 .Take(take)
                 .ToListAsync();
         }
 
-        public Task<bool> CandidateAlreadyAppliedAsync(Guid userId, Guid jobId)
+        public Task<Job?> GetByIdAsync(Guid id)
         {
-            return _context.Applications.AnyAsync(app => app.UserId == userId && app.JobId == jobId);
+            return BuildJobQuery().FirstOrDefaultAsync(job => job.Id == id);
         }
 
-        public async Task AddApplicationAsync(JobApplication application)
+        public Task<Job?> GetTrackedByIdAsync(Guid id)
         {
-            await _context.Applications.AddAsync(application);
+            return BuildTrackedJobQuery().FirstOrDefaultAsync(job => job.Id == id);
         }
 
-        public Task UpdateApplicationAsync(JobApplication application)
+        public Task<Department?> GetDepartmentByIdAsync(Guid departmentId)
         {
-            _context.Applications.Update(application);
-            return Task.CompletedTask;
+            return _context.Departments
+                .AsNoTracking()
+                .FirstOrDefaultAsync(department => department.Id == departmentId);
+        }
+
+        public Task<Department?> GetDepartmentByNameAsync(string departmentName)
+        {
+            return _context.Departments
+                .AsNoTracking()
+                .FirstOrDefaultAsync(department => department.Name == departmentName);
+        }
+
+        public async Task<IReadOnlyList<Department>> GetDepartmentsAsync()
+        {
+            return await _context.Departments
+                .AsNoTracking()
+                .OrderBy(department => department.Name)
+                .ToListAsync();
+        }
+
+        public async Task<IReadOnlyList<Skill>> GetSkillsAsync()
+        {
+            return await _context.Skills
+                .AsNoTracking()
+                .OrderBy(skill => skill.Name)
+                .ToListAsync();
         }
 
         public async Task AddAsync(Job job)
@@ -183,10 +182,10 @@ namespace RecruitPro.Infrastructure.Repositories
                 .ToListAsync();
         }
 
-        public async Task UpdateAsync(Job job)
+        public Task UpdateAsync(Job job)
         {
             _context.Jobs.Update(job);
-            await _context.SaveChangesAsync();
+            return Task.CompletedTask;
         }
 
         private IQueryable<Job> BuildJobQuery()
@@ -201,16 +200,11 @@ namespace RecruitPro.Infrastructure.Repositories
                 .Include(job => job.Applications);
         }
 
-        private IQueryable<JobApplication> BuildApplicationQuery()
+        private IQueryable<Job> BuildTrackedJobQuery()
         {
-            return _context.Applications
-                .AsNoTracking()
-                .Include(app => app.User)
-                    .ThenInclude(user => user.CandidateProfile)
-                .Include(app => app.Job)
-                    .ThenInclude(job => job.Department)
-                .Include(app => app.Interviews)
-                .Include(app => app.ReviewedByNavigation);
+            return _context.Jobs
+                .Include(job => job.Department)
+                .Include(job => job.JobSkills);
         }
 
         private static EmploymentType? ParseEmploymentType(string value)

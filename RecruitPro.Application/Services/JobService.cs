@@ -1,4 +1,6 @@
+using System.Text.Json;
 using AutoMapper;
+using RecruitPro.Application.Common;
 using RecruitPro.Application.DTOs.Request;
 using RecruitPro.Application.DTOs.Request.Jobs;
 using RecruitPro.Application.DTOs.Response;
@@ -8,364 +10,579 @@ using RecruitPro.Application.Interfaces.IRepositories;
 using RecruitPro.Application.Interfaces.IServices;
 using RecruitPro.Domain.Entities;
 using RecruitPro.Domain.Enums;
-using System.Text.Json;
 
-namespace RecruitPro.Application.Services
+namespace RecruitPro.Application.Services;
+
+public class JobService : IJobService
 {
-    public class JobService : IJobService
+    private readonly IJobRepository _jobRepository;
+    private readonly IApplicationRepository _applicationRepository;
+    private readonly ISkillRepository _skillRepository;
+    private readonly IUnitOfWork _unitOfWork;
+    private readonly IMapper _mapper;
+
+    public JobService(
+        IJobRepository jobRepository,
+        IApplicationRepository applicationRepository,
+        ISkillRepository skillRepository,
+        IUnitOfWork unitOfWork,
+        IMapper mapper)
     {
-        private readonly IJobRepository _jobRepository;
-        private readonly ICandidateProfileRepository _candidateProfileRepository;
-        private readonly IUnitOfWork _unitOfWork;
-        private readonly IMapper _mapper;
+        _jobRepository = jobRepository;
+        _applicationRepository = applicationRepository;
+        _skillRepository = skillRepository;
+        _unitOfWork = unitOfWork;
+        _mapper = mapper;
+    }
 
-        public JobService(IJobRepository jobRepository, ICandidateProfileRepository candidateProfileRepository, IUnitOfWork unitOfWork, IMapper mapper)
+    public async Task<ApiResponse<JobsListingResponseDto>> GetJobsAsync(int currentPage = 1, int pageSize = 10)
+    {
+        (IReadOnlyList<Job> jobs, int total) = await _jobRepository.GetApprovedPagedAsync(currentPage, pageSize);
+        List<JobCardDto> jobCards = _mapper.Map<List<JobCardDto>>(jobs);
+
+        return ApiResponse<JobsListingResponseDto>.Ok(new JobsListingResponseDto
         {
-            _jobRepository = jobRepository;
-            _candidateProfileRepository = candidateProfileRepository;
-            _unitOfWork = unitOfWork;
-            _mapper = mapper;
-        }
+            Jobs = jobCards,
+            Total = total,
+            Page = currentPage,
+            Limit = pageSize
+        });
+    }
 
-        public async Task<ApiResponse<JobsListingResponseDto>> GetJobsAsync(int currentPage = 1, int pageSize = 10)
+    public async Task<ApiResponse<JobSearchResponseDto>> SearchJobsAsync(JobQueryRequest request)
+    {
+        (IReadOnlyList<Job> jobs, int total) = await _jobRepository.SearchApprovedAsync(
+            request.Keyword,
+            request.EmploymentTypes,
+            request.Skills,
+            request.SortBy,
+            request.Page,
+            request.PageSize);
+
+        return ApiResponse<JobSearchResponseDto>.Ok(new JobSearchResponseDto
         {
-            var (jobs, total) = await _jobRepository.GetApprovedPagedAsync(currentPage, pageSize);
-            var jobCards = _mapper.Map<List<JobCardDto>>(jobs);
+            Items = jobs.Select(MapJobListItem).ToList(),
+            Meta = BuildMeta(request.Page, request.PageSize, total)
+        });
+    }
 
-            return ApiResponse<JobsListingResponseDto>.Ok(new JobsListingResponseDto
+    public async Task<ApiResponse<JobFiltersResponseDto>> GetFiltersAsync()
+    {
+        IReadOnlyList<string> skills = await _jobRepository.GetAllSkillNamesAsync();
+        return ApiResponse<JobFiltersResponseDto>.Ok(new JobFiltersResponseDto
+        {
+            SalaryRanges =
+            [
+                new SalaryRangeDto { Label = "$50k - $80k", Min = 50000, Max = 80000 },
+                new SalaryRangeDto { Label = "$80k - $120k", Min = 80000, Max = 120000 },
+                new SalaryRangeDto { Label = "$120k - $180k", Min = 120000, Max = 180000 },
+                new SalaryRangeDto { Label = "$180k+", Min = 180000, Max = null }
+            ],
+            EmploymentTypes = ["Full-time", "Contract", "Internship", "Part-time"],
+            Skills = skills.ToList()
+        });
+    }
+
+    public async Task<ApiResponse<IReadOnlyList<DepartmentDto>>> GetDepartmentsAsync()
+    {
+        IReadOnlyList<Department> departments = await _jobRepository.GetDepartmentsAsync();
+        return ApiResponse<IReadOnlyList<DepartmentDto>>.Ok(
+            departments.Select(department => new DepartmentDto
             {
-                Jobs = jobCards,
-                Total = total,
-                Page = currentPage,
-                Limit = pageSize
-            });
-        }
+                Id = department.Id.ToString(),
+                Name = department.Name,
+                Description = department.Description
+            }).ToList());
+    }
 
-        public async Task<ApiResponse<JobSearchResponseDto>> SearchJobsAsync(JobQueryRequest request)
-        {
-            var (jobs, total) = await _jobRepository.SearchApprovedAsync(
-                request.Keyword,
-                request.EmploymentTypes,
-                request.Skills,
-                request.SortBy,
-                request.Page,
-                request.PageSize);
-
-            var items = jobs.Select(MapJobListItem).ToList();
-            return ApiResponse<JobSearchResponseDto>.Ok(new JobSearchResponseDto
+    public async Task<ApiResponse<IReadOnlyList<SkillLookupDto>>> GetSkillsAsync()
+    {
+        IReadOnlyList<Skill> skills = await _jobRepository.GetSkillsAsync();
+        return ApiResponse<IReadOnlyList<SkillLookupDto>>.Ok(
+            skills.Select(skill => new SkillLookupDto
             {
-                Items = items,
-                Meta = BuildMeta(request.Page, request.PageSize, total)
-            });
-        }
+                Id = skill.Id.ToString(),
+                Name = skill.Name
+            }).ToList());
+    }
 
-        public async Task<ApiResponse<JobFiltersResponseDto>> GetFiltersAsync()
+    public async Task<ApiResponse<JobDetailDto>> GetJobDetailAsync(string jobId)
+    {
+        Job job = await GetJobAsync(jobId);
+        return ApiResponse<JobDetailDto>.Ok(MapLegacyJobDetail(job));
+    }
+
+    public async Task<ApiResponse<JobDetailScreenDto>> GetJobScreenDetailAsync(string jobId)
+    {
+        Job job = await GetJobAsync(jobId);
+        IReadOnlyList<Domain.Entities.Application> applications = await _applicationRepository.GetAllByJobIdAsync(job.Id);
+
+        return ApiResponse<JobDetailScreenDto>.Ok(new JobDetailScreenDto
         {
-            var skills = await _jobRepository.GetAllSkillNamesAsync();
-            return ApiResponse<JobFiltersResponseDto>.Ok(new JobFiltersResponseDto
+            Id = job.Id.ToString(),
+            Title = job.Title,
+            Location = $"{job.Location} ({job.WorkMode})",
+            PostedAt = job.CreatedAt,
+            Status = job.Status.ToString(),
+            SalaryRange = new SalaryRangeDto
             {
-                SalaryRanges =
+                Min = job.SalaryMin,
+                Max = job.SalaryMax,
+                Label = "USD"
+            },
+            Department = job.Department?.Name ?? string.Empty,
+            JobType = $"{MapEmploymentType(job.EmploymentType)}, {job.WorkMode}",
+            VacancyCount = job.VacancyCount,
+            Description = ParseJsonArray(job.Description),
+            Requirements = ParseJsonArray(job.Requirements),
+            ApplicationSummary = new ApplicationSummaryDto
+            {
+                TotalApplications = applications.Count,
+                Funnel =
                 [
-                    new SalaryRangeDto { Label = "$50k - $80k", Min = 50000, Max = 80000 },
-                    new SalaryRangeDto { Label = "$80k - $120k", Min = 80000, Max = 120000 },
-                    new SalaryRangeDto { Label = "$120k - $180k", Min = 120000, Max = 180000 },
-                    new SalaryRangeDto { Label = "$180k+", Min = 180000, Max = null }
-                ],
-                EmploymentTypes = ["Full-time", "Contract", "Internship", "Part-time"],
-                Skills = skills.ToList()
-            });
+                    new FunnelCountDto { Label = "Applications", Count = applications.Count },
+                    new FunnelCountDto { Label = "Screening", Count = applications.Count(application => application.Status == ApplicationStatus.Reviewing) },
+                    new FunnelCountDto { Label = "Interviews", Count = applications.Count(application => application.Status == ApplicationStatus.Interviewing) },
+                    new FunnelCountDto { Label = "Finalist", Count = applications.Count(application => application.Status == ApplicationStatus.ManagerReview || application.Status == ApplicationStatus.Accepted) }
+                ]
+            }
+        });
+    }
+
+    public async Task<ApiResponse<HiringFunnelStatisticsDto>> GetJobStatisticsAsync(string jobId)
+    {
+        Job job = await GetJobAsync(jobId);
+        IReadOnlyList<Domain.Entities.Application> applications = await _applicationRepository.GetAllByJobIdAsync(job.Id);
+
+        return ApiResponse<HiringFunnelStatisticsDto>.Ok(new HiringFunnelStatisticsDto
+        {
+            Applied = applications.Count,
+            Screening = applications.Count(application => application.Status == ApplicationStatus.Reviewing),
+            Interview = applications.Count(application => application.Status == ApplicationStatus.Interviewing),
+            Offer = applications.Count(application => application.Status == ApplicationStatus.ManagerReview),
+            Hired = applications.Count(application => application.Status == ApplicationStatus.Accepted)
+        });
+    }
+
+    public async Task<ApiResponse<JobDetailDto>> UpdateJobStatusAsync(string jobId, UpdateJobStatusRequest request)
+    {
+        Job job = await GetTrackedJobAsync(jobId);
+        if (!Enum.TryParse(request.Status, true, out JobStatus newStatus))
+        {
+            throw new ArgumentException($"Invalid job status: {request.Status}");
         }
 
-        public async Task<ApiResponse<JobDetailDto>> GetJobDetailAsync(string jobId)
-        {
-            var job = await GetJobAsync(jobId);
-            return ApiResponse<JobDetailDto>.Ok(MapLegacyJobDetail(job));
-        }
+        job.Status = newStatus;
+        await _jobRepository.UpdateAsync(job);
+        await _unitOfWork.SaveChangesAsync();
 
-        public async Task<ApiResponse<JobDetailScreenDto>> GetJobScreenDetailAsync(string jobId)
-        {
-            var job = await GetJobAsync(jobId);
-            var applications = await _jobRepository.GetApplicationsByJobIdAsync(job.Id);
+        return ApiResponse<JobDetailDto>.Ok(MapLegacyJobDetail(job));
+    }
 
-            return ApiResponse<JobDetailScreenDto>.Ok(new JobDetailScreenDto
+    public async Task<ApiResponse<HrJobsResponseDto>> GetHrJobsAsync(HrJobQueryRequest request)
+    {
+        string? normalizedDepartment = string.IsNullOrWhiteSpace(request.Department) ? null : request.Department;
+        string? normalizedStatus = string.IsNullOrWhiteSpace(request.ApprovalStatus) ? null : request.ApprovalStatus;
+        (IReadOnlyList<Job> jobs, int total) = await _jobRepository.GetPagedAsync(normalizedDepartment, normalizedStatus, request.Page, request.PageSize);
+
+        return ApiResponse<HrJobsResponseDto>.Ok(new HrJobsResponseDto
+        {
+            Items = jobs.Select(job => new HrJobListItemDto
             {
                 Id = job.Id.ToString(),
                 Title = job.Title,
-                Location = $"{job.Location} ({job.WorkMode})",
-                PostedAt = job.CreatedAt,
-                Status = job.Status.ToString(),
-                SalaryRange = new SalaryRangeDto
-                {
-                    Min = job.SalaryMin,
-                    Max = job.SalaryMax,
-                    Label = "USD"
-                },
                 Department = job.Department?.Name ?? string.Empty,
-                JobType = $"{MapEmploymentType(job.EmploymentType)}, {job.WorkMode}",
-                VacancyCount = job.VacancyCount,
-                Description = ParseJsonArray(job.Description),
-                Requirements = ParseJsonArray(job.Requirements),
-                ApplicationSummary = new ApplicationSummaryDto
-                {
-                    TotalApplications = applications.Count,
-                    Funnel =
-                    [
-                        new FunnelCountDto { Label = "Applications", Count = applications.Count },
-                        new FunnelCountDto { Label = "Screening", Count = applications.Count(x => x.Status == ApplicationStatus.Reviewing) },
-                        new FunnelCountDto { Label = "Interviews", Count = applications.Count(x => x.Status == ApplicationStatus.Interviewing) },
-                        new FunnelCountDto { Label = "Finalist", Count = applications.Count(x => x.Status == ApplicationStatus.ManagerReview || x.Status == ApplicationStatus.Accepted) }
-                    ]
-                }
-            });
-        }
-
-        public async Task<ApiResponse<IReadOnlyList<RecentJobApplicationDto>>> GetRecentApplicationsAsync(string jobId)
-        {
-            var job = await GetJobAsync(jobId);
-            var applications = await _jobRepository.GetRecentApplicationsByJobIdAsync(job.Id, 5);
-
-            var items = applications.Select(app => new RecentJobApplicationDto
+                CreatedDate = job.CreatedAt?.ToString("yyyy-MM-dd") ?? string.Empty,
+                ApprovalStatus = job.Status.ToString(),
+                ApplicationsCount = job.Applications.Count
+            }).ToList(),
+            Meta = BuildMeta(request.Page, request.PageSize, total),
+            Stats = new HrJobStatsDto
             {
-                Id = app.Id.ToString(),
-                CandidateId = app.UserId.ToString(),
-                CandidateName = app.User.FullName,
-                AvatarUrl = app.User.AvatarUrl,
-                AppliedAt = app.AppliedAt,
-                Status = app.Status.ToString(),
-                Score = null
-            }).ToList();
-
-            return ApiResponse<IReadOnlyList<RecentJobApplicationDto>>.Ok(items);
-        }
-
-        public async Task<ApiResponse<ApplyJobResponseDto>> ApplyAsync(Guid userId, string jobId, ApplyJobRequest request)
-        {
-            var job = await GetJobAsync(jobId);
-            var profile = await _candidateProfileRepository.GetByUserIdAsync(userId);
-            if (profile == null)
-            {
-                throw new NotFoundException("Candidate profile not found.");
+                ActiveJobs = await _jobRepository.CountApprovedJobsAsync(),
+                PendingApproval = (await _jobRepository.GetPendingApprovalJobsAsync(int.MaxValue)).Count,
+                TotalApplications = await _applicationRepository.CountAsync(),
+                TimeToHireDays = 0
             }
+        });
+    }
 
-            if (await _jobRepository.CandidateAlreadyAppliedAsync(userId, job.Id))
+    public async Task<ApiResponse<HrCreateJobResponseDto>> CreateJobAsync(CreateJobRequest request, Guid currentUserId)
+    {
+        Department? department = await ResolveDepartmentAsync(request.DepartmentId, request.Department);
+        List<JobSkill> jobSkills = await BuildJobSkillsAsync(request.SkillIds, request.Skills);
+        List<string> benefits = request.Benefits.Count > 0 ? request.Benefits : request.Responsibilities;
+
+        Job job = new()
+        {
+            Id = Guid.NewGuid(),
+            Title = request.Title,
+            ShortPitch = request.ShortPitch,
+            DepartmentId = department?.Id,
+            CreatedBy = currentUserId,
+            EmploymentType = ParseEmploymentType(request.EmploymentType),
+            WorkMode = ParseWorkMode(request.WorkMode),
+            Location = request.Location ?? string.Empty,
+            Description = request.Description ?? string.Empty,
+            Requirements = SerializeList(request.Requirements),
+            Benefits = SerializeList(benefits),
+            SalaryMin = request.SalaryMin,
+            SalaryMax = request.SalaryMax,
+            MinExperienceYears = request.MinExperienceYears,
+            VacancyCount = request.VacancyCount,
+            Deadline = request.Deadline,
+            Status = JobStatus.PendingApproval,
+            CreatedAt = DbDateTime.Now,
+            JobSkills = jobSkills
+        };
+        foreach (JobSkill jobSkill in job.JobSkills)
+        {
+            jobSkill.JobId = job.Id;
+        }
+
+        await _jobRepository.AddAsync(job);
+        await _unitOfWork.SaveChangesAsync();
+
+        return ApiResponse<HrCreateJobResponseDto>.Created(new HrCreateJobResponseDto
+        {
+            JobId = job.Id.ToString(),
+            ApprovalStatus = job.Status.ToString()
+        }, "Job submitted for approval");
+    }
+
+    public async Task<ApiResponse<HrJobStatusResponseDto>> PatchJobAsync(string jobId, PatchJobRequest request)
+    {
+        if (!Guid.TryParse(jobId, out Guid jobGuid))
+        {
+            return ApiResponse<HrJobStatusResponseDto>.NotFound("Job not found.");
+        }
+
+        Job? job = await _jobRepository.GetTrackedByIdAsync(jobGuid);
+        if (job == null)
+        {
+            return ApiResponse<HrJobStatusResponseDto>.NotFound("Job not found.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Title))
+        {
+            job.Title = request.Title.Trim();
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Department))
+        {
+            Department? department = await _jobRepository.GetDepartmentByNameAsync(request.Department);
+            job.DepartmentId = department?.Id;
+        }
+        else if (!string.IsNullOrWhiteSpace(request.DepartmentId) && Guid.TryParse(request.DepartmentId, out Guid departmentId))
+        {
+            Department? department = await _jobRepository.GetDepartmentByIdAsync(departmentId);
+            job.DepartmentId = department?.Id;
+        }
+
+        JobStatus? parsedStatus = ParseJobStatus(request.ApprovalStatus);
+        if (parsedStatus.HasValue)
+        {
+            job.Status = parsedStatus.Value;
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Description))
+        {
+            job.Description = request.Description;
+        }
+
+        if (request.Requirements != null)
+        {
+            job.Requirements = SerializeList(request.Requirements);
+        }
+
+        if (request.Benefits != null)
+        {
+            job.Benefits = SerializeList(request.Benefits);
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Location))
+        {
+            job.Location = request.Location;
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.WorkMode))
+        {
+            job.WorkMode = ParseWorkMode(request.WorkMode);
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.EmploymentType))
+        {
+            job.EmploymentType = ParseEmploymentType(request.EmploymentType);
+        }
+
+        if (request.MinExperienceYears.HasValue)
+        {
+            job.MinExperienceYears = request.MinExperienceYears.Value;
+        }
+
+        if (request.VacancyCount.HasValue)
+        {
+            job.VacancyCount = request.VacancyCount.Value;
+        }
+
+        if (request.SalaryMin.HasValue)
+        {
+            job.SalaryMin = request.SalaryMin.Value;
+        }
+
+        if (request.SalaryMax.HasValue)
+        {
+            job.SalaryMax = request.SalaryMax.Value;
+        }
+
+        if (request.Deadline.HasValue)
+        {
+            job.Deadline = request.Deadline;
+        }
+
+        if (request.SkillIds != null || request.Skills != null)
+        {
+            List<JobSkill> jobSkills = await BuildJobSkillsAsync(request.SkillIds ?? [], request.Skills ?? []);
+            job.JobSkills.Clear();
+            foreach (JobSkill jobSkill in jobSkills)
             {
-                return ApiResponse<ApplyJobResponseDto>.BadRequest("Candidate already applied for this job.");
+                jobSkill.JobId = job.Id;
+                job.JobSkills.Add(jobSkill);
             }
-
-            var application = new RecruitPro.Domain.Entities.Application
-            {
-                Id = Guid.NewGuid(),
-                UserId = userId,
-                JobId = job.Id,
-                Status = ApplicationStatus.Pending,
-                AppliedAt = DateTime.UtcNow
-            };
-
-            await _unitOfWork.BeginTransactionAsync();
-            await _jobRepository.AddApplicationAsync(application);
-            await _unitOfWork.SaveChangesAsync();
-            await _unitOfWork.CommitAsync();
-
-            return ApiResponse<ApplyJobResponseDto>.Created(new ApplyJobResponseDto
-            {
-                ApplicationId = application.Id.ToString(),
-                Status = application.Status.ToString()
-            }, "Application submitted successfully");
         }
 
-        public async Task<ApiResponse<PaginatedResponseDto<ApplicationListItemDto>>> GetJobApplicationsAsync(string jobId, int page = 1, int pageSize = 10)
-        {
-            var job = await GetJobAsync(jobId);
-            var (applications, total) = await _jobRepository.GetJobApplicationsAsync(job.Id, page, pageSize);
-            var applicationDtos = applications.Select(MapApplicationToDto).ToList();
+        await _jobRepository.UpdateAsync(job);
+        await _unitOfWork.SaveChangesAsync();
 
-            return ApiResponse<PaginatedResponseDto<ApplicationListItemDto>>.Ok(new PaginatedResponseDto<ApplicationListItemDto>
-            {
-                Items = applicationDtos,
-                CurrentPage = page,
-                PageSize = pageSize,
-                TotalItems = total
-            });
+        return ApiResponse<HrJobStatusResponseDto>.Ok(new HrJobStatusResponseDto
+        {
+            JobId = job.Id.ToString(),
+            ApprovalStatus = job.Status.ToString()
+        });
+    }
+
+    public async Task<ApiResponse<string>> DeleteJobAsync(string jobId)
+    {
+        if (!Guid.TryParse(jobId, out Guid jobGuid))
+        {
+            return ApiResponse<string>.NotFound("Job not found.");
         }
 
-        public async Task<ApiResponse<HiringFunnelStatisticsDto>> GetJobStatisticsAsync(string jobId)
+        Job? job = await _jobRepository.GetTrackedByIdAsync(jobGuid);
+        if (job == null)
         {
-            var job = await GetJobAsync(jobId);
-            var applications = await _jobRepository.GetApplicationsByJobIdAsync(job.Id);
-
-            return ApiResponse<HiringFunnelStatisticsDto>.Ok(new HiringFunnelStatisticsDto
-            {
-                Applied = applications.Count,
-                Screening = applications.Count(a => a.Status == ApplicationStatus.Reviewing),
-                Interview = applications.Count(a => a.Status == ApplicationStatus.Interviewing),
-                Offer = applications.Count(a => a.Status == ApplicationStatus.ManagerReview),
-                Hired = applications.Count(a => a.Status == ApplicationStatus.Accepted)
-            });
+            return ApiResponse<string>.NotFound("Job not found.");
         }
 
-        public async Task<ApiResponse<JobDetailDto>> UpdateJobStatusAsync(string jobId, UpdateJobStatusRequest request)
+        await _jobRepository.DeleteAsync(job);
+        await _unitOfWork.SaveChangesAsync();
+        return ApiResponse<string>.Ok("Job deleted successfully", "Job deleted successfully");
+    }
+
+    private async Task<Job> GetJobAsync(string jobId)
+    {
+        if (!Guid.TryParse(jobId, out Guid jobGuid))
         {
-            var job = await GetJobAsync(jobId, false);
-            if (!Enum.TryParse<JobStatus>(request.Status, true, out var newStatus))
+            throw new NotFoundException($"Job with ID {jobId} not found.");
+        }
+
+        Job? job = await _jobRepository.GetByIdAsync(jobGuid);
+        if (job == null)
+        {
+            throw new NotFoundException($"Job with ID {jobId} not found.");
+        }
+
+        return job;
+    }
+
+    private async Task<Job> GetTrackedJobAsync(string jobId)
+    {
+        if (!Guid.TryParse(jobId, out Guid jobGuid))
+        {
+            throw new NotFoundException($"Job with ID {jobId} not found.");
+        }
+
+        Job? job = await _jobRepository.GetTrackedByIdAsync(jobGuid);
+        if (job == null)
+        {
+            throw new NotFoundException($"Job with ID {jobId} not found.");
+        }
+
+        return job;
+    }
+
+    private static JobListItemDto MapJobListItem(Job job)
+    {
+        return new JobListItemDto
+        {
+            Id = job.Id.ToString(),
+            Title = job.Title,
+            ShortPitch = job.ShortPitch,
+            Department = job.Department?.Name ?? string.Empty,
+            Location = job.Location,
+            WorkMode = job.WorkMode.ToString(),
+            SalaryMin = job.SalaryMin,
+            SalaryMax = job.SalaryMax,
+            PostedAt = job.CreatedAt,
+            Tags = job.JobSkills.Select(jobSkill => jobSkill.Skill.Name).Distinct().ToList(),
+            ShortDescription = ParseJsonArray(job.Description).FirstOrDefault() ?? string.Empty,
+            EmploymentType = MapEmploymentType(job.EmploymentType)
+        };
+    }
+
+    private static JobDetailDto MapLegacyJobDetail(Job job)
+    {
+        return new JobDetailDto
+        {
+            Id = job.Id,
+            Title = job.Title,
+            Department = job.Department?.Name ?? string.Empty,
+            Location = job.Location,
+            WorkMode = job.WorkMode.ToString(),
+            Requirements = ParseJsonArray(job.Requirements),
+            Skills = job.JobSkills.Select(jobSkill => new JobSkillDto
             {
-                throw new ArgumentException($"Invalid job status: {request.Status}");
+                Id = jobSkill.SkillId,
+                Name = jobSkill.Skill.Name,
+                MinYearsExperience = jobSkill.MinYearsExperience,
+                IsRequired = jobSkill.IsRequired
+            }).ToList(),
+            SalaryMin = job.SalaryMin,
+            SalaryMax = job.SalaryMax,
+            Deadline = job.Deadline,
+            JobType = $"{MapEmploymentType(job.EmploymentType)} / {job.WorkMode}",
+            SalaryRange = $"{job.SalaryMin:0}-{job.SalaryMax:0}",
+            Posted = job.CreatedAt?.ToString("yyyy-MM-dd") ?? string.Empty,
+            VacancyCount = job.VacancyCount,
+            Status = job.Status.ToString(),
+            Description = ParseJsonArray(job.Description)
+        };
+    }
+
+    private static List<string> ParseJsonArray(string? jsonString)
+    {
+        if (string.IsNullOrWhiteSpace(jsonString))
+        {
+            return [];
+        }
+
+        try
+        {
+            using JsonDocument doc = JsonDocument.Parse(jsonString);
+            if (doc.RootElement.ValueKind == JsonValueKind.Array)
+            {
+                return doc.RootElement.EnumerateArray()
+                    .Select(element => element.GetString() ?? string.Empty)
+                    .Where(value => !string.IsNullOrWhiteSpace(value))
+                    .ToList();
             }
-
-            job.Status = newStatus;
-            await _jobRepository.UpdateAsync(job);
-
-            return ApiResponse<JobDetailDto>.Ok(MapLegacyJobDetail(job));
         }
-
-        private async Task<Job> GetJobAsync(string jobId, bool asNoTracking = true)
+        catch
         {
-            if (!Guid.TryParse(jobId, out var jobGuid))
-            {
-                throw new NotFoundException($"Job with ID {jobId} not found.");
-            }
-
-            var job = await _jobRepository.GetByIdAsync(jobGuid);
-            if (job == null)
-            {
-                throw new NotFoundException($"Job with ID {jobId} not found.");
-            }
-
-            return job;
         }
 
-        private static JobListItemDto MapJobListItem(Job job)
+        return [jsonString];
+    }
+
+    private static ApiEnvelopeMeta BuildMeta(int page, int pageSize, int total)
+    {
+        return new ApiEnvelopeMeta
         {
-            return new JobListItemDto
-            {
-                Id = job.Id.ToString(),
-                Title = job.Title,
-                ShortPitch = job.ShortPitch,
-                Department = job.Department?.Name ?? string.Empty,
-                Location = job.Location,
-                WorkMode = job.WorkMode.ToString(),
-                SalaryMin = job.SalaryMin,
-                SalaryMax = job.SalaryMax,
-                PostedAt = job.CreatedAt,
-                Tags = job.JobSkills.Select(x => x.Skill.Name).Distinct().ToList(),
-                ShortDescription = ParseJsonArray(job.Description).FirstOrDefault() ?? string.Empty,
-                EmploymentType = MapEmploymentType(job.EmploymentType)
-            };
-        }
+            Page = page,
+            PageSize = pageSize,
+            TotalItems = total,
+            TotalPages = (int)Math.Ceiling(total / (double)pageSize)
+        };
+    }
 
-        private static JobDetailDto MapLegacyJobDetail(Job job)
+    private static string? SerializeList(List<string> values)
+    {
+        return values.Count == 0 ? null : JsonSerializer.Serialize(values);
+    }
+
+    private async Task<Department?> ResolveDepartmentAsync(string? departmentId, string? departmentName)
+    {
+        if (!string.IsNullOrWhiteSpace(departmentId) && Guid.TryParse(departmentId, out Guid parsedDepartmentId))
         {
-            return new JobDetailDto
-            {
-                Id = job.Id,
-                Title = job.Title,
-                Department = job.Department?.Name ?? string.Empty,
-                Location = job.Location,
-                WorkMode = job.WorkMode.ToString(),
-                Requirements = ParseJsonArray(job.Requirements),
-                Skills = job.JobSkills.Select(js => new JobSkillDto
-                {
-                    Id = js.SkillId,
-                    Name = js.Skill.Name,
-                    MinYearsExperience = js.MinYearsExperience,
-                    IsRequired = js.IsRequired
-                }).ToList(),
-                SalaryMin = job.SalaryMin,
-                SalaryMax = job.SalaryMax,
-                Deadline = job.Deadline,
-                JobType = $"{MapEmploymentType(job.EmploymentType)} / {job.WorkMode}",
-                SalaryRange = $"{job.SalaryMin:0}-{job.SalaryMax:0}",
-                Posted = job.CreatedAt?.ToString("yyyy-MM-dd") ?? string.Empty,
-                VacancyCount = job.VacancyCount,
-                Status = job.Status.ToString(),
-                Description = ParseJsonArray(job.Description)
-            };
+            return await _jobRepository.GetDepartmentByIdAsync(parsedDepartmentId);
         }
 
-        private static ApplicationListItemDto MapApplicationToDto(RecruitPro.Domain.Entities.Application application)
+        if (!string.IsNullOrWhiteSpace(departmentName))
         {
-            return new ApplicationListItemDto
-            {
-                Id = application.Id.ToString(),
-                Candidate = new ApplicationCandidateSummaryDto
-                {
-                    Id = application.UserId.ToString(),
-                    FullName = application.User.FullName,
-                    Email = application.User.Email,
-                    AvatarUrl = application.User.AvatarUrl,
-                    CurrentPosition = application.User.CandidateProfile?.CurrentPosition
-                },
-                Job = new ApplicationJobSummaryDto
-                {
-                    Id = application.Job.Id.ToString(),
-                    Title = application.Job.Title,
-                    Department = new DepartmentDto
-                    {
-                        Id = application.Job.Department?.Id.ToString() ?? string.Empty,
-                        Name = application.Job.Department?.Name ?? string.Empty,
-                        Description = application.Job.Department?.Description
-                    }
-                },
-                Status = application.Status.ToString(),
-                AppliedAt = application.AppliedAt ?? DateTime.UtcNow,
-                ReviewedBy = application.ReviewedByNavigation == null ? null : new UserDto
-                {
-                    Id = application.ReviewedByNavigation.Id,
-                    FullName = application.ReviewedByNavigation.FullName,
-                    Email = application.ReviewedByNavigation.Email,
-                    AvatarUrl = application.ReviewedByNavigation.AvatarUrl,
-                    Phone = application.ReviewedByNavigation.Phone,
-                    Roles = application.ReviewedByNavigation.UserRoles.Select(x => x.Role.Name).ToList()
-                },
-                NextStep = application.Interviews.Any() ? "Interview scheduled" : "In review"
-            };
+            return await _jobRepository.GetDepartmentByNameAsync(departmentName);
         }
 
-        private static List<string> ParseJsonArray(string? jsonString)
+        return null;
+    }
+
+    private async Task<List<JobSkill>> BuildJobSkillsAsync(IReadOnlyCollection<string> skillIds, IReadOnlyCollection<string> skillNames)
+    {
+        List<Guid> parsedSkillIds = skillIds
+            .Select(value => Guid.TryParse(value, out Guid parsed) ? parsed : Guid.Empty)
+            .Where(value => value != Guid.Empty)
+            .Distinct()
+            .ToList();
+
+        IReadOnlyList<Skill> skills = parsedSkillIds.Count > 0
+            ? await _skillRepository.GetByIdsAsync(parsedSkillIds)
+            : (await _jobRepository.GetSkillsAsync())
+                .Where(skill => skillNames.Any(name => name.Equals(skill.Name, StringComparison.OrdinalIgnoreCase)))
+                .ToList();
+
+        return skills
+            .DistinctBy(skill => skill.Id)
+            .Select(skill => new JobSkill
+            {
+                JobId = Guid.Empty,
+                SkillId = skill.Id,
+                Skill = skill
+            })
+            .ToList();
+    }
+
+    private static EmploymentType ParseEmploymentType(string? value)
+    {
+        return value?.Trim().ToLowerInvariant() switch
         {
-            if (string.IsNullOrWhiteSpace(jsonString))
-            {
-                return [];
-            }
+            "part-time" or "parttime" => EmploymentType.PartTime,
+            "internship" => EmploymentType.Internship,
+            "contract" => EmploymentType.Contract,
+            _ => EmploymentType.FullTime
+        };
+    }
 
-            try
-            {
-                using var doc = JsonDocument.Parse(jsonString);
-                if (doc.RootElement.ValueKind == JsonValueKind.Array)
-                {
-                    return doc.RootElement.EnumerateArray()
-                        .Select(el => el.GetString() ?? string.Empty)
-                        .Where(x => !string.IsNullOrWhiteSpace(x))
-                        .ToList();
-                }
-            }
-            catch
-            {
-            }
-
-            return [jsonString];
-        }
-
-        private static ApiEnvelopeMeta BuildMeta(int page, int pageSize, int total)
+    private static WorkMode ParseWorkMode(string? value)
+    {
+        return value?.Trim().ToLowerInvariant() switch
         {
-            return new ApiEnvelopeMeta
-            {
-                Page = page,
-                PageSize = pageSize,
-                TotalItems = total,
-                TotalPages = (int)Math.Ceiling(total / (double)pageSize)
-            };
-        }
+            "onsite" => WorkMode.Onsite,
+            "hybrid" => WorkMode.Hybrid,
+            _ => WorkMode.Remote
+        };
+    }
 
-        private static string MapEmploymentType(EmploymentType type)
+    private static JobStatus? ParseJobStatus(string? value)
+    {
+        return value?.Trim().ToLowerInvariant() switch
         {
-            return type switch
-            {
-                EmploymentType.FullTime => "Full-time",
-                EmploymentType.PartTime => "Part-time",
-                EmploymentType.Internship => "Internship",
-                EmploymentType.Contract => "Contract",
-                _ => type.ToString()
-            };
-        }
+            "draft" => JobStatus.Draft,
+            "pending" or "pendingapproval" => JobStatus.PendingApproval,
+            "approved" => JobStatus.Approved,
+            "closed" => JobStatus.Closed,
+            "rejected" => JobStatus.Rejected,
+            _ => null
+        };
+    }
+
+    private static string MapEmploymentType(EmploymentType type)
+    {
+        return type switch
+        {
+            EmploymentType.FullTime => "Full-time",
+            EmploymentType.PartTime => "Part-time",
+            EmploymentType.Internship => "Internship",
+            EmploymentType.Contract => "Contract",
+            _ => type.ToString()
+        };
     }
 }

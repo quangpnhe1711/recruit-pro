@@ -7,6 +7,8 @@ public class CreateJobRequest
     [Required]
     public string Title { get; set; } = string.Empty;
 
+    public string? DepartmentId { get; set; }
+
     public string? Department { get; set; }
 
     public string? EmploymentType { get; set; }
@@ -25,6 +27,8 @@ public class CreateJobRequest
 
     public List<string> Skills { get; set; } = [];
 
+    public List<string> SkillIds { get; set; } = [];
+
     public decimal? SalaryMin { get; set; }
 
     public decimal? SalaryMax { get; set; }
@@ -32,4 +36,10 @@ public class CreateJobRequest
     public string Currency { get; set; } = "USD";
 
     public int VacancyCount { get; set; } = 1;
+
+    public int? MinExperienceYears { get; set; }
+
+    public List<string> Benefits { get; set; } = [];
+
+    public DateTime? Deadline { get; set; }
 }
