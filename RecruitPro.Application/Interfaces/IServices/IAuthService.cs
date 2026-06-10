@@ -13,5 +13,7 @@ namespace RecruitPro.Application.Interfaces.IServices
         Task<ApiResponse<LoginResponseDto>> LoginAsync(LoginRequest request);
         Task<ApiResponse<LoginResponseDto>> CandidateLoginAsync(string email, string password);
         Task<ApiResponse<LoginResponseDto>> InternalLoginAsync(string employeeIdOrEmail, string password);
+        Task<ApiResponse<string>> ForgotCandidatePasswordAsync(string email);
+        Task<ApiResponse<string>> ForgotInternalPasswordAsync(string employeeIdOrEmail);
     }
 }

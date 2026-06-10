@@ -37,5 +37,19 @@ namespace RecruitPro.API.Controllers
             var result = await _authService.InternalLoginAsync(request.EmployeeIdOrEmail, request.Password);
             return StatusCode(result.StatusCode, result);
         }
+
+        [HttpPost("candidate/forgot-password")]
+        public async Task<IActionResult> CandidateForgotPassword([FromBody] ForgotPasswordRequest request)
+        {
+            var result = await _authService.ForgotCandidatePasswordAsync(request.Identifier);
+            return StatusCode(result.StatusCode, result);
+        }
+
+        [HttpPost("internal/forgot-password")]
+        public async Task<IActionResult> InternalForgotPassword([FromBody] ForgotPasswordRequest request)
+        {
+            var result = await _authService.ForgotInternalPasswordAsync(request.Identifier);
+            return StatusCode(result.StatusCode, result);
+        }
     }
 }

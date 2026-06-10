@@ -29,6 +29,13 @@ public class DashboardController : ControllerBase
         return StatusCode(result.StatusCode, result);
     }
 
+    [HttpGet("api/manager/dashboard")]
+    public async Task<IActionResult> GetManagerDashboard()
+    {
+        var result = await _dashboardService.GetManagerDashboardAsync();
+        return StatusCode(result.StatusCode, result);
+    }
+
     private Guid GetCurrentUserId()
     {
         string sub = User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value

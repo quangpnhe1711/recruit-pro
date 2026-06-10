@@ -29,6 +29,32 @@ namespace RecruitPro.Infrastructure.Repositories
                 .FirstOrDefaultAsync(u => u.Email == email);
         }
 
+        public Task<User?> GetTrackedByEmailAsync(string email)
+        {
+            return _context.Users
+                .Include(u => u.UserRoles)
+                    .ThenInclude(ur => ur.Role)
+                .Include(u => u.CandidateProfile)
+                .FirstOrDefaultAsync(u => u.Email == email);
+        }
+
+        public async Task<IReadOnlySet<string>> GetExistingEmailsAsync(IEnumerable<string> emails)
+        {
+            List<string> normalizedEmails = emails
+                .Where(email => !string.IsNullOrWhiteSpace(email))
+                .Select(email => email.Trim().ToLowerInvariant())
+                .Distinct()
+                .ToList();
+
+            List<string> existingEmailList = await _context.Users
+                .AsNoTracking()
+                .Where(user => normalizedEmails.Contains(user.Email.ToLower()))
+                .Select(user => user.Email.ToLower())
+                .ToListAsync();
+
+            return existingEmailList.ToHashSet();
+        }
+
         public Task<User?> GetByIdAsync(Guid id)
         {
             return _context.Users
@@ -49,10 +75,20 @@ namespace RecruitPro.Infrastructure.Repositories
                 .ToListAsync();
         }
 
+        public Task<Role?> GetRoleByNameAsync(string roleName)
+        {
+            return _context.Roles.FirstOrDefaultAsync(role => role.Name == roleName);
+        }
+
         public Task UpdateAsync(User user)
         {
             _context.Users.Update(user);
             return Task.CompletedTask;
+        }
+
+        public async Task AddUserRoleAsync(UserRole userRole)
+        {
+            await _context.UserRoles.AddAsync(userRole);
         }
     }
 }

@@ -179,11 +179,12 @@ public class JobService : IJobService
         return ApiResponse<JobDetailDto>.Ok(MapLegacyJobDetail(job));
     }
 
-    public async Task<ApiResponse<HrJobsResponseDto>> GetHrJobsAsync(HrJobQueryRequest request)
+    public async Task<ApiResponse<HrJobsResponseDto>> GetHrJobsAsync(HrJobQueryRequest request, Guid currentUserId)
     {
         string? normalizedDepartment = string.IsNullOrWhiteSpace(request.Department) ? null : request.Department;
         string? normalizedStatus = string.IsNullOrWhiteSpace(request.ApprovalStatus) ? null : request.ApprovalStatus;
-        (IReadOnlyList<Job> jobs, int total) = await _jobRepository.GetPagedAsync(normalizedDepartment, normalizedStatus, request.Page, request.PageSize);
+        (IReadOnlyList<Job> jobs, int total) = await _jobRepository.GetPagedAsync(normalizedDepartment, normalizedStatus, request.Page, request.PageSize, currentUserId);
+        (IReadOnlyList<Job> allMatchingJobs, _) = await _jobRepository.GetPagedAsync(normalizedDepartment, normalizedStatus, 1, int.MaxValue, currentUserId);
 
         return ApiResponse<HrJobsResponseDto>.Ok(new HrJobsResponseDto
         {
@@ -199,11 +200,158 @@ public class JobService : IJobService
             Meta = BuildMeta(request.Page, request.PageSize, total),
             Stats = new HrJobStatsDto
             {
-                ActiveJobs = await _jobRepository.CountApprovedJobsAsync(),
-                PendingApproval = (await _jobRepository.GetPendingApprovalJobsAsync(int.MaxValue)).Count,
-                TotalApplications = await _applicationRepository.CountAsync(),
+                ActiveJobs = allMatchingJobs.Count(job => job.Status == JobStatus.Approved),
+                PendingApproval = allMatchingJobs.Count(job => job.Status == JobStatus.PendingApproval),
+                TotalApplications = allMatchingJobs.Sum(job => job.Applications.Count),
                 TimeToHireDays = 0
             }
+        });
+    }
+
+    public async Task<ApiResponse<ManagerJobApprovalQueueResponseDto>> GetManagerApprovalQueueAsync(ManagerJobApprovalQueryRequest request)
+    {
+        string? normalizedKeyword = string.IsNullOrWhiteSpace(request.Keyword) ? null : request.Keyword.Trim();
+        string? normalizedDepartment = string.IsNullOrWhiteSpace(request.Department) ? null : request.Department.Trim();
+        (IReadOnlyList<Job> jobs, int total) = await _jobRepository.GetPendingApprovalPagedAsync(
+            normalizedKeyword,
+            normalizedDepartment,
+            request.Page,
+            request.PageSize);
+
+        IReadOnlyList<Job> allPendingJobs = await _jobRepository.GetPendingApprovalJobsAsync(int.MaxValue);
+        DateTime today = DbDateTime.Now.Date;
+
+        return ApiResponse<ManagerJobApprovalQueueResponseDto>.Ok(new ManagerJobApprovalQueueResponseDto
+        {
+            Items = jobs.Select(job => new ManagerJobApprovalQueueItemDto
+            {
+                JobId = job.Id.ToString(),
+                ReferenceCode = BuildJobReferenceCode(job),
+                Title = job.Title,
+                DepartmentName = job.Department?.Name ?? "Unassigned",
+                HiringTeamLabel = BuildHiringTeamLabel(job),
+                HrOwnerName = job.CreatedByNavigation.FullName,
+                Status = job.Status.ToString(),
+                SubmittedAt = job.CreatedAt,
+                VacancyCount = job.VacancyCount ?? 0,
+                RequiredSkillsCount = job.JobSkills.Count(jobSkill => jobSkill.IsRequired),
+                ApplicationsCount = job.Applications.Count,
+                IsOverdue = IsApprovalOverdue(job)
+            }).ToList(),
+            Meta = BuildMeta(request.Page, request.PageSize, total),
+            Summary = new ManagerJobApprovalSummaryDto
+            {
+                PendingApprovals = allPendingJobs.Count,
+                SubmittedToday = allPendingJobs.Count(job => (job.CreatedAt ?? DbDateTime.Now).Date == today),
+                OverdueReviews = allPendingJobs.Count(IsApprovalOverdue),
+                DepartmentsWaiting = allPendingJobs
+                    .Select(job => job.Department?.Name)
+                    .Where(name => !string.IsNullOrWhiteSpace(name))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .Count()
+            }
+        });
+    }
+
+    public async Task<ApiResponse<ManagerJobApprovalDetailDto>> GetManagerApprovalDetailAsync(string jobId)
+    {
+        Job job = await GetJobAsync(jobId);
+        int applicationsCount = job.Applications.Count;
+        int activePipelineCount = job.Applications.Count(application =>
+            application.Status != ApplicationStatus.Rejected &&
+            application.Status != ApplicationStatus.Accepted);
+
+        return ApiResponse<ManagerJobApprovalDetailDto>.Ok(new ManagerJobApprovalDetailDto
+        {
+            JobId = job.Id.ToString(),
+            ReferenceCode = BuildJobReferenceCode(job),
+            Title = job.Title,
+            Status = job.Status.ToString(),
+            StatusLabel = MapApprovalStatusLabel(job.Status),
+            SubmittedAt = job.CreatedAt,
+            SubmittedAgoLabel = BuildSubmittedAgoLabel(job.CreatedAt),
+            HrOwner = new ManagerJobApprovalUserDto
+            {
+                UserId = job.CreatedByNavigation.Id.ToString(),
+                FullName = job.CreatedByNavigation.FullName,
+                Email = job.CreatedByNavigation.Email,
+                Phone = job.CreatedByNavigation.Phone
+            },
+            Department = new ManagerJobApprovalDepartmentDto
+            {
+                DepartmentId = job.DepartmentId?.ToString() ?? string.Empty,
+                Name = job.Department?.Name ?? "Unassigned",
+                Description = job.Department?.Description
+            },
+            Location = job.Location,
+            WorkMode = job.WorkMode.ToString(),
+            EmploymentType = MapEmploymentType(job.EmploymentType),
+            VacancyCount = job.VacancyCount ?? 0,
+            MinExperienceYears = job.MinExperienceYears,
+            SalaryMin = job.SalaryMin,
+            SalaryMax = job.SalaryMax,
+            Deadline = job.Deadline,
+            Description = ParseJsonArray(job.Description),
+            Requirements = ParseJsonArray(job.Requirements),
+            Benefits = ParseJsonArray(job.Benefits),
+            Skills = job.JobSkills
+                .OrderByDescending(jobSkill => jobSkill.IsRequired)
+                .ThenBy(jobSkill => jobSkill.Skill.Name)
+                .Select(jobSkill => new ManagerJobApprovalSkillDto
+                {
+                    SkillId = jobSkill.SkillId.ToString(),
+                    Name = jobSkill.Skill.Name,
+                    MinYearsExperience = jobSkill.MinYearsExperience,
+                    IsRequired = jobSkill.IsRequired
+                }).ToList(),
+            Insights = new ManagerJobApprovalInsightDto
+            {
+                ApplicationsCount = applicationsCount,
+                ActivePipelineCount = activePipelineCount,
+                RequiredSkillsCount = job.JobSkills.Count(jobSkill => jobSkill.IsRequired),
+                OptionalSkillsCount = job.JobSkills.Count(jobSkill => !jobSkill.IsRequired),
+                HasSalaryRange = job.SalaryMin.HasValue || job.SalaryMax.HasValue
+            },
+            InterviewFlow =
+            [
+                new ManagerJobApprovalStepDto
+                {
+                    Order = 1,
+                    Label = "Application Review",
+                    Description = "HR screens incoming applications before interviews are scheduled."
+                },
+                new ManagerJobApprovalStepDto
+                {
+                    Order = 2,
+                    Label = "Interview Loop",
+                    Description = "Candidates move through the configured interview rounds tracked in RecruitPro."
+                },
+                new ManagerJobApprovalStepDto
+                {
+                    Order = 3,
+                    Label = "Manager Review",
+                    Description = "Completed interview results are escalated for manager review and final alignment."
+                },
+                new ManagerJobApprovalStepDto
+                {
+                    Order = 4,
+                    Label = "Final Hiring Decision",
+                    Description = "Approved roles continue toward offers and final hiring decisions."
+                }
+            ],
+            ApprovalSnapshot = job.ApprovedByNavigation == null && job.Status == JobStatus.PendingApproval
+                ? new ManagerJobApprovalHistoryDto
+                {
+                    Summary = "This job is still waiting for the first manager approval decision."
+                }
+                : new ManagerJobApprovalHistoryDto
+                {
+                    ApprovedByName = job.ApprovedByNavigation?.FullName,
+                    LastUpdatedAt = job.CreatedAt,
+                    Summary = job.ApprovedByNavigation == null
+                        ? "No approval history is stored for this job yet."
+                        : $"Latest approval decision was recorded under {job.ApprovedByNavigation.FullName}."
+                }
         });
     }
 
@@ -498,6 +646,66 @@ public class JobService : IJobService
     private static string? SerializeList(List<string> values)
     {
         return values.Count == 0 ? null : JsonSerializer.Serialize(values);
+    }
+
+    private static string BuildJobReferenceCode(Job job)
+    {
+        return $"JOB-{job.CreatedAt?.Year ?? DbDateTime.Now.Year}-{job.Id.ToString()[..8].ToUpperInvariant()}";
+    }
+
+    private static string BuildHiringTeamLabel(Job job)
+    {
+        string departmentName = job.Department?.Name ?? "General";
+        return string.IsNullOrWhiteSpace(job.Location)
+            ? departmentName
+            : $"{departmentName} / {job.Location}";
+    }
+
+    private static bool IsApprovalOverdue(Job job)
+    {
+        if (!job.CreatedAt.HasValue)
+        {
+            return false;
+        }
+
+        return job.CreatedAt.Value <= DbDateTime.Now.AddDays(-3);
+    }
+
+    private static string MapApprovalStatusLabel(JobStatus status)
+    {
+        return status switch
+        {
+            JobStatus.PendingApproval => "Pending Approval",
+            JobStatus.Approved => "Approved",
+            JobStatus.Rejected => "Rejected",
+            JobStatus.Draft => "Draft",
+            JobStatus.Closed => "Closed",
+            _ => status.ToString()
+        };
+    }
+
+    private static string BuildSubmittedAgoLabel(DateTime? createdAt)
+    {
+        if (!createdAt.HasValue)
+        {
+            return "Submission time unavailable";
+        }
+
+        TimeSpan age = DbDateTime.Now - createdAt.Value;
+        if (age.TotalHours < 1)
+        {
+            int minutes = Math.Max(1, (int)Math.Floor(age.TotalMinutes));
+            return $"Submitted {minutes} minute{(minutes == 1 ? string.Empty : "s")} ago";
+        }
+
+        if (age.TotalDays < 1)
+        {
+            int hours = Math.Max(1, (int)Math.Floor(age.TotalHours));
+            return $"Submitted {hours} hour{(hours == 1 ? string.Empty : "s")} ago";
+        }
+
+        int days = Math.Max(1, (int)Math.Floor(age.TotalDays));
+        return $"Submitted {days} day{(days == 1 ? string.Empty : "s")} ago";
     }
 
     private async Task<Department?> ResolveDepartmentAsync(string? departmentId, string? departmentName)

@@ -116,6 +116,78 @@ public class DashboardService : IDashboardService
         });
     }
 
+    public async Task<ApiResponse<ManagerDashboardDto>> GetManagerDashboardAsync()
+    {
+        IReadOnlyList<Job> pendingApprovalJobs = await _jobRepository.GetPendingApprovalJobsAsync(5);
+        IReadOnlyList<Domain.Entities.Application> finalDecisionQueue = await _applicationRepository.GetManagerReviewQueueAsync(null);
+        Dictionary<ApplicationStatus, int> statusCounts = await _applicationRepository.GetStatusCountsAsync();
+        IReadOnlyList<(string DepartmentName, int AverageDays)> departmentCycleMetrics = await _applicationRepository.GetAverageReviewCycleByDepartmentAsync();
+        IReadOnlyList<Department> departments = await _jobRepository.GetDepartmentsAsync();
+        int pendingApprovalCount = await _jobRepository.CountPendingApprovalJobsAsync();
+
+        int activeApplications = statusCounts
+            .Where(pair => pair.Key != ApplicationStatus.Accepted && pair.Key != ApplicationStatus.Rejected)
+            .Sum(pair => pair.Value);
+
+        int offeredCount = statusCounts.GetValueOrDefault(ApplicationStatus.ManagerReview);
+        int acceptedCount = statusCounts.GetValueOrDefault(ApplicationStatus.Accepted);
+        decimal acceptanceRate = offeredCount + acceptedCount == 0
+            ? 0
+            : Math.Round((decimal)acceptedCount * 100 / (offeredCount + acceptedCount), 0, MidpointRounding.AwayFromZero);
+
+        int averageReviewCycleDays = departmentCycleMetrics.Count == 0
+            ? 0
+            : (int)Math.Round(departmentCycleMetrics.Average(metric => metric.AverageDays), MidpointRounding.AwayFromZero);
+
+        return ApiResponse<ManagerDashboardDto>.Ok(new ManagerDashboardDto
+        {
+            Summary = new ManagerDashboardSummaryDto
+            {
+                PendingApprovals = pendingApprovalCount,
+                ActiveApplications = activeApplications,
+                DepartmentCount = departments.Count,
+                AverageReviewCycleDays = averageReviewCycleDays,
+                AverageReviewCycleLabel = averageReviewCycleDays == 0 ? "Not enough completed interviews" : "Based on completed interview cycles",
+                AcceptanceRate = acceptanceRate,
+                AcceptanceRateLabel = offeredCount + acceptedCount == 0
+                    ? "No offer-stage applications yet"
+                    : $"{acceptedCount} accepted from {offeredCount + acceptedCount} offer-stage applications"
+            },
+            PendingApprovals = pendingApprovalJobs.Select(job => new HrPendingApprovalDto
+            {
+                JobId = job.Id.ToString(),
+                Title = job.Title,
+                Meta = BuildPendingApprovalMeta(job),
+                ApproverCount = 1
+            }).ToList(),
+            FinalDecisions = finalDecisionQueue
+                .Take(4)
+                .Select(application => new ManagerDashboardDecisionItemDto
+                {
+                    ApplicationId = application.Id.ToString(),
+                    CandidateName = application.User.FullName,
+                    JobTitle = application.Job.Title,
+                    RecommendationNote = application.Interviews
+                        .Where(interview => !string.IsNullOrWhiteSpace(interview.Notes))
+                        .OrderByDescending(interview => interview.InterviewDate)
+                        .Select(interview => interview.Notes!)
+                        .FirstOrDefault() ?? "Completed interviews are ready for manager review.",
+                    Status = application.Status.ToString(),
+                    AvatarUrl = application.User.AvatarUrl
+                })
+                .ToList(),
+            DepartmentHiringSpeed = departmentCycleMetrics
+                .Take(4)
+                .Select(metric => new ManagerDashboardDepartmentMetricDto
+                {
+                    DepartmentName = metric.DepartmentName,
+                    AverageDays = metric.AverageDays
+                })
+                .ToList(),
+            RecruitmentFunnel = BuildManagerFunnel(statusCounts)
+        });
+    }
+
     private async Task<CandidateProfile> GetProfileEntityAsync(Guid userId)
     {
         CandidateProfile? profile = await _candidateProfileRepository.GetByUserIdAsync(userId);
@@ -125,5 +197,41 @@ public class DashboardService : IDashboardService
         }
 
         return profile;
+    }
+
+    private static string BuildPendingApprovalMeta(Job job)
+    {
+        string salaryLabel = job.SalaryMin.HasValue || job.SalaryMax.HasValue
+            ? $"{job.SalaryMin:0.#} - {job.SalaryMax:0.#}"
+            : "Negotiable";
+
+        return $"{job.Department?.Name ?? "General"} • {salaryLabel}";
+    }
+
+    private static List<FunnelCountDto> BuildManagerFunnel(Dictionary<ApplicationStatus, int> statusCounts)
+    {
+        return
+        [
+            new FunnelCountDto
+            {
+                Label = "Sourced",
+                Count = statusCounts.Values.Sum()
+            },
+            new FunnelCountDto
+            {
+                Label = "Screened",
+                Count = statusCounts.GetValueOrDefault(ApplicationStatus.Pending) + statusCounts.GetValueOrDefault(ApplicationStatus.Reviewing)
+            },
+            new FunnelCountDto
+            {
+                Label = "Interviewed",
+                Count = statusCounts.GetValueOrDefault(ApplicationStatus.Interviewing)
+            },
+            new FunnelCountDto
+            {
+                Label = "Offered",
+                Count = statusCounts.GetValueOrDefault(ApplicationStatus.ManagerReview)
+            }
+        ];
     }
 }

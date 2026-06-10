@@ -35,20 +35,24 @@ public class InterviewService : IInterviewService
 
         return ApiResponse<InterviewListResponseDto>.Ok(new InterviewListResponseDto
         {
-            Items = interviews.Select(interview => new InterviewListItemDto
-            {
-                Id = interview.Id.ToString(),
-                CandidateName = interview.Application.User.FullName,
-                CandidateEmail = interview.Application.User.Email,
-                JobTitle = interview.Application.Job.Title,
-                Interviewer = "RecruitPro HR",
-                DateLabel = interview.InterviewDate.ToString("MMM dd, yyyy"),
-                TimeLabel = $"{interview.InterviewDate:HH:mm} - {interview.InterviewDate.AddHours(1):HH:mm}",
-                StartAt = interview.InterviewDate,
-                EndAt = interview.InterviewDate.AddHours(1),
-                Status = (interview.Status ?? InterviewStatus.Scheduled).ToString()
-            }).ToList(),
+            Items = interviews.Select(MapInterviewListItem).ToList(),
             Meta = BuildMeta(page, pageSize, total)
+        });
+    }
+
+    public async Task<ApiResponse<InterviewListResponseDto>> GetCandidateInterviewsAsync(Guid userId)
+    {
+        IReadOnlyList<Domain.Entities.Application> applications = await _applicationRepository.GetByUserIdAsync(userId);
+        List<InterviewListItemDto> items = applications
+            .SelectMany(application => application.Interviews.Select(interview => interview))
+            .OrderBy(interview => interview.InterviewDate)
+            .Select(MapInterviewListItem)
+            .ToList();
+
+        return ApiResponse<InterviewListResponseDto>.Ok(new InterviewListResponseDto
+        {
+            Items = items,
+            Meta = BuildMeta(1, items.Count == 0 ? 10 : items.Count, items.Count)
         });
     }
 
@@ -255,6 +259,23 @@ public class InterviewService : IInterviewService
             "completed" => InterviewStatus.Completed,
             "canceled" or "cancelled" => InterviewStatus.Canceled,
             _ => null
+        };
+    }
+
+    private static InterviewListItemDto MapInterviewListItem(Interview interview)
+    {
+        return new InterviewListItemDto
+        {
+            Id = interview.Id.ToString(),
+            CandidateName = interview.Application.User.FullName,
+            CandidateEmail = interview.Application.User.Email,
+            JobTitle = interview.Application.Job.Title,
+            Interviewer = "RecruitPro HR",
+            DateLabel = interview.InterviewDate.ToString("MMM dd, yyyy"),
+            TimeLabel = $"{interview.InterviewDate:HH:mm} - {interview.InterviewDate.AddHours(1):HH:mm}",
+            StartAt = interview.InterviewDate,
+            EndAt = interview.InterviewDate.AddHours(1),
+            Status = (interview.Status ?? InterviewStatus.Scheduled).ToString()
         };
     }
 }

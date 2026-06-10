@@ -6,4 +6,5 @@ public interface IDashboardService
 {
     Task<ApiResponse<CandidateDashboardDto>> GetCandidateDashboardAsync(Guid userId);
     Task<ApiResponse<HrDashboardDto>> GetHrDashboardAsync();
+    Task<ApiResponse<ManagerDashboardDto>> GetManagerDashboardAsync();
 }

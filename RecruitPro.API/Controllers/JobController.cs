@@ -55,7 +55,21 @@ public class JobController : ControllerBase
     [HttpGet("api/hr/jobs")]
     public async Task<IActionResult> GetHrJobs([FromQuery] HrJobQueryRequest request)
     {
-        var result = await _jobService.GetHrJobsAsync(request);
+        var result = await _jobService.GetHrJobsAsync(request, GetCurrentUserId());
+        return StatusCode(result.StatusCode, result);
+    }
+
+    [HttpGet("api/manager/jobs/approval-queue")]
+    public async Task<IActionResult> GetManagerApprovalQueue([FromQuery] ManagerJobApprovalQueryRequest request)
+    {
+        var result = await _jobService.GetManagerApprovalQueueAsync(request);
+        return StatusCode(result.StatusCode, result);
+    }
+
+    [HttpGet("api/manager/jobs/{jobId}/approval-detail")]
+    public async Task<IActionResult> GetManagerApprovalDetail(string jobId)
+    {
+        var result = await _jobService.GetManagerApprovalDetailAsync(jobId);
         return StatusCode(result.StatusCode, result);
     }
 

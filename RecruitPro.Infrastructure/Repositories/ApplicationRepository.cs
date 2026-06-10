@@ -96,6 +96,156 @@ public class ApplicationRepository : IApplicationRepository
             .ToListAsync();
     }
 
+    public async Task<IReadOnlyList<JobApplication>> GetManagerReviewQueueAsync(string? keyword)
+    {
+        IQueryable<JobApplication> query = BuildApplicationQuery()
+            .Where(application =>
+                application.Status != ApplicationStatus.Accepted &&
+                application.Status != ApplicationStatus.Rejected &&
+                application.Interviews.Any(interview => interview.Status == InterviewStatus.Completed));
+
+        if (!string.IsNullOrWhiteSpace(keyword))
+        {
+            string loweredKeyword = keyword.Trim().ToLowerInvariant();
+            query = query.Where(application =>
+                application.User.FullName.ToLower().Contains(loweredKeyword) ||
+                application.Job.Title.ToLower().Contains(loweredKeyword));
+        }
+
+        return await query
+            .OrderByDescending(application => application.Interviews
+                .Where(interview => interview.Status == InterviewStatus.Completed)
+                .Max(interview => (DateTime?)interview.InterviewDate) ?? application.AppliedAt)
+            .ThenByDescending(application => application.AppliedAt)
+            .ToListAsync();
+    }
+
+    public async Task<Dictionary<ApplicationStatus, int>> GetStatusCountsAsync()
+    {
+        return await _context.Applications
+            .AsNoTracking()
+            .GroupBy(application => application.Status)
+            .Select(group => new
+            {
+                Status = group.Key,
+                Count = group.Count()
+            })
+            .ToDictionaryAsync(item => item.Status, item => item.Count);
+    }
+
+    public async Task<IReadOnlyList<(string DepartmentName, int AverageDays)>> GetAverageReviewCycleByDepartmentAsync()
+    {
+        var projectedItems = await _context.Applications
+            .AsNoTracking()
+            .Where(application =>
+                application.AppliedAt.HasValue &&
+                application.Interviews.Any(interview => interview.Status == InterviewStatus.Completed))
+            .Select(application => new
+            {
+                DepartmentName = application.Job.Department != null ? application.Job.Department.Name : "General",
+                AppliedAt = application.AppliedAt!.Value,
+                LatestCompletedInterview = application.Interviews
+                    .Where(interview => interview.Status == InterviewStatus.Completed)
+                    .Max(interview => (DateTime?)interview.InterviewDate)
+            })
+            .ToListAsync();
+
+        return projectedItems
+            .Where(item => item.LatestCompletedInterview.HasValue)
+            .GroupBy(item => item.DepartmentName)
+            .Select(group => (
+                DepartmentName: group.Key,
+                AverageDays: (int)Math.Round(group.Average(item =>
+                    Math.Max((item.LatestCompletedInterview!.Value - item.AppliedAt).TotalDays, 0)), MidpointRounding.AwayFromZero)))
+            .OrderBy(metric => metric.AverageDays)
+            .ToList();
+    }
+
+    public Task<int> CountActiveCandidatesAsync()
+    {
+        return _context.Applications
+            .AsNoTracking()
+            .Where(application => application.Status != ApplicationStatus.Accepted && application.Status != ApplicationStatus.Rejected)
+            .Select(application => application.UserId)
+            .Distinct()
+            .CountAsync();
+    }
+
+    public async Task<double?> GetAverageReviewCycleDaysAsync()
+    {
+        var projectedItems = await _context.Applications
+            .AsNoTracking()
+            .Where(application =>
+                application.AppliedAt.HasValue &&
+                application.Interviews.Any(interview => interview.Status == InterviewStatus.Completed))
+            .Select(application => new
+            {
+                AppliedAt = application.AppliedAt!.Value,
+                LatestCompletedInterview = application.Interviews
+                    .Where(interview => interview.Status == InterviewStatus.Completed)
+                    .Max(interview => (DateTime?)interview.InterviewDate)
+            })
+            .ToListAsync();
+
+        var cycleDays = projectedItems
+            .Where(item => item.LatestCompletedInterview.HasValue)
+            .Select(item => Math.Max((item.LatestCompletedInterview!.Value - item.AppliedAt).TotalDays, 0))
+            .ToList();
+
+        return cycleDays.Count == 0 ? null : cycleDays.Average();
+    }
+
+    public async Task<IReadOnlyList<(DateTime Month, int Count)>> GetMonthlyApplicationVolumeAsync(DateTime startMonth, int monthCount)
+    {
+        DateTime endMonth = startMonth.AddMonths(monthCount);
+
+        var groupedItems = await _context.Applications
+            .AsNoTracking()
+            .Where(application =>
+                application.AppliedAt.HasValue &&
+                application.AppliedAt.Value >= startMonth &&
+                application.AppliedAt.Value < endMonth)
+            .GroupBy(application => new
+            {
+                application.AppliedAt!.Value.Year,
+                application.AppliedAt!.Value.Month
+            })
+            .Select(group => new
+            {
+                group.Key.Year,
+                group.Key.Month,
+                Count = group.Count()
+            })
+            .ToListAsync();
+
+        return groupedItems
+            .Select(item => (new DateTime(item.Year, item.Month, 1), item.Count))
+            .OrderBy(item => item.Item1)
+            .ToList();
+    }
+
+    public async Task<IReadOnlyList<(string DepartmentName, int ActiveApplications, int OfferedCandidates, int AcceptedCandidates)>> GetDepartmentPipelineSnapshotAsync()
+    {
+        var groupedItems = await _context.Applications
+            .AsNoTracking()
+            .GroupBy(application => application.Job.Department != null ? application.Job.Department.Name : "General")
+            .Select(group => new
+            {
+                DepartmentName = group.Key,
+                ActiveApplications = group.Count(application =>
+                    application.Status != ApplicationStatus.Accepted &&
+                    application.Status != ApplicationStatus.Rejected),
+                OfferedCandidates = group.Count(application => application.Status == ApplicationStatus.ManagerReview),
+                AcceptedCandidates = group.Count(application => application.Status == ApplicationStatus.Accepted)
+            })
+            .ToListAsync();
+
+        return groupedItems
+            .Select(item => (item.DepartmentName, item.ActiveApplications, item.OfferedCandidates, item.AcceptedCandidates))
+            .OrderByDescending(item => item.ActiveApplications)
+            .ToList();
+    }
+
     public Task<JobApplication?> GetByIdAsync(Guid applicationId)
     {
         return BuildApplicationQuery().FirstOrDefaultAsync(application => application.Id == applicationId);
@@ -128,6 +278,7 @@ public class ApplicationRepository : IApplicationRepository
             .AsNoTracking()
             .Include(application => application.User)
                 .ThenInclude(user => user.CandidateProfile)
+                    .ThenInclude(profile => profile.Skills)
             .Include(application => application.Job)
                 .ThenInclude(job => job.Department)
             .Include(application => application.Job)
@@ -144,6 +295,7 @@ public class ApplicationRepository : IApplicationRepository
         return _context.Applications
             .Include(application => application.User)
                 .ThenInclude(user => user.CandidateProfile)
+                    .ThenInclude(profile => profile.Skills)
             .Include(application => application.Job)
                 .ThenInclude(job => job.Department)
             .Include(application => application.Interviews)

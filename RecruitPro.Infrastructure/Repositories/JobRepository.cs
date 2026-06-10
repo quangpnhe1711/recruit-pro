@@ -80,9 +80,14 @@ namespace RecruitPro.Infrastructure.Repositories
             return (jobs, total);
         }
 
-        public async Task<(IReadOnlyList<Job> Jobs, int Total)> GetPagedAsync(string? department, string? approvalStatus, int currentPage, int pageSize)
+        public async Task<(IReadOnlyList<Job> Jobs, int Total)> GetPagedAsync(string? department, string? approvalStatus, int currentPage, int pageSize, Guid? createdByUserId = null)
         {
             IQueryable<Job> query = BuildJobQuery();
+
+            if (createdByUserId.HasValue)
+            {
+                query = query.Where(job => job.CreatedBy == createdByUserId.Value);
+            }
 
             if (!string.IsNullOrWhiteSpace(department))
             {
@@ -106,9 +111,46 @@ namespace RecruitPro.Infrastructure.Repositories
             return (jobs, total);
         }
 
+        public async Task<(IReadOnlyList<Job> Jobs, int Total)> GetPendingApprovalPagedAsync(string? keyword, string? department, int currentPage, int pageSize)
+        {
+            IQueryable<Job> query = BuildJobQuery()
+                .Where(job => job.Status == JobStatus.PendingApproval);
+
+            if (!string.IsNullOrWhiteSpace(keyword))
+            {
+                string loweredKeyword = keyword.Trim().ToLowerInvariant();
+                query = query.Where(job =>
+                    job.Title.ToLower().Contains(loweredKeyword) ||
+                    job.Location.ToLower().Contains(loweredKeyword) ||
+                    (job.Department != null && job.Department.Name.ToLower().Contains(loweredKeyword)) ||
+                    job.JobSkills.Any(jobSkill => jobSkill.Skill.Name.ToLower().Contains(loweredKeyword)) ||
+                    job.CreatedByNavigation.FullName.ToLower().Contains(loweredKeyword));
+            }
+
+            if (!string.IsNullOrWhiteSpace(department))
+            {
+                string loweredDepartment = department.Trim().ToLowerInvariant();
+                query = query.Where(job => job.Department != null && job.Department.Name.ToLower().Contains(loweredDepartment));
+            }
+
+            int total = await query.CountAsync();
+            List<Job> jobs = await query
+                .OrderByDescending(job => job.CreatedAt)
+                .Skip((currentPage - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
+
+            return (jobs, total);
+        }
+
         public Task<int> CountApprovedJobsAsync()
         {
             return _context.Jobs.AsNoTracking().CountAsync(job => job.Status == JobStatus.Approved);
+        }
+
+        public Task<int> CountPendingApprovalJobsAsync()
+        {
+            return _context.Jobs.AsNoTracking().CountAsync(job => job.Status == JobStatus.PendingApproval);
         }
 
         public async Task<IReadOnlyList<Job>> GetPendingApprovalJobsAsync(int take)
@@ -125,6 +167,41 @@ namespace RecruitPro.Infrastructure.Repositories
         public Task<Job?> GetByIdAsync(Guid id)
         {
             return BuildJobQuery().FirstOrDefaultAsync(job => job.Id == id);
+        }
+
+        public async Task<IReadOnlyList<(string DepartmentName, int OpenRoles, string RecruiterName)>> GetDepartmentOpenRoleSnapshotAsync()
+        {
+            var projectedItems = await _context.Jobs
+                .AsNoTracking()
+                .Where(job => job.Status == JobStatus.Approved || job.Status == JobStatus.PendingApproval)
+                .Select(job => new
+                {
+                    DepartmentName = job.Department != null ? job.Department.Name : "General",
+                    RecruiterName = job.CreatedByNavigation.FullName,
+                    job.CreatedAt
+                })
+                .ToListAsync();
+
+            return projectedItems
+                .GroupBy(item => item.DepartmentName)
+                .Select(group =>
+                {
+                    string recruiterName = group
+                        .OrderByDescending(item => item.CreatedAt)
+                        .Select(item => item.RecruiterName)
+                        .FirstOrDefault() ?? "Unassigned";
+
+                    return new
+                    {
+                        DepartmentName = group.Key,
+                        OpenRoles = group.Count(),
+                        RecruiterName = recruiterName
+                    };
+                })
+                .OrderByDescending(item => item.OpenRoles)
+                .ThenBy(item => item.DepartmentName)
+                .Select(item => (item.DepartmentName, item.OpenRoles, item.RecruiterName))
+                .ToList();
         }
 
         public Task<Job?> GetTrackedByIdAsync(Guid id)

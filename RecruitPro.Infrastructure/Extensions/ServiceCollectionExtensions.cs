@@ -34,6 +34,7 @@ public static class ServiceCollectionExtensions
                 .Build();
         });
         services.AddSingleton<IFileStorageService, MinioFileStorageService>();
+        services.AddSingleton<IEmailService, LoggingEmailService>();
 
         return services;
     }

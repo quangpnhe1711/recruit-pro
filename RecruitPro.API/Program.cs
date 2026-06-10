@@ -26,6 +26,7 @@ builder.Services.AddScoped<IValidator<RecruitPro.Application.DTOs.Request.Jobs.C
 builder.Services.AddScoped<IValidator<RecruitPro.Application.DTOs.Request.Jobs.PatchJobRequest>, PatchJobRequestValidator>();
 builder.Services.AddScoped<IValidator<RecruitPro.Application.DTOs.Request.Interviews.CreateInterviewRequest>, CreateInterviewRequestValidator>();
 builder.Services.AddScoped<IValidator<RecruitPro.Application.DTOs.Request.Interviews.UpdateInterviewStatusRequest>, UpdateInterviewStatusRequestValidator>();
+builder.Services.AddScoped<IValidator<RecruitPro.Application.DTOs.Request.Applications.UpdateApplicationDecisionRequest>, UpdateApplicationDecisionRequestValidator>();
 builder.Services.AddScoped<IValidator<RecruitPro.Application.DTOs.Request.Candidate.UpdateCandidateProfileRequest>, UpdateCandidateProfileRequestValidator>();
 builder.Services.AddScoped<IValidator<RecruitPro.Application.DTOs.Request.Candidate.UpdateCandidateSkillsRequest>, UpdateCandidateSkillsRequestValidator>();
 builder.Services.AddScoped<IValidator<RecruitPro.Application.DTOs.Request.Candidate.UpsertCandidateExperienceRequest>, UpsertCandidateExperienceRequestValidator>();

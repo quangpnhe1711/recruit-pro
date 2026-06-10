@@ -1,3 +1,4 @@
+using RecruitPro.Application.DTOs.Request.Applications;
 using Microsoft.Extensions.Logging;
 using RecruitPro.Application.DTOs.Request;
 using RecruitPro.Application.DTOs.Request.Jobs;
@@ -199,6 +200,112 @@ public class ApplicationService : IApplicationService
         });
     }
 
+    public async Task<ApiResponse<ManagerReviewQueueResponseDto>> GetManagerReviewQueueAsync(int page, int pageSize, string? keyword)
+    {
+        IReadOnlyList<Domain.Entities.Application> queueApplications = await _applicationRepository.GetManagerReviewQueueAsync(keyword);
+        List<ManagerReviewQueueItemDto> queueItems = queueApplications
+            .Select(MapManagerReviewQueueItem)
+            .ToList();
+
+        int safePage = Math.Max(page, 1);
+        int safePageSize = Math.Max(pageSize, 1);
+
+        List<ManagerReviewQueueItemDto> pagedItems = queueItems
+            .Skip((safePage - 1) * safePageSize)
+            .Take(safePageSize)
+            .ToList();
+
+        int recommendedCount = queueItems.Count(item =>
+            item.Recommendation.Equals("Strong Hire", StringComparison.OrdinalIgnoreCase) ||
+            item.Recommendation.Equals("Hire", StringComparison.OrdinalIgnoreCase));
+
+        return ApiResponse<ManagerReviewQueueResponseDto>.Ok(new ManagerReviewQueueResponseDto
+        {
+            Items = pagedItems,
+            Meta = BuildMeta(safePage, safePageSize, queueItems.Count),
+            Summary = new ManagerReviewQueueSummaryDto
+            {
+                PendingFinalApprovals = queueItems.Count,
+                RecommendedCount = recommendedCount,
+                FlaggedCount = Math.Max(queueItems.Count - recommendedCount, 0),
+                AverageScore = queueItems.Count == 0 ? 0 : Math.Round(queueItems.Average(item => item.Score), 1)
+            }
+        });
+    }
+
+    public async Task<ApiResponse<ApplicationReviewDetailDto>> GetApplicationReviewDetailAsync(string applicationId)
+    {
+        if (!Guid.TryParse(applicationId, out Guid applicationGuid))
+        {
+            return ApiResponse<ApplicationReviewDetailDto>.NotFound("Application not found.");
+        }
+
+        Domain.Entities.Application? application = await _applicationRepository.GetByIdAsync(applicationGuid);
+        if (application == null)
+        {
+            return ApiResponse<ApplicationReviewDetailDto>.NotFound("Application not found.");
+        }
+
+        return ApiResponse<ApplicationReviewDetailDto>.Ok(MapApplicationToReviewDetailDto(application));
+    }
+
+    public async Task<ApiResponse<ApplicationReviewDetailDto>> UpdateApplicationDecisionAsync(
+        string applicationId,
+        Guid? reviewerId,
+        UpdateApplicationDecisionRequest request)
+    {
+        if (!Guid.TryParse(applicationId, out Guid applicationGuid))
+        {
+            return ApiResponse<ApplicationReviewDetailDto>.NotFound("Application not found.");
+        }
+
+        Domain.Entities.Application? application = await _applicationRepository.GetTrackedByIdAsync(applicationGuid);
+        if (application == null)
+        {
+            return ApiResponse<ApplicationReviewDetailDto>.NotFound("Application not found.");
+        }
+
+        string normalizedDecision = request.Decision.Trim().ToLowerInvariant();
+        if (application.Status == ApplicationStatus.Accepted && normalizedDecision != "hire")
+        {
+            return ApiResponse<ApplicationReviewDetailDto>.BadRequest("Accepted applications cannot be moved back to hold or rejected.");
+        }
+
+        application.Status = normalizedDecision switch
+        {
+            "hire" => ApplicationStatus.ManagerReview,
+            "hold" => ApplicationStatus.Reviewing,
+            "reject" => ApplicationStatus.Rejected,
+            _ => application.Status
+        };
+
+        if (reviewerId.HasValue)
+        {
+            application.ReviewedBy = reviewerId.Value;
+        }
+
+        await _unitOfWork.BeginTransactionAsync();
+        await _applicationRepository.UpdateAsync(application);
+        await _unitOfWork.SaveChangesAsync();
+        await _unitOfWork.CommitAsync();
+
+        Domain.Entities.Application? refreshedApplication = await _applicationRepository.GetByIdAsync(applicationGuid);
+        if (refreshedApplication == null)
+        {
+            return ApiResponse<ApplicationReviewDetailDto>.NotFound("Application not found.");
+        }
+
+        string message = normalizedDecision switch
+        {
+            "hire" => "Candidate approved for offer workflow.",
+            "hold" => "Application moved back to review.",
+            "reject" => "Application rejected successfully.",
+            _ => "Application updated successfully."
+        };
+
+        return ApiResponse<ApplicationReviewDetailDto>.Ok(MapApplicationToReviewDetailDto(refreshedApplication), message);
+    }
+
     public async Task<ApiResponse<ResumeFileResponseDto>> GetApplicationCvAsync(string applicationId)
     {
         if (!Guid.TryParse(applicationId, out Guid applicationGuid))
@@ -338,6 +445,162 @@ public class ApplicationService : IApplicationService
         };
     }
 
+    private static ApplicationReviewDetailDto MapApplicationToReviewDetailDto(Domain.Entities.Application application)
+    {
+        List<string> candidateSkills = application.User.CandidateProfile?.Skills
+            .Select(skill => skill.Name)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(name => name)
+            .ToList() ?? [];
+
+        List<string> requiredSkills = application.Job.JobSkills
+            .Select(jobSkill => jobSkill.Skill.Name)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(name => name)
+            .ToList();
+
+        int matchedSkillCount = requiredSkills.Count(requiredSkill =>
+            candidateSkills.Any(candidateSkill => candidateSkill.Equals(requiredSkill, StringComparison.OrdinalIgnoreCase)));
+
+        int skillsMatchPercent = requiredSkills.Count == 0
+            ? 100
+            : (int)Math.Round((double)matchedSkillCount * 100 / requiredSkills.Count, MidpointRounding.AwayFromZero);
+
+        List<Interview> orderedInterviews = application.Interviews
+            .OrderBy(interview => interview.InterviewDate)
+            .ToList();
+
+        return new ApplicationReviewDetailDto
+        {
+            ApplicationId = application.Id.ToString(),
+            ReferenceCode = BuildReferenceCode(application.Id),
+            StageLabel = BuildStageLabel(application),
+            Status = application.Status.ToString(),
+            AppliedAt = application.AppliedAt,
+            NextStep = application.Status switch
+            {
+                ApplicationStatus.ManagerReview => "Ready for offer preparation",
+                ApplicationStatus.Rejected => "Application closed",
+                ApplicationStatus.Accepted => "Candidate accepted offer",
+                _ => orderedInterviews.Any()
+                    ? "Awaiting final manager decision"
+                    : "Continue application review"
+            },
+            Candidate = new ApplicationReviewCandidateDto
+            {
+                Id = application.UserId.ToString(),
+                FullName = application.User.FullName,
+                Email = application.User.Email,
+                Phone = application.User.Phone,
+                AvatarUrl = application.User.AvatarUrl,
+                CurrentPosition = application.User.CandidateProfile?.CurrentPosition,
+                ExperienceYears = application.User.CandidateProfile?.ExperienceYears,
+                Education = application.User.CandidateProfile?.Education,
+                Address = application.User.CandidateProfile?.Address,
+                Bio = application.User.CandidateProfile?.Bio,
+                LinkedinUrl = application.User.CandidateProfile?.LinkedinUrl,
+                GithubUrl = application.User.CandidateProfile?.GithubUrl,
+                Skills = candidateSkills
+            },
+            Job = new ApplicationReviewJobDto
+            {
+                Id = application.JobId.ToString(),
+                Title = application.Job.Title,
+                DepartmentName = application.Job.Department?.Name ?? "RecruitPro",
+                RequiredSkills = requiredSkills
+            },
+            Insights = new ApplicationReviewInsightDto
+            {
+                SkillsMatchPercent = skillsMatchPercent,
+                MatchedSkillCount = matchedSkillCount,
+                RequiredSkillCount = requiredSkills.Count,
+                SubmittedInterviewNotes = orderedInterviews.Count(interview => !string.IsNullOrWhiteSpace(interview.Notes)),
+                TotalInterviews = orderedInterviews.Count
+            },
+            Interviews = orderedInterviews.Select((interview, index) => new ApplicationReviewInterviewDto
+            {
+                Id = interview.Id.ToString(),
+                Label = $"Interview Round {index + 1}",
+                InterviewDate = interview.InterviewDate,
+                Status = (interview.Status ?? InterviewStatus.Scheduled).ToString(),
+                Notes = interview.Notes
+            }).ToList(),
+            ReviewedBy = application.ReviewedByNavigation == null ? null : new UserDto
+            {
+                Id = application.ReviewedByNavigation.Id,
+                FullName = application.ReviewedByNavigation.FullName,
+                Email = application.ReviewedByNavigation.Email,
+                AvatarUrl = application.ReviewedByNavigation.AvatarUrl,
+                Phone = application.ReviewedByNavigation.Phone,
+                Roles = application.ReviewedByNavigation.UserRoles.Select(userRole => userRole.Role.Name).ToList()
+            }
+        };
+    }
+
+    private static ManagerReviewQueueItemDto MapManagerReviewQueueItem(Domain.Entities.Application application)
+    {
+        (double score, string recommendation) = BuildReviewScore(application);
+        string fullName = application.User.FullName;
+        string location = application.User.CandidateProfile?.Address;
+
+        return new ManagerReviewQueueItemDto
+        {
+            ApplicationId = application.Id.ToString(),
+            CandidateName = fullName,
+            CandidateInitials = BuildInitials(fullName),
+            CandidateAvatarUrl = application.User.AvatarUrl,
+            CandidateLocation = string.IsNullOrWhiteSpace(location) ? "Location unavailable" : location,
+            JobTitle = application.Job.Title,
+            Score = score,
+            Recommendation = recommendation,
+            Status = application.Status.ToString(),
+            AppliedAt = application.AppliedAt,
+            CompletedInterviews = application.Interviews.Count(interview => interview.Status == InterviewStatus.Completed),
+            TotalInterviews = application.Interviews.Count
+        };
+    }
+
+    private static (double Score, string Recommendation) BuildReviewScore(Domain.Entities.Application application)
+    {
+        List<string> candidateSkills = application.User.CandidateProfile?.Skills
+            .Select(skill => skill.Name)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList() ?? [];
+
+        List<string> requiredSkills = application.Job.JobSkills
+            .Select(jobSkill => jobSkill.Skill.Name)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        int matchedSkillCount = requiredSkills.Count(requiredSkill =>
+            candidateSkills.Any(candidateSkill => candidateSkill.Equals(requiredSkill, StringComparison.OrdinalIgnoreCase)));
+
+        double skillRatio = requiredSkills.Count == 0 ? 1 : matchedSkillCount / (double)requiredSkills.Count;
+        int totalInterviews = application.Interviews.Count;
+        int completedInterviews = application.Interviews.Count(interview => interview.Status == InterviewStatus.Completed);
+        double interviewCompletionRatio = totalInterviews == 0 ? 0 : completedInterviews / (double)totalInterviews;
+        double noteCoverageRatio = totalInterviews == 0
+            ? 0
+            : application.Interviews.Count(interview => !string.IsNullOrWhiteSpace(interview.Notes)) / (double)totalInterviews;
+
+        double score = Math.Round(((skillRatio * 3d) + (interviewCompletionRatio * 1.25d) + (noteCoverageRatio * 0.75d)), 1);
+        score = Math.Min(Math.Max(score, 0), 5);
+
+        string recommendation = score switch
+        {
+            >= 4.5 => "Strong Hire",
+            >= 4.0 => "Hire",
+            >= 3.0 => "Hold",
+            _ => "Flagged"
+        };
+
+        return (score, recommendation);
+    }
+
     private static ApiEnvelopeMeta BuildMeta(int page, int pageSize, int total)
     {
         return new ApiEnvelopeMeta
@@ -374,5 +637,32 @@ public class ApplicationService : IApplicationService
         return separatorIndex >= 0 && separatorIndex < fileName.Length - 1
             ? fileName[(separatorIndex + 1)..]
             : fileName;
+    }
+
+    private static string BuildReferenceCode(Guid applicationId)
+    {
+        string compactId = applicationId.ToString("N")[..8].ToUpperInvariant();
+        return $"APP-{compactId}";
+    }
+
+    private static string BuildStageLabel(Domain.Entities.Application application)
+    {
+        return application.Status switch
+        {
+            ApplicationStatus.ManagerReview => "Offer Pending",
+            ApplicationStatus.Accepted => "Hired",
+            ApplicationStatus.Rejected => "Closed",
+            _ when application.Interviews.Any() => "Final Review",
+            _ => "Application Review"
+        };
+    }
+
+    private static string BuildInitials(string fullName)
+    {
+        return string.Concat(
+            fullName
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .Take(2)
+                .Select(part => char.ToUpperInvariant(part[0])));
     }
 }

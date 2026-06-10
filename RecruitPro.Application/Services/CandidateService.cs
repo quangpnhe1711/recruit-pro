@@ -1,6 +1,9 @@
 using AutoMapper;
+using ClosedXML.Excel;
 using Microsoft.Extensions.Logging;
+using System.Net.Mail;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using RecruitPro.Application.Common;
 using RecruitPro.Application.DTOs.Request.Candidate;
 using RecruitPro.Application.DTOs.Response;
@@ -19,8 +22,14 @@ public class CandidateService : ICandidateService
     private readonly ISkillRepository _skillRepository;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IFileStorageService _fileStorage;
+    private readonly IEmailService _emailService;
     private readonly IMapper _mapper;
     private readonly ILogger<CandidateService> _logger;
+    private const string CandidateRoleName = "Candidate";
+    private const string ImportedSourcePrefix = "[Imported Source]";
+    private const string ImportedNotesPrefix = "[Imported Notes]";
+    private const string CandidateLoginUrl = "http://localhost:5173/login";
+    private static readonly Regex PhonePattern = new(@"^0\d{9}$", RegexOptions.Compiled);
 
     public CandidateService(
         ICandidateProfileRepository candidateRepository,
@@ -28,6 +37,7 @@ public class CandidateService : ICandidateService
         ISkillRepository skillRepository,
         IUnitOfWork unitOfWork,
         IFileStorageService fileStorage,
+        IEmailService emailService,
         IMapper mapper,
         ILogger<CandidateService> logger)
     {
@@ -36,6 +46,7 @@ public class CandidateService : ICandidateService
         _skillRepository = skillRepository;
         _unitOfWork = unitOfWork;
         _fileStorage = fileStorage;
+        _emailService = emailService;
         _mapper = mapper;
         _logger = logger;
     }
@@ -58,6 +69,7 @@ public class CandidateService : ICandidateService
             };
 
             await _userRepository.AddAsync(user);
+            await AssignCandidateRoleAsync(user.Id);
 
             CandidateProfile? profile = null;
             if (request.Profile != null)
@@ -130,7 +142,7 @@ public class CandidateService : ICandidateService
                 FullName = candidate.User.FullName,
                 Email = candidate.User.Email,
                 AvatarUrl = candidate.User.AvatarUrl,
-                Source = source ?? "Portal",
+                Source = ResolveCandidateSource(candidate, source),
                 AppliedDate = latestApplication?.AppliedAt?.ToString("yyyy-MM-dd") ?? string.Empty,
                 Status = latestApplication?.Status.ToString() ?? "New"
             };
@@ -146,6 +158,120 @@ public class CandidateService : ICandidateService
             Items = items.ToList(),
             Meta = BuildMeta(page, pageSize, total)
         });
+    }
+
+    public Task<CandidateImportTemplateDto> GenerateImportTemplateAsync()
+    {
+        using XLWorkbook workbook = new();
+        IXLWorksheet worksheet = workbook.Worksheets.Add("Candidates");
+
+        string[] headers = ["FullName", "Email", "PhoneNumber", "Source", "PositionApplied", "Notes"];
+        for (int index = 0; index < headers.Length; index++)
+        {
+            worksheet.Cell(1, index + 1).Value = headers[index];
+            worksheet.Cell(1, index + 1).Style.Font.Bold = true;
+        }
+
+        worksheet.Cell(2, 1).Value = "Nguyen Van A";
+        worksheet.Cell(2, 2).Value = "a@gmail.com";
+        worksheet.Cell(2, 3).Value = "0909123456";
+        worksheet.Cell(2, 4).Value = "LinkedIn";
+        worksheet.Cell(2, 5).Value = "Backend Developer";
+        worksheet.Cell(2, 6).Value = "Senior Java";
+        worksheet.Columns().AdjustToContents();
+
+        using MemoryStream stream = new();
+        workbook.SaveAs(stream);
+
+        return Task.FromResult(new CandidateImportTemplateDto
+        {
+            FileName = "candidate-import-template.xlsx",
+            Content = stream.ToArray()
+        });
+    }
+
+    public async Task<ApiResponse<CandidateImportPreviewResponseDto>> PreviewImportAsync(Stream fileStream, string fileName)
+    {
+        List<CandidateImportPreviewDto> rows = await ParseAndValidateImportRowsAsync(fileStream, fileName);
+        return ApiResponse<CandidateImportPreviewResponseDto>.Ok(BuildPreviewResponse(rows));
+    }
+
+    public async Task<ApiResponse<CandidateImportResultDto>> ImportCandidatesAsync(CandidateImportRequest request)
+    {
+        List<CandidateImportPreviewDto> rows = await ValidateRequestRowsAsync(request.Rows);
+        List<CandidateImportPreviewDto> validRows = rows.Where(row => row.IsValid).ToList();
+
+        if (validRows.Count == 0)
+        {
+            return ApiResponse<CandidateImportResultDto>.BadRequest("No valid rows available for import.");
+        }
+
+        List<string> createdCandidateIds = [];
+        List<string> invitationEmails = [];
+        List<(string Email, string FullName, string TemporaryPassword)> invitations = [];
+
+        await _unitOfWork.BeginTransactionAsync();
+        try
+        {
+            foreach (CandidateImportPreviewDto row in validRows)
+            {
+                string temporaryPassword = GenerateTemporaryPassword();
+                User user = new()
+                {
+                    Id = Guid.NewGuid(),
+                    Email = row.Email.Trim(),
+                    FullName = row.FullName.Trim(),
+                    Phone = NormalizeOptionalText(row.PhoneNumber),
+                    PasswordHash = BCrypt.Net.BCrypt.HashPassword(temporaryPassword),
+                    CreatedAt = DbDateTime.Now,
+                    UpdatedAt = DbDateTime.Now
+                };
+
+                await _userRepository.AddAsync(user);
+                await AssignCandidateRoleAsync(user.Id);
+
+                CandidateProfile profile = new()
+                {
+                    Id = Guid.NewGuid(),
+                    UserId = user.Id,
+                    CurrentPosition = NormalizeOptionalText(row.PositionApplied),
+                    Bio = BuildImportedBio(row.Source, row.Notes)
+                };
+
+                await _candidateRepository.SaveAsync(profile);
+                createdCandidateIds.Add(profile.Id.ToString());
+                invitationEmails.Add(user.Email);
+                invitations.Add((user.Email, user.FullName, temporaryPassword));
+            }
+
+            await _unitOfWork.SaveChangesAsync();
+            await _unitOfWork.CommitAsync();
+        }
+        catch
+        {
+            await _unitOfWork.RollbackAsync();
+            throw;
+        }
+
+        foreach ((string email, string fullName, string temporaryPassword) in invitations)
+        {
+            try
+            {
+                await _emailService.SendCandidateInvitationAsync(email, fullName, temporaryPassword, CandidateLoginUrl);
+            }
+            catch (Exception exception)
+            {
+                _logger.LogWarning(exception, "Candidate import completed but invitation email failed for {Email}.", email);
+            }
+        }
+
+        return ApiResponse<CandidateImportResultDto>.Created(new CandidateImportResultDto
+        {
+            ImportedCount = validRows.Count,
+            SkippedCount = rows.Count - validRows.Count,
+            CreatedCandidateIds = createdCandidateIds,
+            InvitationEmails = invitationEmails
+        }, "Candidates imported successfully.");
     }
 
     public async Task<ApiResponse<CandidateProfileResponseDto>> GetProfileAsync(Guid userId)
@@ -337,6 +463,7 @@ public class CandidateService : ICandidateService
             {
                 Id = profile.Id.ToString(),
                 Name = profile.User.FullName,
+                AvatarUrl = profile.User.AvatarUrl,
                 Headline = profile.CurrentPosition ?? string.Empty,
                 Email = profile.User.Email,
                 Phone = profile.User.Phone,
@@ -473,5 +600,188 @@ public class CandidateService : ICandidateService
         return separatorIndex >= 0 && separatorIndex < fileName.Length - 1
             ? fileName[(separatorIndex + 1)..]
             : fileName;
+    }
+
+    private async Task AssignCandidateRoleAsync(Guid userId)
+    {
+        Role? candidateRole = await _userRepository.GetRoleByNameAsync(CandidateRoleName);
+        if (candidateRole == null)
+        {
+            throw new NotFoundException("Candidate role not found.");
+        }
+
+        await _userRepository.AddUserRoleAsync(new UserRole
+        {
+            UserId = userId,
+            RoleId = candidateRole.Id,
+            AssignedAt = DbDateTime.Now
+        });
+    }
+
+    private async Task<List<CandidateImportPreviewDto>> ParseAndValidateImportRowsAsync(Stream fileStream, string fileName)
+    {
+        if (!fileName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException("Only .xlsx files are supported for candidate import.");
+        }
+
+        using MemoryStream buffer = new();
+        await fileStream.CopyToAsync(buffer);
+        buffer.Position = 0;
+
+        using XLWorkbook workbook = new(buffer);
+        IXLWorksheet worksheet = workbook.Worksheets.First();
+        List<CandidateImportPreviewDto> rows = [];
+
+        foreach (IXLRow worksheetRow in worksheet.RowsUsed().Skip(1))
+        {
+            if (worksheetRow.Cells(1, 6).All(cell => string.IsNullOrWhiteSpace(cell.GetString())))
+            {
+                continue;
+            }
+
+            rows.Add(new CandidateImportPreviewDto
+            {
+                RowNumber = worksheetRow.RowNumber(),
+                FullName = worksheetRow.Cell(1).GetString().Trim(),
+                Email = worksheetRow.Cell(2).GetString().Trim(),
+                PhoneNumber = worksheetRow.Cell(3).GetString().Trim(),
+                Source = worksheetRow.Cell(4).GetString().Trim(),
+                PositionApplied = worksheetRow.Cell(5).GetString().Trim(),
+                Notes = worksheetRow.Cell(6).GetString().Trim()
+            });
+        }
+
+        await ApplyImportValidationAsync(rows);
+        return rows;
+    }
+
+    private async Task<List<CandidateImportPreviewDto>> ValidateRequestRowsAsync(IEnumerable<CandidateImportRowRequestDto> requestRows)
+    {
+        List<CandidateImportPreviewDto> rows = requestRows.Select(row => new CandidateImportPreviewDto
+        {
+            RowNumber = row.RowNumber,
+            FullName = row.FullName.Trim(),
+            Email = row.Email.Trim(),
+            PhoneNumber = row.PhoneNumber.Trim(),
+            Source = row.Source.Trim(),
+            PositionApplied = row.PositionApplied.Trim(),
+            Notes = row.Notes.Trim()
+        }).ToList();
+
+        await ApplyImportValidationAsync(rows);
+        return rows;
+    }
+
+    private async Task ApplyImportValidationAsync(List<CandidateImportPreviewDto> rows)
+    {
+        IReadOnlySet<string> existingEmails = await _userRepository.GetExistingEmailsAsync(rows.Select(row => row.Email));
+        HashSet<string> duplicateEmailsInFile = rows
+            .Where(row => !string.IsNullOrWhiteSpace(row.Email))
+            .GroupBy(row => row.Email.Trim().ToLowerInvariant())
+            .Where(group => group.Count() > 1)
+            .Select(group => group.Key)
+            .ToHashSet();
+
+        foreach (CandidateImportPreviewDto row in rows)
+        {
+            row.Errors.Clear();
+
+            if (string.IsNullOrWhiteSpace(row.FullName))
+            {
+                row.Errors.Add("Full name is required.");
+            }
+
+            if (string.IsNullOrWhiteSpace(row.Email))
+            {
+                row.Errors.Add("Email is required.");
+            }
+            else if (!IsValidEmail(row.Email))
+            {
+                row.Errors.Add("Email format is invalid.");
+            }
+            else if (existingEmails.Contains(row.Email.Trim().ToLowerInvariant()))
+            {
+                row.Errors.Add("Email already exists in the database.");
+            }
+            else if (duplicateEmailsInFile.Contains(row.Email.Trim().ToLowerInvariant()))
+            {
+                row.Errors.Add("Email is duplicated in the uploaded file.");
+            }
+
+            if (!string.IsNullOrWhiteSpace(row.PhoneNumber) && !PhonePattern.IsMatch(row.PhoneNumber))
+            {
+                row.Errors.Add("Phone number must contain 10 digits and start with 0.");
+            }
+
+            row.IsValid = row.Errors.Count == 0;
+        }
+    }
+
+    private static CandidateImportPreviewResponseDto BuildPreviewResponse(List<CandidateImportPreviewDto> rows)
+    {
+        return new CandidateImportPreviewResponseDto
+        {
+            TotalRows = rows.Count,
+            ValidRows = rows.Count(row => row.IsValid),
+            InvalidRows = rows.Count(row => !row.IsValid),
+            Rows = rows
+        };
+    }
+
+    private static bool IsValidEmail(string email)
+    {
+        try
+        {
+            _ = new MailAddress(email);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static string GenerateTemporaryPassword()
+    {
+        return $"Rp!{Guid.NewGuid():N}"[..12];
+    }
+
+    private static string? NormalizeOptionalText(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
+
+    private static string? BuildImportedBio(string source, string notes)
+    {
+        List<string> parts = [];
+
+        if (!string.IsNullOrWhiteSpace(source))
+        {
+            parts.Add($"{ImportedSourcePrefix} {source.Trim()}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(notes))
+        {
+            parts.Add($"{ImportedNotesPrefix} {notes.Trim()}");
+        }
+
+        return parts.Count == 0 ? null : string.Join(Environment.NewLine, parts);
+    }
+
+    private static string ResolveCandidateSource(CandidateProfile candidate, string? requestedSource)
+    {
+        if (!string.IsNullOrWhiteSpace(requestedSource))
+        {
+            return requestedSource;
+        }
+
+        if (!string.IsNullOrWhiteSpace(candidate.Bio) &&
+            candidate.Bio.Contains(ImportedSourcePrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return "BulkImport";
+        }
+
+        return "Portal";
     }
 }

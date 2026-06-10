@@ -1,3 +1,4 @@
+using RecruitPro.Application.DTOs.Request.Applications;
 using RecruitPro.Application.DTOs.Request;
 using RecruitPro.Application.DTOs.Request.Jobs;
 using RecruitPro.Application.DTOs.Response;
@@ -13,6 +14,9 @@ public interface IApplicationService
     Task<ApiResponse<string>> WithdrawApplicationAsync(Guid userId, string applicationId);
     Task<ApiResponse<string>> AcceptOfferAsync(Guid userId, string applicationId);
     Task<ApiResponse<PaginatedResponseDto<ApplicationListItemDto>>> GetHrApplicationsAsync(int page, int pageSize, string? keyword, string? department, string? status);
+    Task<ApiResponse<ManagerReviewQueueResponseDto>> GetManagerReviewQueueAsync(int page, int pageSize, string? keyword);
+    Task<ApiResponse<ApplicationReviewDetailDto>> GetApplicationReviewDetailAsync(string applicationId);
+    Task<ApiResponse<ApplicationReviewDetailDto>> UpdateApplicationDecisionAsync(string applicationId, Guid? reviewerId, UpdateApplicationDecisionRequest request);
     Task<ApiResponse<ResumeFileResponseDto>> GetApplicationCvAsync(string applicationId);
     Task<ApiResponse<string>> SendApplicationEmailAsync(string applicationId, SendApplicationEmailRequest request);
 }

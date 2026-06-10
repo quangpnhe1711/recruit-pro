@@ -1,3 +1,4 @@
+using RecruitPro.Application.DTOs.Request.Applications;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc;
@@ -66,6 +67,27 @@ public class ApplicationController : ControllerBase
         return StatusCode(result.StatusCode, result);
     }
 
+    [HttpGet("api/manager/applications/review-queue")]
+    public async Task<IActionResult> GetManagerReviewQueue([FromQuery] int page = 1, [FromQuery] int pageSize = 10, [FromQuery] string? keyword = null)
+    {
+        var result = await _applicationService.GetManagerReviewQueueAsync(page, pageSize, keyword);
+        return StatusCode(result.StatusCode, result);
+    }
+
+    [HttpGet("api/hr/applications/{applicationId}")]
+    public async Task<IActionResult> GetApplicationReviewDetail(string applicationId)
+    {
+        var result = await _applicationService.GetApplicationReviewDetailAsync(applicationId);
+        return StatusCode(result.StatusCode, result);
+    }
+
+    [HttpPatch("api/hr/applications/{applicationId}/decision")]
+    public async Task<IActionResult> UpdateApplicationDecision(string applicationId, [FromBody] UpdateApplicationDecisionRequest request)
+    {
+        var result = await _applicationService.UpdateApplicationDecisionAsync(applicationId, TryGetCurrentUserId(), request);
+        return StatusCode(result.StatusCode, result);
+    }
+
     [HttpGet("api/hr/applications/{applicationId}/cv")]
     public async Task<IActionResult> GetApplicationCv(string applicationId)
     {
@@ -87,5 +109,14 @@ public class ApplicationController : ControllerBase
             ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value
             ?? throw new UnauthorizedAccessException("Missing user id claim.");
         return Guid.Parse(sub);
+    }
+
+    private Guid? TryGetCurrentUserId()
+    {
+        string? sub = User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
+            ?? User.FindFirst("sub")?.Value
+            ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+        return Guid.TryParse(sub, out Guid userId) ? userId : null;
     }
 }

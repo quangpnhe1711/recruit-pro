@@ -30,6 +30,44 @@ public class InterviewRepository : IInterviewRepository
             .CountAsync(interview => interview.InterviewDate.Date == date.Date);
     }
 
+    public Task<int> CountUpcomingScheduledAsync(DateTime fromDate)
+    {
+        return _context.Interviews
+            .AsNoTracking()
+            .CountAsync(interview =>
+                interview.Status == InterviewStatus.Scheduled &&
+                interview.InterviewDate >= fromDate);
+    }
+
+    public async Task<IReadOnlyList<(DateTime Month, int Count)>> GetMonthlyCompletedVolumeAsync(DateTime startMonth, int monthCount)
+    {
+        DateTime endMonth = startMonth.AddMonths(monthCount);
+
+        var groupedItems = await _context.Interviews
+            .AsNoTracking()
+            .Where(interview =>
+                interview.Status == InterviewStatus.Completed &&
+                interview.InterviewDate >= startMonth &&
+                interview.InterviewDate < endMonth)
+            .GroupBy(interview => new
+            {
+                interview.InterviewDate.Year,
+                interview.InterviewDate.Month
+            })
+            .Select(group => new
+            {
+                group.Key.Year,
+                group.Key.Month,
+                Count = group.Count()
+            })
+            .ToListAsync();
+
+        return groupedItems
+            .Select(item => (new DateTime(item.Year, item.Month, 1), item.Count))
+            .OrderBy(item => item.Item1)
+            .ToList();
+    }
+
     public async Task<(IReadOnlyList<Interview> Interviews, int Total)> GetPagedAsync(int page, int pageSize, string? keyword, InterviewStatus? status, DateTime? startDate, DateTime? endDate)
     {
         IQueryable<Interview> query = BuildInterviewQuery();

@@ -91,6 +91,33 @@ public class CandidateController : ControllerBase
         return StatusCode(result.StatusCode, result);
     }
 
+    [HttpGet("api/candidates/import/template")]
+    public async Task<IActionResult> DownloadImportTemplate()
+    {
+        var result = await _candidateService.GenerateImportTemplateAsync();
+        return File(result.Content, result.ContentType, result.FileName);
+    }
+
+    [HttpPost("api/candidates/import/preview")]
+    [Consumes("multipart/form-data")]
+    public async Task<IActionResult> PreviewImport(IFormFile file)
+    {
+        await using var fileStream = file.OpenReadStream();
+
+        var result = await _candidateService.PreviewImportAsync(
+            fileStream,
+            file.FileName);
+
+        return StatusCode(result.StatusCode, result);
+    }
+
+    [HttpPost("api/candidates/import")]
+    public async Task<IActionResult> ImportCandidates([FromBody] CandidateImportRequest request)
+    {
+        var result = await _candidateService.ImportCandidatesAsync(request);
+        return StatusCode(result.StatusCode, result);
+    }
+
     private Guid GetCurrentUserId()
     {
         string sub = User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value

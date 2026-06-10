@@ -12,6 +12,13 @@ public interface IApplicationRepository
     Task<IReadOnlyList<JobApplication>> GetAllByJobIdAsync(Guid jobId);
     Task<IReadOnlyList<JobApplication>> GetRecentByJobIdAsync(Guid jobId, int take);
     Task<IReadOnlyList<JobApplication>> GetByUserIdAsync(Guid userId);
+    Task<IReadOnlyList<JobApplication>> GetManagerReviewQueueAsync(string? keyword);
+    Task<Dictionary<ApplicationStatus, int>> GetStatusCountsAsync();
+    Task<IReadOnlyList<(string DepartmentName, int AverageDays)>> GetAverageReviewCycleByDepartmentAsync();
+    Task<int> CountActiveCandidatesAsync();
+    Task<double?> GetAverageReviewCycleDaysAsync();
+    Task<IReadOnlyList<(DateTime Month, int Count)>> GetMonthlyApplicationVolumeAsync(DateTime startMonth, int monthCount);
+    Task<IReadOnlyList<(string DepartmentName, int ActiveApplications, int OfferedCandidates, int AcceptedCandidates)>> GetDepartmentPipelineSnapshotAsync();
     Task<JobApplication?> GetByIdAsync(Guid applicationId);
     Task<JobApplication?> GetTrackedByIdAsync(Guid applicationId);
     Task<bool> CandidateAlreadyAppliedAsync(Guid userId, Guid jobId);

@@ -6,9 +6,12 @@ namespace RecruitPro.Application.Interfaces.IRepositories
     {
         Task<(IReadOnlyList<Job> Jobs, int Total)> GetApprovedPagedAsync(int currentPage, int pageSize);
         Task<(IReadOnlyList<Job> Jobs, int Total)> SearchApprovedAsync(string? keyword, IReadOnlyCollection<string> employmentTypes, IReadOnlyCollection<string> skills, string? sortBy, int currentPage, int pageSize);
-        Task<(IReadOnlyList<Job> Jobs, int Total)> GetPagedAsync(string? department, string? approvalStatus, int currentPage, int pageSize);
+        Task<(IReadOnlyList<Job> Jobs, int Total)> GetPagedAsync(string? department, string? approvalStatus, int currentPage, int pageSize, Guid? createdByUserId = null);
+        Task<(IReadOnlyList<Job> Jobs, int Total)> GetPendingApprovalPagedAsync(string? keyword, string? department, int currentPage, int pageSize);
         Task<int> CountApprovedJobsAsync();
+        Task<int> CountPendingApprovalJobsAsync();
         Task<IReadOnlyList<Job>> GetPendingApprovalJobsAsync(int take);
+        Task<IReadOnlyList<(string DepartmentName, int OpenRoles, string RecruiterName)>> GetDepartmentOpenRoleSnapshotAsync();
         Task<Job?> GetByIdAsync(Guid id);
         Task<Job?> GetTrackedByIdAsync(Guid id);
         Task<Department?> GetDepartmentByIdAsync(Guid departmentId);

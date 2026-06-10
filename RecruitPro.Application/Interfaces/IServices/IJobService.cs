@@ -15,7 +15,9 @@ public interface IJobService
     Task<ApiResponse<IReadOnlyList<DepartmentDto>>> GetDepartmentsAsync();
     Task<ApiResponse<IReadOnlyList<SkillLookupDto>>> GetSkillsAsync();
     Task<ApiResponse<JobDetailScreenDto>> GetJobScreenDetailAsync(string jobId);
-    Task<ApiResponse<HrJobsResponseDto>> GetHrJobsAsync(HrJobQueryRequest request);
+    Task<ApiResponse<HrJobsResponseDto>> GetHrJobsAsync(HrJobQueryRequest request, Guid currentUserId);
+    Task<ApiResponse<ManagerJobApprovalQueueResponseDto>> GetManagerApprovalQueueAsync(ManagerJobApprovalQueryRequest request);
+    Task<ApiResponse<ManagerJobApprovalDetailDto>> GetManagerApprovalDetailAsync(string jobId);
     Task<ApiResponse<HrCreateJobResponseDto>> CreateJobAsync(CreateJobRequest request, Guid currentUserId);
     Task<ApiResponse<HrJobStatusResponseDto>> PatchJobAsync(string jobId, PatchJobRequest request);
     Task<ApiResponse<string>> DeleteJobAsync(string jobId);

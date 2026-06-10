@@ -1,7 +1,9 @@
 using AutoMapper;
+using RecruitPro.Application.Common;
 using RecruitPro.Application.DTOs.Request.Auth;
 using RecruitPro.Application.DTOs.Response;
 using RecruitPro.Application.Exceptions;
+using RecruitPro.Application.Interfaces;
 using RecruitPro.Application.Interfaces.IRepositories;
 using RecruitPro.Application.Interfaces.IServices;
 using RecruitPro.Domain.Entities;
@@ -12,12 +14,18 @@ namespace RecruitPro.Application.Services
     {
         private readonly IUserRepository _userRepository;
         private readonly IJwtService _jwtService;
+        private readonly IEmailService _emailService;
+        private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
+        private const string CandidateLoginUrl = "http://localhost:5173/login";
+        private const string InternalLoginUrl = "http://localhost:5173/internal/login";
 
-        public AuthService(IUserRepository userRepository, IJwtService jwtService, IMapper mapper)
+        public AuthService(IUserRepository userRepository, IJwtService jwtService, IEmailService emailService, IUnitOfWork unitOfWork, IMapper mapper)
         {
             _userRepository = userRepository;
             _jwtService = jwtService;
+            _emailService = emailService;
+            _unitOfWork = unitOfWork;
             _mapper = mapper;
         }
 
@@ -34,6 +42,16 @@ namespace RecruitPro.Application.Services
         public Task<ApiResponse<LoginResponseDto>> InternalLoginAsync(string employeeIdOrEmail, string password)
         {
             return LoginCoreAsync(employeeIdOrEmail, password, role => !role.Equals("Candidate", StringComparison.OrdinalIgnoreCase));
+        }
+
+        public Task<ApiResponse<string>> ForgotCandidatePasswordAsync(string email)
+        {
+            return ResetPasswordAsync(email, role => role.Equals("Candidate", StringComparison.OrdinalIgnoreCase), CandidateLoginUrl);
+        }
+
+        public Task<ApiResponse<string>> ForgotInternalPasswordAsync(string employeeIdOrEmail)
+        {
+            return ResetPasswordAsync(employeeIdOrEmail, role => !role.Equals("Candidate", StringComparison.OrdinalIgnoreCase), InternalLoginUrl);
         }
 
         private async Task<ApiResponse<LoginResponseDto>> LoginCoreAsync(string email, string password, Func<string, bool>? roleRule)
@@ -61,6 +79,42 @@ namespace RecruitPro.Application.Services
             });
 
             return ApiResponse<LoginResponseDto>.Ok(loginResponseDto);
+        }
+
+        private async Task<ApiResponse<string>> ResetPasswordAsync(string identifier, Func<string, bool> roleRule, string loginUrl)
+        {
+            string normalizedIdentifier = identifier.Trim();
+            if (string.IsNullOrWhiteSpace(normalizedIdentifier))
+            {
+                return ApiResponse<string>.BadRequest("Identifier is required.");
+            }
+
+            User? user = await _userRepository.GetTrackedByEmailAsync(normalizedIdentifier);
+            if (user == null)
+            {
+                return ApiResponse<string>.Ok("If the account exists, a temporary password has been issued.");
+            }
+
+            List<string> roles = user.UserRoles.Select(x => x.Role.Name).ToList();
+            if (!roles.Any(roleRule))
+            {
+                return ApiResponse<string>.Ok("If the account exists, a temporary password has been issued.");
+            }
+
+            string temporaryPassword = GenerateTemporaryPassword();
+            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(temporaryPassword);
+            user.UpdatedAt = DbDateTime.Now;
+
+            await _userRepository.UpdateAsync(user);
+            await _unitOfWork.SaveChangesAsync();
+            await _emailService.SendPasswordResetAsync(user.Email, user.FullName, temporaryPassword, loginUrl);
+
+            return ApiResponse<string>.Ok("If the account exists, a temporary password has been issued.");
+        }
+
+        private static string GenerateTemporaryPassword()
+        {
+            return $"Rp!{Guid.NewGuid():N}"[..12];
         }
     }
 }
