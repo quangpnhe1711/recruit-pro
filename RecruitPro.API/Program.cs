@@ -82,13 +82,14 @@ if (app.Environment.IsDevelopment())
 //Use middleware
 app.UseMiddleware<ExceptionMiddleware>();
 
-app.UseHttpsRedirection();
+//app.UseHttpsRedirection();
 
 app.UseCors("AllowFrontend");
 
 app.UseAuthentication();
 
 app.UseAuthorization();
+app.MapGet("/", () => Results.Ok("RecruitPro API Running"));
 
 app.MapControllers();
 
