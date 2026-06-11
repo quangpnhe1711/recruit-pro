@@ -49,6 +49,9 @@ builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("Jwt"))
 // config minio settings
 builder.Services.Configure<MinioSettings>(builder.Configuration.GetSection("MinioSettings"));
 
+// config OpenAI settings
+builder.Services.Configure<OpenAiSettings>(builder.Configuration.GetSection("OpenAi"));
+
 // cors config
 string[] allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
     ?? ["http://localhost:5173"];

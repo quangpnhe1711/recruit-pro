@@ -15,6 +15,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IInterviewService, InterviewService>();
         services.AddScoped<IJobService, JobService>();
         services.AddScoped<IManagerAnalyticsService, ManagerAnalyticsService>();
+        services.AddScoped<ICopilotService, CopilotService>();
 
         return services;
     }

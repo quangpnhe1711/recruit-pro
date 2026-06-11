@@ -19,6 +19,11 @@ namespace RecruitPro.Application.Interfaces
         Task<string> GetPresignedUrlAsync(string objectName);
 
         /// <summary>
+        /// Opens a stored object as a readable stream.
+        /// </summary>
+        Task<Stream> DownloadFileAsync(string objectName);
+
+        /// <summary>
         /// Deletes a stored object if it exists.
         /// </summary>
         Task DeleteFileAsync(string objectName);

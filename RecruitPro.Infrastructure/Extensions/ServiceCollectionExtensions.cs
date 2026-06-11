@@ -21,9 +21,12 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IInterviewRepository, InterviewRepository>();
         services.AddScoped<INotificationRepository, NotificationRepository>();
         services.AddScoped<ISkillRepository, SkillRepository>();
+        services.AddScoped<ICopilotRepository, CopilotRepository>();
 
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<IJwtService, JwtService>();
+        services.AddSingleton<IResumeTextExtractor, PdfResumeTextExtractor>();
+        services.AddHttpClient<IAiCopilotProvider, OpenAiCopilotProvider>();
         services.AddSingleton<IMinioClient>(serviceProvider =>
         {
             MinioSettings settings = serviceProvider.GetRequiredService<IOptions<MinioSettings>>().Value;

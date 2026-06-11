@@ -97,6 +97,35 @@ public class MinioFileStorageService : IFileStorageService
         }
     }
 
+    public async Task<Stream> DownloadFileAsync(string objectName)
+    {
+        string normalizedObjectName = NormalizeObjectName(objectName);
+        await EnsureBucketExistsAsync();
+
+        MemoryStream destination = new();
+        GetObjectArgs args = new GetObjectArgs()
+            .WithBucket(_settings.BucketName)
+            .WithObject(normalizedObjectName)
+            .WithCallbackStream(stream => stream.CopyTo(destination));
+
+        try
+        {
+            await _client.GetObjectAsync(args);
+            destination.Position = 0;
+            return destination;
+        }
+        catch (MinioException ex)
+        {
+            destination.Dispose();
+            _logger.LogWarning(
+                ex,
+                "Failed to download object {ObjectName} from bucket {BucketName}.",
+                normalizedObjectName,
+                _settings.BucketName);
+            throw;
+        }
+    }
+
     public async Task DeleteFileAsync(string objectName)
     {
         if (string.IsNullOrWhiteSpace(objectName))
