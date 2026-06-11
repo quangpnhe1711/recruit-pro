@@ -183,8 +183,21 @@ public class JobService : IJobService
     {
         string? normalizedDepartment = string.IsNullOrWhiteSpace(request.Department) ? null : request.Department;
         string? normalizedStatus = string.IsNullOrWhiteSpace(request.ApprovalStatus) ? null : request.ApprovalStatus;
-        (IReadOnlyList<Job> jobs, int total) = await _jobRepository.GetPagedAsync(normalizedDepartment, normalizedStatus, request.Page, request.PageSize, currentUserId);
-        (IReadOnlyList<Job> allMatchingJobs, _) = await _jobRepository.GetPagedAsync(normalizedDepartment, normalizedStatus, 1, int.MaxValue, currentUserId);
+        Guid? createdByUserId = Guid.TryParse(request.CreatedByUserId, out Guid parsedCreatedByUserId)
+            ? parsedCreatedByUserId
+            : null;
+        (IReadOnlyList<Job> jobs, int total) = await _jobRepository.GetPagedAsync(
+            normalizedDepartment,
+            normalizedStatus,
+            request.Page,
+            request.PageSize,
+            createdByUserId);
+        (IReadOnlyList<Job> allMatchingJobs, _) = await _jobRepository.GetPagedAsync(
+            normalizedDepartment,
+            normalizedStatus,
+            1,
+            int.MaxValue,
+            createdByUserId);
 
         return ApiResponse<HrJobsResponseDto>.Ok(new HrJobsResponseDto
         {
@@ -194,8 +207,15 @@ public class JobService : IJobService
                 Title = job.Title,
                 Department = job.Department?.Name ?? string.Empty,
                 CreatedDate = job.CreatedAt?.ToString("yyyy-MM-dd") ?? string.Empty,
+                CreatedAt = job.CreatedAt,
                 ApprovalStatus = job.Status.ToString(),
-                ApplicationsCount = job.Applications.Count
+                ApplicationsCount = job.Applications.Count,
+                CreatedBy = new HrJobCreatorDto
+                {
+                    Id = job.CreatedByNavigation.Id.ToString(),
+                    FullName = job.CreatedByNavigation.FullName,
+                    Email = job.CreatedByNavigation.Email
+                }
             }).ToList(),
             Meta = BuildMeta(request.Page, request.PageSize, total),
             Stats = new HrJobStatsDto

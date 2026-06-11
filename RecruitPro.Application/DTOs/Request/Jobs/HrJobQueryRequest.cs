@@ -9,4 +9,6 @@ public class HrJobQueryRequest
     public string? Department { get; set; }
 
     public string? ApprovalStatus { get; set; }
+
+    public string? CreatedByUserId { get; set; }
 }
