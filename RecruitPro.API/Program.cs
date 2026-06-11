@@ -35,6 +35,9 @@ builder.Services.AddScoped<IValidator<RecruitPro.Application.DTOs.Request.SendAp
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+Console.WriteLine("ENV = " + builder.Environment.EnvironmentName);
+Console.WriteLine("CONN = " + builder.Configuration.GetConnectionString("Mycnn"));
+
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("Mycnn"))
         .EnableSensitiveDataLogging()
