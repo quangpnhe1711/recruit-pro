@@ -9,7 +9,7 @@ using RecruitPro.Application.Validators;
 using FluentValidation;
 using RecruitPro.API.Filters;
 using RecruitPro.API.Middlewares;
-
+using System;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -47,13 +47,16 @@ builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("Jwt"))
 builder.Services.Configure<MinioSettings>(builder.Configuration.GetSection("MinioSettings"));
 
 // cors config
+string[] allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
+    ?? ["http://localhost:5173"];
+
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend",
         policy =>
         {
             policy
-                .WithOrigins("http://localhost:5173")
+                .WithOrigins(allowedOrigins)
                 .AllowAnyHeader()
                 .AllowAnyMethod();
         });
