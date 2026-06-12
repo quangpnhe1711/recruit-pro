@@ -18,6 +18,13 @@ public class ApplicationController : ControllerBase
         _applicationService = applicationService;
     }
 
+    [HttpGet("api/jobs/{jobId}/apply-context")]
+    public async Task<IActionResult> GetApplyContext(string jobId)
+    {
+        var result = await _applicationService.GetApplyScreenAsync(GetCurrentUserId(), jobId);
+        return StatusCode(result.StatusCode, result);
+    }
+
     [HttpGet("api/jobs/{jobId}/applications")]
     public async Task<IActionResult> GetJobApplications(string jobId, [FromQuery] int page = 1, [FromQuery] int pageSize = 10)
     {

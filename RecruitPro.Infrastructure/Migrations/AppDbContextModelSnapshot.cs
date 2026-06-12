@@ -73,6 +73,10 @@ namespace RecruitPro.Infrastructure.Migrations
                         .HasColumnName("applied_at")
                         .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
+                    b.Property<string>("CoverLetter")
+                        .HasColumnType("text")
+                        .HasColumnName("cover_letter");
+
                     b.Property<Guid>("CandidateId")
                         .HasColumnType("uuid")
                         .HasColumnName("candidate_id");

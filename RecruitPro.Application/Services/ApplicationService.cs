@@ -41,18 +41,69 @@ public class ApplicationService : IApplicationService
         _logger = logger;
     }
 
+    public async Task<ApiResponse<ApplyJobScreenDto>> GetApplyScreenAsync(Guid userId, string jobId)
+    {
+        Job job = await GetJobAsync(jobId);
+        CandidateProfile profile = await GetProfileEntityAsync(userId);
+        Domain.Entities.Application? existingApplication = await GetExistingApplicationAsync(userId, job.Id);
+        ApplyJobEligibilityDto eligibility = BuildApplyEligibility(job, profile, existingApplication);
+
+        ApplyJobResumeDto? resume = null;
+        if (!string.IsNullOrWhiteSpace(profile.ResumeUrl))
+        {
+            resume = new ApplyJobResumeDto
+            {
+                ResumeId = profile.Id.ToString(),
+                FileName = ExtractFileName(profile.ResumeUrl),
+                FileUrl = await _fileStorage.GetPresignedUrlAsync(profile.ResumeUrl),
+                UploadedAt = profile.User.UpdatedAt ?? profile.User.CreatedAt ?? DbDateTime.Now
+            };
+        }
+
+        return ApiResponse<ApplyJobScreenDto>.Ok(new ApplyJobScreenDto
+        {
+            Job = new ApplyJobJobSummaryDto
+            {
+                Id = job.Id.ToString(),
+                Title = job.Title,
+                DepartmentName = job.Department?.Name ?? "RecruitPro",
+                Location = job.Location,
+                WorkMode = job.WorkMode.ToString(),
+                EmploymentType = job.EmploymentType.ToString(),
+                SalaryMin = job.SalaryMin,
+                SalaryMax = job.SalaryMax,
+                SalaryLabel = BuildSalaryLabel(job.SalaryMin, job.SalaryMax),
+                VacancyCount = job.VacancyCount ?? 1,
+                Status = job.Status.ToString(),
+                Deadline = job.Deadline
+            },
+            CandidateProfile = new ApplyJobCandidateProfileDto
+            {
+                CandidateId = profile.Id.ToString(),
+                FullName = profile.User.FullName,
+                Email = profile.User.Email,
+                Phone = profile.User.Phone,
+                CurrentPosition = profile.CurrentPosition,
+                ExperienceYears = profile.ExperienceYears,
+                EditProfilePath = "/candidate/profile"
+            },
+            Resume = resume,
+            Eligibility = eligibility
+        });
+    }
+
     public async Task<ApiResponse<ApplyJobResponseDto>> ApplyAsync(Guid userId, string jobId, ApplyJobRequest request)
     {
         Job job = await GetJobAsync(jobId);
-        CandidateProfile? profile = await _candidateProfileRepository.GetByUserIdAsync(userId);
-        if (profile == null)
+        CandidateProfile profile = await GetProfileEntityAsync(userId);
+        Domain.Entities.Application? existingApplication = await GetExistingApplicationAsync(userId, job.Id);
+        ApplyJobEligibilityDto eligibility = BuildApplyEligibility(job, profile, existingApplication);
+        if (!eligibility.CanApply)
         {
-            throw new NotFoundException("Candidate profile not found.");
-        }
-
-        if (await _applicationRepository.CandidateAlreadyAppliedAsync(userId, job.Id))
-        {
-            return ApiResponse<ApplyJobResponseDto>.BadRequest("Candidate already applied for this job.");
+            string message = eligibility.AlreadyApplied
+                ? "Candidate already applied for this job."
+                : eligibility.Blockers.FirstOrDefault() ?? "This job cannot be applied for right now.";
+            return ApiResponse<ApplyJobResponseDto>.BadRequest(message);
         }
 
         Domain.Entities.Application application = new()
@@ -61,7 +112,10 @@ public class ApplicationService : IApplicationService
             UserId = userId,
             JobId = job.Id,
             Status = ApplicationStatus.Pending,
-            AppliedAt = DbDateTime.Now
+            AppliedAt = DbDateTime.Now,
+            CoverLetter = string.IsNullOrWhiteSpace(request.CoverLetter)
+                ? null
+                : request.CoverLetter.Trim()
         };
 
         await _unitOfWork.BeginTransactionAsync();
@@ -378,6 +432,59 @@ public class ApplicationService : IApplicationService
         return ApiResponse<string>.Ok($"{effectiveSubject}: {effectiveBody}", $"Email prepared for {recipient}");
     }
 
+    private async Task<Domain.Entities.Application?> GetExistingApplicationAsync(Guid userId, Guid jobId)
+    {
+        IReadOnlyList<Domain.Entities.Application> existingApplications = await _applicationRepository.GetByUserIdAsync(userId);
+        return existingApplications.FirstOrDefault(application => application.JobId == jobId);
+    }
+
+    private static ApplyJobEligibilityDto BuildApplyEligibility(
+        Job job,
+        CandidateProfile profile,
+        Domain.Entities.Application? existingApplication)
+    {
+        List<string> blockers = [];
+
+        if (job.Status != JobStatus.Approved)
+        {
+            blockers.Add("This job posting is not accepting new applications.");
+        }
+
+        if (job.Deadline.HasValue && job.Deadline.Value < DbDateTime.Now)
+        {
+            blockers.Add("The application deadline for this job has passed.");
+        }
+
+        if (string.IsNullOrWhiteSpace(profile.User.FullName) || string.IsNullOrWhiteSpace(profile.User.Email))
+        {
+            blockers.Add("Your profile is missing required contact information.");
+        }
+
+        if (string.IsNullOrWhiteSpace(profile.ResumeUrl))
+        {
+            blockers.Add("Please upload your latest resume before applying.");
+        }
+
+        if (existingApplication != null)
+        {
+            blockers.Add("You have already applied for this job.");
+        }
+
+        return new ApplyJobEligibilityDto
+        {
+            CanApply = blockers.Count == 0,
+            AlreadyApplied = existingApplication != null,
+            ExistingApplicationId = existingApplication?.Id.ToString(),
+            ExistingApplicationStatus = existingApplication?.Status.ToString(),
+            Blockers = blockers,
+            GuidanceMessage = blockers.Count == 0
+                ? "Your application will be submitted to the recruitment team for review."
+                : existingApplication != null
+                    ? "Track the latest status of this application from My Applications."
+                    : "Complete the missing requirements before submitting your application."
+        };
+    }
+
     private async Task<Job> GetJobAsync(string jobId)
     {
         if (!Guid.TryParse(jobId, out Guid jobGuid))
@@ -629,6 +736,18 @@ public class ApplicationService : IApplicationService
             TotalItems = total,
             TotalPages = (int)Math.Ceiling(total / (double)pageSize)
         };
+    }
+
+    private static string BuildSalaryLabel(decimal? salaryMin, decimal? salaryMax)
+    {
+        if (!salaryMin.HasValue && !salaryMax.HasValue)
+        {
+            return "Negotiable";
+        }
+
+        decimal effectiveMin = salaryMin ?? salaryMax ?? 0;
+        decimal effectiveMax = salaryMax ?? salaryMin ?? 0;
+        return $"{effectiveMin:N0} - {effectiveMax:N0} USD";
     }
 
     private static ApplicationStatus? ParseApplicationStatus(string? value)

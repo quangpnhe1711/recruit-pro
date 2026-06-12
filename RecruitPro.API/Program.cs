@@ -23,6 +23,7 @@ builder.Services.AddControllers(options =>
     options.Filters.Add<ValidationActionFilter>();
 });
 builder.Services.AddScoped<IValidator<RecruitPro.Application.DTOs.Request.Jobs.CreateJobRequest>, CreateJobRequestValidator>();
+builder.Services.AddScoped<IValidator<RecruitPro.Application.DTOs.Request.Jobs.ApplyJobRequest>, ApplyJobRequestValidator>();
 builder.Services.AddScoped<IValidator<RecruitPro.Application.DTOs.Request.Jobs.PatchJobRequest>, PatchJobRequestValidator>();
 builder.Services.AddScoped<IValidator<RecruitPro.Application.DTOs.Request.Interviews.CreateInterviewRequest>, CreateInterviewRequestValidator>();
 builder.Services.AddScoped<IValidator<RecruitPro.Application.DTOs.Request.Interviews.UpdateInterviewStatusRequest>, UpdateInterviewStatusRequestValidator>();

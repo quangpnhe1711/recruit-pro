@@ -18,6 +18,8 @@ public partial class Application
 
     public DateTime? AppliedAt { get; set; }
 
+    public string? CoverLetter { get; set; }
+
     public virtual ApplicationOffer? Offer { get; set; }
 
     public virtual ICollection<Interview> Interviews { get; set; } = new List<Interview>();
