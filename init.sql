@@ -1,4 +1,5 @@
 
+
 CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public;
 
 
@@ -37,6 +38,95 @@ CREATE TABLE public.applications (
 
 
 ALTER TABLE public.applications OWNER TO postgres;
+
+--
+-- TOC entry 240 (class 1259 OID 16810)
+-- Name: offer_templates; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.offer_templates (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    name character varying(150) NOT NULL,
+    description text,
+    template_body text NOT NULL,
+    is_active boolean DEFAULT true NOT NULL,
+    display_order integer DEFAULT 0 NOT NULL
+);
+
+
+ALTER TABLE public.offer_templates OWNER TO postgres;
+
+--
+-- TOC entry 241 (class 1259 OID 16824)
+-- Name: offer_benefits; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.offer_benefits (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    name character varying(120) NOT NULL,
+    description text,
+    is_active boolean DEFAULT true NOT NULL,
+    display_order integer DEFAULT 0 NOT NULL
+);
+
+
+ALTER TABLE public.offer_benefits OWNER TO postgres;
+
+--
+-- TOC entry 242 (class 1259 OID 16838)
+-- Name: offer_currencies; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.offer_currencies (
+    code character varying(10) NOT NULL,
+    name character varying(100) NOT NULL,
+    symbol character varying(10) NOT NULL,
+    is_active boolean DEFAULT true NOT NULL,
+    display_order integer DEFAULT 0 NOT NULL
+);
+
+
+ALTER TABLE public.offer_currencies OWNER TO postgres;
+
+--
+-- TOC entry 243 (class 1259 OID 16849)
+-- Name: application_offers; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.application_offers (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    application_id uuid NOT NULL,
+    offer_template_id uuid,
+    base_salary numeric(15,2) NOT NULL,
+    currency_code character varying(10) NOT NULL,
+    bonus_description text,
+    equity_notes text,
+    employment_type character varying(100) NOT NULL,
+    proposed_start_date timestamp without time zone,
+    probation_period character varying(100),
+    reporting_manager_id uuid,
+    personal_message text,
+    status character varying(30) DEFAULT 'Draft' NOT NULL,
+    sent_at timestamp without time zone,
+    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.application_offers OWNER TO postgres;
+
+--
+-- TOC entry 244 (class 1259 OID 16867)
+-- Name: application_offer_benefits; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.application_offer_benefits (
+    offer_id uuid NOT NULL,
+    benefit_id uuid NOT NULL
+);
+
+
+ALTER TABLE public.application_offer_benefits OWNER TO postgres;
 
 --
 -- TOC entry 226 (class 1259 OID 16601)
@@ -498,6 +588,22 @@ INSERT INTO public.skills VALUES ('90000000-0000-4000-8000-000000000010', 'Figma
 INSERT INTO public.skills VALUES ('90000000-0000-4000-8000-000000000011', 'SEO');
 INSERT INTO public.skills VALUES ('90000000-0000-4000-8000-000000000012', 'Excel');
 
+INSERT INTO public.offer_templates VALUES ('91000000-0000-4000-8000-000000000001', 'Standard Tech Role', 'Default offer template for engineering and product positions.', 'Standard tech offer body', true, 1);
+INSERT INTO public.offer_templates VALUES ('91000000-0000-4000-8000-000000000002', 'Management Offer', 'Offer template with leadership-oriented language and approvals.', 'Management offer body', true, 2);
+INSERT INTO public.offer_templates VALUES ('91000000-0000-4000-8000-000000000003', 'Contractor Agreement', 'Template for fixed-term and contractor roles.', 'Contractor offer body', true, 3);
+
+INSERT INTO public.offer_benefits VALUES ('92000000-0000-4000-8000-000000000001', 'Health Insurance', 'Company-sponsored health coverage package', true, 1);
+INSERT INTO public.offer_benefits VALUES ('92000000-0000-4000-8000-000000000002', 'Paid Time Off', 'Annual leave and public holiday package', true, 2);
+INSERT INTO public.offer_benefits VALUES ('92000000-0000-4000-8000-000000000003', 'Remote Work', 'Hybrid or remote work flexibility', true, 3);
+INSERT INTO public.offer_benefits VALUES ('92000000-0000-4000-8000-000000000004', 'Gym Allowance', 'Monthly fitness or wellness reimbursement', true, 4);
+INSERT INTO public.offer_benefits VALUES ('92000000-0000-4000-8000-000000000005', 'Relocation Bonus', 'One-time relocation support for new hires', true, 5);
+INSERT INTO public.offer_benefits VALUES ('92000000-0000-4000-8000-000000000006', 'Learning Budget', 'Annual development and certification budget', true, 6);
+
+INSERT INTO public.offer_currencies VALUES ('USD', 'US Dollar', '$', true, 1);
+INSERT INTO public.offer_currencies VALUES ('VND', 'Vietnamese Dong', '₫', true, 2);
+INSERT INTO public.offer_currencies VALUES ('EUR', 'Euro', '€', true, 3);
+INSERT INTO public.offer_currencies VALUES ('SGD', 'Singapore Dollar', 'S$', true, 4);
+
 
 --
 -- TOC entry 5226 (class 0 OID 16769)
@@ -749,6 +855,24 @@ INSERT INTO public.system_logs VALUES ('80000000-0000-4000-8000-000000000010', '
 ALTER TABLE ONLY public.applications
     ADD CONSTRAINT applications_pkey PRIMARY KEY (id);
 
+ALTER TABLE ONLY public.offer_templates
+    ADD CONSTRAINT offer_templates_pkey PRIMARY KEY (id);
+
+ALTER TABLE ONLY public.offer_benefits
+    ADD CONSTRAINT offer_benefits_pkey PRIMARY KEY (id);
+
+ALTER TABLE ONLY public.offer_currencies
+    ADD CONSTRAINT offer_currencies_pkey PRIMARY KEY (code);
+
+ALTER TABLE ONLY public.application_offers
+    ADD CONSTRAINT application_offers_pkey PRIMARY KEY (id);
+
+ALTER TABLE ONLY public.application_offers
+    ADD CONSTRAINT application_offers_application_id_key UNIQUE (application_id);
+
+ALTER TABLE ONLY public.application_offer_benefits
+    ADD CONSTRAINT application_offer_benefits_pkey PRIMARY KEY (offer_id, benefit_id);
+
 
 --
 -- TOC entry 5022 (class 2606 OID 16611)
@@ -964,6 +1088,24 @@ ALTER TABLE ONLY public.applications
 
 ALTER TABLE ONLY public.applications
     ADD CONSTRAINT applications_reviewed_by_fkey FOREIGN KEY (reviewed_by) REFERENCES public.users(id);
+
+ALTER TABLE ONLY public.application_offers
+    ADD CONSTRAINT application_offers_application_id_fkey FOREIGN KEY (application_id) REFERENCES public.applications(id) ON DELETE CASCADE;
+
+ALTER TABLE ONLY public.application_offers
+    ADD CONSTRAINT application_offers_currency_code_fkey FOREIGN KEY (currency_code) REFERENCES public.offer_currencies(code);
+
+ALTER TABLE ONLY public.application_offers
+    ADD CONSTRAINT application_offers_offer_template_id_fkey FOREIGN KEY (offer_template_id) REFERENCES public.offer_templates(id);
+
+ALTER TABLE ONLY public.application_offers
+    ADD CONSTRAINT application_offers_reporting_manager_id_fkey FOREIGN KEY (reporting_manager_id) REFERENCES public.users(id);
+
+ALTER TABLE ONLY public.application_offer_benefits
+    ADD CONSTRAINT application_offer_benefits_offer_id_fkey FOREIGN KEY (offer_id) REFERENCES public.application_offers(id) ON DELETE CASCADE;
+
+ALTER TABLE ONLY public.application_offer_benefits
+    ADD CONSTRAINT application_offer_benefits_benefit_id_fkey FOREIGN KEY (benefit_id) REFERENCES public.offer_benefits(id) ON DELETE CASCADE;
 
 
 --
@@ -1195,161 +1337,34 @@ CREATE TABLE IF NOT EXISTS public.copilot_candidate_tags (
     created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
-DO $$
-BEGIN
-    ALTER TABLE ONLY public.copilot_conversations ADD CONSTRAINT copilot_conversations_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
+ALTER TABLE ONLY public.copilot_conversations ADD CONSTRAINT copilot_conversations_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.copilot_messages ADD CONSTRAINT copilot_messages_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.copilot_ranking_sessions ADD CONSTRAINT copilot_ranking_sessions_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.copilot_ranking_results ADD CONSTRAINT copilot_ranking_results_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.copilot_saved_rules ADD CONSTRAINT copilot_saved_rules_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.copilot_candidate_tags ADD CONSTRAINT copilot_candidate_tags_pkey PRIMARY KEY (id);
 
-DO $$
-BEGIN
-    ALTER TABLE ONLY public.copilot_messages ADD CONSTRAINT copilot_messages_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
+ALTER TABLE ONLY public.copilot_messages ADD CONSTRAINT ck_copilot_messages_role CHECK (((role)::text = ANY ((ARRAY['User'::character varying, 'Assistant'::character varying, 'System'::character varying])::text[])));
+ALTER TABLE ONLY public.copilot_ranking_results ADD CONSTRAINT ck_copilot_ranking_results_recommendation CHECK (((recommendation)::text = ANY ((ARRAY['Interview'::character varying, 'Consider'::character varying, 'Hold'::character varying, 'Reject'::character varying])::text[])));
+ALTER TABLE ONLY public.copilot_candidate_tags ADD CONSTRAINT ck_copilot_candidate_tags_source CHECK (((source)::text = ANY ((ARRAY['AI'::character varying, 'HR'::character varying, 'System'::character varying])::text[])));
+ALTER TABLE ONLY public.copilot_ranking_results ADD CONSTRAINT uq_copilot_ranking_results_session_candidate UNIQUE (ranking_session_id, candidate_user_id);
 
-DO $$
-BEGIN
-    ALTER TABLE ONLY public.copilot_ranking_sessions ADD CONSTRAINT copilot_ranking_sessions_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
-
-DO $$
-BEGIN
-    ALTER TABLE ONLY public.copilot_ranking_results ADD CONSTRAINT copilot_ranking_results_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
-
-DO $$
-BEGIN
-    ALTER TABLE ONLY public.copilot_saved_rules ADD CONSTRAINT copilot_saved_rules_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
-
-DO $$
-BEGIN
-    ALTER TABLE ONLY public.copilot_candidate_tags ADD CONSTRAINT copilot_candidate_tags_pkey PRIMARY KEY (id);
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
-
-DO $$
-BEGIN
-    ALTER TABLE ONLY public.copilot_messages ADD CONSTRAINT ck_copilot_messages_role CHECK (((role)::text = ANY ((ARRAY['User'::character varying, 'Assistant'::character varying, 'System'::character varying])::text[])));
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
-
-DO $$
-BEGIN
-    ALTER TABLE ONLY public.copilot_ranking_results ADD CONSTRAINT ck_copilot_ranking_results_recommendation CHECK (((recommendation)::text = ANY ((ARRAY['Interview'::character varying, 'Consider'::character varying, 'Hold'::character varying, 'Reject'::character varying])::text[])));
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
-
-DO $$
-BEGIN
-    ALTER TABLE ONLY public.copilot_candidate_tags ADD CONSTRAINT ck_copilot_candidate_tags_source CHECK (((source)::text = ANY ((ARRAY['AI'::character varying, 'HR'::character varying, 'System'::character varying])::text[])));
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
-
-DO $$
-BEGIN
-    ALTER TABLE ONLY public.copilot_ranking_results ADD CONSTRAINT uq_copilot_ranking_results_session_candidate UNIQUE (ranking_session_id, candidate_user_id);
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
-
-DO $$
-BEGIN
-    ALTER TABLE ONLY public.copilot_conversations ADD CONSTRAINT copilot_conversations_job_id_fkey FOREIGN KEY (job_id) REFERENCES public.jobs(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
-
-DO $$
-BEGIN
-    ALTER TABLE ONLY public.copilot_conversations ADD CONSTRAINT copilot_conversations_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
-
-DO $$
-BEGIN
-    ALTER TABLE ONLY public.copilot_messages ADD CONSTRAINT copilot_messages_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES public.copilot_conversations(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
-
-DO $$
-BEGIN
-    ALTER TABLE ONLY public.copilot_ranking_sessions ADD CONSTRAINT copilot_ranking_sessions_job_id_fkey FOREIGN KEY (job_id) REFERENCES public.jobs(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
-
-DO $$
-BEGIN
-    ALTER TABLE ONLY public.copilot_ranking_sessions ADD CONSTRAINT copilot_ranking_sessions_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES public.copilot_conversations(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
-
-DO $$
-BEGIN
-    ALTER TABLE ONLY public.copilot_ranking_sessions ADD CONSTRAINT copilot_ranking_sessions_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
-
-DO $$
-BEGIN
-    ALTER TABLE ONLY public.copilot_conversations ADD CONSTRAINT copilot_conversations_latest_ranking_session_id_fkey FOREIGN KEY (latest_ranking_session_id) REFERENCES public.copilot_ranking_sessions(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
-
-DO $$
-BEGIN
-    ALTER TABLE ONLY public.copilot_ranking_results ADD CONSTRAINT copilot_ranking_results_ranking_session_id_fkey FOREIGN KEY (ranking_session_id) REFERENCES public.copilot_ranking_sessions(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
-
-DO $$
-BEGIN
-    ALTER TABLE ONLY public.copilot_ranking_results ADD CONSTRAINT copilot_ranking_results_candidate_user_id_fkey FOREIGN KEY (candidate_user_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
-
-DO $$
-BEGIN
-    ALTER TABLE ONLY public.copilot_ranking_results ADD CONSTRAINT copilot_ranking_results_application_id_fkey FOREIGN KEY (application_id) REFERENCES public.applications(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
-
-DO $$
-BEGIN
-    ALTER TABLE ONLY public.copilot_saved_rules ADD CONSTRAINT copilot_saved_rules_job_id_fkey FOREIGN KEY (job_id) REFERENCES public.jobs(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
-
-DO $$
-BEGIN
-    ALTER TABLE ONLY public.copilot_saved_rules ADD CONSTRAINT copilot_saved_rules_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
-
-DO $$
-BEGIN
-    ALTER TABLE ONLY public.copilot_candidate_tags ADD CONSTRAINT copilot_candidate_tags_candidate_user_id_fkey FOREIGN KEY (candidate_user_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
-
-DO $$
-BEGIN
-    ALTER TABLE ONLY public.copilot_candidate_tags ADD CONSTRAINT copilot_candidate_tags_job_id_fkey FOREIGN KEY (job_id) REFERENCES public.jobs(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
-
-DO $$
-BEGIN
-    ALTER TABLE ONLY public.copilot_candidate_tags ADD CONSTRAINT copilot_candidate_tags_ranking_session_id_fkey FOREIGN KEY (ranking_session_id) REFERENCES public.copilot_ranking_sessions(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
-
-DO $$
-BEGIN
-    ALTER TABLE ONLY public.copilot_candidate_tags ADD CONSTRAINT copilot_candidate_tags_created_by_user_id_fkey FOREIGN KEY (created_by_user_id) REFERENCES public.users(id) ON DELETE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
+ALTER TABLE ONLY public.copilot_conversations ADD CONSTRAINT copilot_conversations_job_id_fkey FOREIGN KEY (job_id) REFERENCES public.jobs(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.copilot_conversations ADD CONSTRAINT copilot_conversations_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.copilot_messages ADD CONSTRAINT copilot_messages_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES public.copilot_conversations(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.copilot_ranking_sessions ADD CONSTRAINT copilot_ranking_sessions_job_id_fkey FOREIGN KEY (job_id) REFERENCES public.jobs(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.copilot_ranking_sessions ADD CONSTRAINT copilot_ranking_sessions_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES public.copilot_conversations(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.copilot_ranking_sessions ADD CONSTRAINT copilot_ranking_sessions_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.copilot_conversations ADD CONSTRAINT copilot_conversations_latest_ranking_session_id_fkey FOREIGN KEY (latest_ranking_session_id) REFERENCES public.copilot_ranking_sessions(id) ON DELETE SET NULL;
+ALTER TABLE ONLY public.copilot_ranking_results ADD CONSTRAINT copilot_ranking_results_ranking_session_id_fkey FOREIGN KEY (ranking_session_id) REFERENCES public.copilot_ranking_sessions(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.copilot_ranking_results ADD CONSTRAINT copilot_ranking_results_candidate_user_id_fkey FOREIGN KEY (candidate_user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.copilot_ranking_results ADD CONSTRAINT copilot_ranking_results_application_id_fkey FOREIGN KEY (application_id) REFERENCES public.applications(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.copilot_saved_rules ADD CONSTRAINT copilot_saved_rules_job_id_fkey FOREIGN KEY (job_id) REFERENCES public.jobs(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.copilot_saved_rules ADD CONSTRAINT copilot_saved_rules_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.copilot_candidate_tags ADD CONSTRAINT copilot_candidate_tags_candidate_user_id_fkey FOREIGN KEY (candidate_user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.copilot_candidate_tags ADD CONSTRAINT copilot_candidate_tags_job_id_fkey FOREIGN KEY (job_id) REFERENCES public.jobs(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.copilot_candidate_tags ADD CONSTRAINT copilot_candidate_tags_ranking_session_id_fkey FOREIGN KEY (ranking_session_id) REFERENCES public.copilot_ranking_sessions(id) ON DELETE SET NULL;
+ALTER TABLE ONLY public.copilot_candidate_tags ADD CONSTRAINT copilot_candidate_tags_created_by_user_id_fkey FOREIGN KEY (created_by_user_id) REFERENCES public.users(id) ON DELETE CASCADE;
 
 CREATE INDEX IF NOT EXISTS ix_copilot_conversations_job_user_created_at ON public.copilot_conversations USING btree (job_id, user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS ix_copilot_messages_conversation_sequence ON public.copilot_messages USING btree (conversation_id, sequence_no);

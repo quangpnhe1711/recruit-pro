@@ -25,6 +25,8 @@ public partial class User
 
     public virtual ICollection<Application> ApplicationReviewedByNavigations { get; set; } = new List<Application>();
 
+    public virtual ICollection<ApplicationOffer> ReportingManagerOffers { get; set; } = new List<ApplicationOffer>();
+
     public virtual CandidateProfile? CandidateProfile { get; set; }
 
     public virtual ICollection<Job> JobApprovedByNavigations { get; set; } = new List<Job>();

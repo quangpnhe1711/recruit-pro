@@ -18,6 +18,7 @@ public class ApplicationService : IApplicationService
     private readonly IApplicationRepository _applicationRepository;
     private readonly ICandidateProfileRepository _candidateProfileRepository;
     private readonly IJobRepository _jobRepository;
+    private readonly IOfferRepository _offerRepository;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IFileStorageService _fileStorage;
     private readonly ILogger<ApplicationService> _logger;
@@ -26,6 +27,7 @@ public class ApplicationService : IApplicationService
         IApplicationRepository applicationRepository,
         ICandidateProfileRepository candidateProfileRepository,
         IJobRepository jobRepository,
+        IOfferRepository offerRepository,
         IUnitOfWork unitOfWork,
         IFileStorageService fileStorage,
         ILogger<ApplicationService> logger)
@@ -33,6 +35,7 @@ public class ApplicationService : IApplicationService
         _applicationRepository = applicationRepository;
         _candidateProfileRepository = candidateProfileRepository;
         _jobRepository = jobRepository;
+        _offerRepository = offerRepository;
         _unitOfWork = unitOfWork;
         _fileStorage = fileStorage;
         _logger = logger;
@@ -134,11 +137,11 @@ public class ApplicationService : IApplicationService
                 JobTitle = application.Job.Title,
                 CompanyOrDepartment = application.Job.Department != null ? application.Job.Department.Name : "RecruitPro",
                 AppliedDate = application.AppliedAt,
-                Status = application.Status.ToString(),
-                NextStep = application.Interviews.Any() ? "Upcoming interview" : "Awaiting review",
+                Status = MapCandidateApplicationStatus(application),
+                NextStep = BuildCandidateNextStep(application),
                 AvailableActions = application.Status == ApplicationStatus.Accepted
                     ? ["viewDetail"]
-                    : application.Status == ApplicationStatus.ManagerReview
+                    : application.Status == ApplicationStatus.ManagerReview && application.Offer?.Status == OfferStatus.Sent
                         ? ["viewDetail", "acceptOffer", "withdraw"]
                         : ["viewDetail", "withdraw"]
             }).ToList();
@@ -177,7 +180,20 @@ public class ApplicationService : IApplicationService
             return ApiResponse<string>.BadRequest("This application is not ready for offer acceptance.");
         }
 
+        if (application.Status == ApplicationStatus.ManagerReview && application.Offer?.Status != OfferStatus.Sent)
+        {
+            return ApiResponse<string>.BadRequest("An offer has not been sent for this application yet.");
+        }
+
         application.Status = ApplicationStatus.Accepted;
+        ApplicationOffer? offer = await _offerRepository.GetTrackedByApplicationIdAsync(application.Id);
+        if (offer != null)
+        {
+            offer.Status = OfferStatus.Accepted;
+            offer.UpdatedAt = DbDateTime.Now;
+            await _offerRepository.UpdateAsync(offer);
+        }
+
         await _unitOfWork.BeginTransactionAsync();
         await _applicationRepository.UpdateAsync(application);
         await _unitOfWork.SaveChangesAsync();
@@ -478,9 +494,12 @@ public class ApplicationService : IApplicationService
             ReferenceCode = BuildReferenceCode(application.Id),
             StageLabel = BuildStageLabel(application),
             Status = application.Status.ToString(),
+            OfferStatus = application.Offer?.Status.ToString(),
             AppliedAt = application.AppliedAt,
             NextStep = application.Status switch
             {
+                ApplicationStatus.ManagerReview when application.Offer?.Status == OfferStatus.Sent => "Offer sent to candidate",
+                ApplicationStatus.ManagerReview when application.Offer != null => "Offer draft in progress",
                 ApplicationStatus.ManagerReview => "Ready for offer preparation",
                 ApplicationStatus.Rejected => "Application closed",
                 ApplicationStatus.Accepted => "Candidate accepted offer",
@@ -649,11 +668,38 @@ public class ApplicationService : IApplicationService
     {
         return application.Status switch
         {
+            ApplicationStatus.ManagerReview when application.Offer?.Status == OfferStatus.Sent => "Offer Sent",
             ApplicationStatus.ManagerReview => "Offer Pending",
             ApplicationStatus.Accepted => "Hired",
             ApplicationStatus.Rejected => "Closed",
             _ when application.Interviews.Any() => "Final Review",
             _ => "Application Review"
+        };
+    }
+
+    private static string MapCandidateApplicationStatus(Domain.Entities.Application application)
+    {
+        return application.Status switch
+        {
+            ApplicationStatus.Pending => "New",
+            ApplicationStatus.Reviewing => "Under Review",
+            ApplicationStatus.Interviewing => "Interviewing",
+            ApplicationStatus.ManagerReview when application.Offer?.Status == OfferStatus.Sent => "Offered",
+            ApplicationStatus.ManagerReview => "Final Review",
+            ApplicationStatus.Accepted => "Accepted",
+            ApplicationStatus.Rejected => "Rejected",
+            _ => application.Status.ToString()
+        };
+    }
+
+    private static string BuildCandidateNextStep(Domain.Entities.Application application)
+    {
+        return application.Status switch
+        {
+            ApplicationStatus.ManagerReview when application.Offer?.Status == OfferStatus.Sent => "Review and respond to your offer package",
+            ApplicationStatus.ManagerReview => "HR is preparing your offer package",
+            _ when application.Interviews.Any() => "Upcoming interview",
+            _ => "Awaiting review"
         };
     }
 

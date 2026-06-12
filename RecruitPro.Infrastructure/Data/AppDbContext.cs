@@ -20,6 +20,10 @@ public partial class AppDbContext : DbContext
 
     public virtual DbSet<JobApplication> Applications { get; set; }
 
+    public virtual DbSet<ApplicationOffer> ApplicationOffers { get; set; }
+
+    public virtual DbSet<ApplicationOfferBenefit> ApplicationOfferBenefits { get; set; }
+
     public virtual DbSet<CandidateProfile> CandidateProfiles { get; set; }
 
     public virtual DbSet<CopilotCandidateTag> CopilotCandidateTags { get; set; }
@@ -43,6 +47,12 @@ public partial class AppDbContext : DbContext
     public virtual DbSet<JobSkill> JobSkills { get; set; }
 
     public virtual DbSet<Notification> Notifications { get; set; }
+
+    public virtual DbSet<OfferBenefit> OfferBenefits { get; set; }
+
+    public virtual DbSet<OfferCurrency> OfferCurrencies { get; set; }
+
+    public virtual DbSet<OfferTemplate> OfferTemplates { get; set; }
 
     public virtual DbSet<Permission> Permissions { get; set; }
 
@@ -97,6 +107,90 @@ public partial class AppDbContext : DbContext
             entity.HasOne(d => d.User).WithMany(p => p.Applications)
                 .HasForeignKey(d => d.UserId)
                 .HasConstraintName("applications_user_id_fkey");
+        });
+
+        modelBuilder.Entity<ApplicationOffer>(entity =>
+        {
+            entity.HasKey(e => e.Id).HasName("application_offers_pkey");
+
+            entity.ToTable("application_offers");
+
+            entity.HasIndex(e => e.ApplicationId, "application_offers_application_id_key").IsUnique();
+
+            entity.Property(e => e.Id)
+                .HasDefaultValueSql("gen_random_uuid()")
+                .HasColumnName("id");
+            entity.Property(e => e.ApplicationId).HasColumnName("application_id");
+            entity.Property(e => e.BaseSalary)
+                .HasPrecision(15, 2)
+                .HasColumnName("base_salary");
+            entity.Property(e => e.BonusDescription).HasColumnName("bonus_description");
+            entity.Property(e => e.CreatedAt)
+                .HasDefaultValueSql("CURRENT_TIMESTAMP")
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("created_at");
+            entity.Property(e => e.CurrencyCode)
+                .HasMaxLength(10)
+                .HasColumnName("currency_code");
+            entity.Property(e => e.EmploymentType)
+                .HasMaxLength(100)
+                .HasColumnName("employment_type");
+            entity.Property(e => e.EquityNotes).HasColumnName("equity_notes");
+            entity.Property(e => e.OfferTemplateId).HasColumnName("offer_template_id");
+            entity.Property(e => e.PersonalMessage).HasColumnName("personal_message");
+            entity.Property(e => e.ProbationPeriod)
+                .HasMaxLength(100)
+                .HasColumnName("probation_period");
+            entity.Property(e => e.ProposedStartDate)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("proposed_start_date");
+            entity.Property(e => e.ReportingManagerId).HasColumnName("reporting_manager_id");
+            entity.Property(e => e.SentAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("sent_at");
+            entity.Property(e => e.Status)
+                .HasConversion<string>()
+                .HasMaxLength(30)
+                .HasColumnName("status");
+            entity.Property(e => e.UpdatedAt)
+                .HasDefaultValueSql("CURRENT_TIMESTAMP")
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("updated_at");
+
+            entity.HasOne(d => d.Application).WithOne(p => p.Offer)
+                .HasForeignKey<ApplicationOffer>(d => d.ApplicationId)
+                .HasConstraintName("application_offers_application_id_fkey");
+
+            entity.HasOne(d => d.Currency).WithMany(p => p.ApplicationOffers)
+                .HasForeignKey(d => d.CurrencyCode)
+                .HasPrincipalKey(p => p.Code)
+                .HasConstraintName("application_offers_currency_code_fkey");
+
+            entity.HasOne(d => d.OfferTemplate).WithMany(p => p.ApplicationOffers)
+                .HasForeignKey(d => d.OfferTemplateId)
+                .HasConstraintName("application_offers_offer_template_id_fkey");
+
+            entity.HasOne(d => d.ReportingManagerNavigation).WithMany(p => p.ReportingManagerOffers)
+                .HasForeignKey(d => d.ReportingManagerId)
+                .HasConstraintName("application_offers_reporting_manager_id_fkey");
+        });
+
+        modelBuilder.Entity<ApplicationOfferBenefit>(entity =>
+        {
+            entity.HasKey(e => new { e.OfferId, e.BenefitId }).HasName("application_offer_benefits_pkey");
+
+            entity.ToTable("application_offer_benefits");
+
+            entity.Property(e => e.OfferId).HasColumnName("offer_id");
+            entity.Property(e => e.BenefitId).HasColumnName("benefit_id");
+
+            entity.HasOne(d => d.Benefit).WithMany(p => p.ApplicationOfferBenefits)
+                .HasForeignKey(d => d.BenefitId)
+                .HasConstraintName("application_offer_benefits_benefit_id_fkey");
+
+            entity.HasOne(d => d.Offer).WithMany(p => p.ApplicationOfferBenefits)
+                .HasForeignKey(d => d.OfferId)
+                .HasConstraintName("application_offer_benefits_offer_id_fkey");
         });
 
         modelBuilder.Entity<CandidateProfile>(entity =>
@@ -444,6 +538,66 @@ public partial class AppDbContext : DbContext
                 .HasForeignKey(d => d.UserId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("notifications_user_id_fkey");
+        });
+
+        modelBuilder.Entity<OfferBenefit>(entity =>
+        {
+            entity.HasKey(e => e.Id).HasName("offer_benefits_pkey");
+
+            entity.ToTable("offer_benefits");
+
+            entity.Property(e => e.Id)
+                .HasDefaultValueSql("gen_random_uuid()")
+                .HasColumnName("id");
+            entity.Property(e => e.Description).HasColumnName("description");
+            entity.Property(e => e.DisplayOrder).HasColumnName("display_order");
+            entity.Property(e => e.IsActive)
+                .HasDefaultValue(true)
+                .HasColumnName("is_active");
+            entity.Property(e => e.Name)
+                .HasMaxLength(120)
+                .HasColumnName("name");
+        });
+
+        modelBuilder.Entity<OfferCurrency>(entity =>
+        {
+            entity.HasKey(e => e.Code).HasName("offer_currencies_pkey");
+
+            entity.ToTable("offer_currencies");
+
+            entity.Property(e => e.Code)
+                .HasMaxLength(10)
+                .HasColumnName("code");
+            entity.Property(e => e.DisplayOrder).HasColumnName("display_order");
+            entity.Property(e => e.IsActive)
+                .HasDefaultValue(true)
+                .HasColumnName("is_active");
+            entity.Property(e => e.Name)
+                .HasMaxLength(100)
+                .HasColumnName("name");
+            entity.Property(e => e.Symbol)
+                .HasMaxLength(10)
+                .HasColumnName("symbol");
+        });
+
+        modelBuilder.Entity<OfferTemplate>(entity =>
+        {
+            entity.HasKey(e => e.Id).HasName("offer_templates_pkey");
+
+            entity.ToTable("offer_templates");
+
+            entity.Property(e => e.Id)
+                .HasDefaultValueSql("gen_random_uuid()")
+                .HasColumnName("id");
+            entity.Property(e => e.Description).HasColumnName("description");
+            entity.Property(e => e.DisplayOrder).HasColumnName("display_order");
+            entity.Property(e => e.IsActive)
+                .HasDefaultValue(true)
+                .HasColumnName("is_active");
+            entity.Property(e => e.Name)
+                .HasMaxLength(150)
+                .HasColumnName("name");
+            entity.Property(e => e.TemplateBody).HasColumnName("template_body");
         });
 
         modelBuilder.Entity<Permission>(entity =>

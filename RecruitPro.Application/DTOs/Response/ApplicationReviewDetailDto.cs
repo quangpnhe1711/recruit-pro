@@ -49,6 +49,7 @@ public class ApplicationReviewDetailDto
     public string ReferenceCode { get; set; } = string.Empty;
     public string StageLabel { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
+    public string? OfferStatus { get; set; }
     public DateTime? AppliedAt { get; set; }
     public string NextStep { get; set; } = string.Empty;
     public ApplicationReviewCandidateDto Candidate { get; set; } = new();

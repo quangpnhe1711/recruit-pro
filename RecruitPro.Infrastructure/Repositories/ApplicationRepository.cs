@@ -284,6 +284,11 @@ public class ApplicationRepository : IApplicationRepository
             .Include(application => application.Job)
                 .ThenInclude(job => job.JobSkills)
                     .ThenInclude(jobSkill => jobSkill.Skill)
+            .Include(application => application.Offer)
+                .ThenInclude(offer => offer.ReportingManagerNavigation)
+            .Include(application => application.Offer)
+                .ThenInclude(offer => offer.ApplicationOfferBenefits)
+                    .ThenInclude(link => link.Benefit)
             .Include(application => application.Interviews)
             .Include(application => application.ReviewedByNavigation)
                 .ThenInclude(user => user.UserRoles)
@@ -298,6 +303,8 @@ public class ApplicationRepository : IApplicationRepository
                     .ThenInclude(profile => profile.Skills)
             .Include(application => application.Job)
                 .ThenInclude(job => job.Department)
+            .Include(application => application.Offer)
+                .ThenInclude(offer => offer.ApplicationOfferBenefits)
             .Include(application => application.Interviews)
             .Include(application => application.ReviewedByNavigation);
     }

@@ -18,6 +18,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ICandidateProfileRepository, CandidateProfileRepository>();
         services.AddScoped<IJobRepository, JobRepository>();
         services.AddScoped<IApplicationRepository, ApplicationRepository>();
+        services.AddScoped<IOfferRepository, OfferRepository>();
         services.AddScoped<IInterviewRepository, InterviewRepository>();
         services.AddScoped<INotificationRepository, NotificationRepository>();
         services.AddScoped<ISkillRepository, SkillRepository>();
