@@ -28,9 +28,9 @@ namespace RecruitPro.Infrastructure.Migrations
 
             modelBuilder.Entity("CandidateSkill", b =>
                 {
-                    b.Property<Guid>("UserId")
+                    b.Property<Guid>("CandidateId")
                         .HasColumnType("uuid")
-                        .HasColumnName("user_id");
+                        .HasColumnName("candidate_id");
 
                     b.Property<Guid>("SkillId")
                         .HasColumnType("uuid")
@@ -76,9 +76,9 @@ namespace RecruitPro.Infrastructure.Migrations
                         .HasColumnName("applied_at")
                         .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
-                    b.Property<Guid>("CandidateId")
+                    b.Property<Guid>("UserId")
                         .HasColumnType("uuid")
-                        .HasColumnName("candidate_id");
+                        .HasColumnName("user_id");
 
                     b.Property<Guid>("JobId")
                         .HasColumnType("uuid")

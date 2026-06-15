@@ -13,4 +13,5 @@ public class CandidateProfileViewDto
     public string? Bio { get; set; }
     public string? Github { get; set; }
     public string? Linkedin { get; set; }
+    public decimal CompletionScore { get; set; }
 }

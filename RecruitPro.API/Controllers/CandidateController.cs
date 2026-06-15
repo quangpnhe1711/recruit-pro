@@ -75,6 +75,14 @@ public class CandidateController : ControllerBase
         return StatusCode(result.StatusCode, result);
     }
 
+    [HttpPost("api/candidate/profile/resume/parse")]
+    public async Task<IActionResult> ParseResume(IFormFile resume)
+    {
+        await using Stream resumeStream = resume.OpenReadStream();
+        var result = await _candidateService.ParseResumeAsync(User.GetCurrentUserId(), resumeStream, resume.FileName, resume.ContentType);
+        return StatusCode(result.StatusCode, result);
+    }
+
     [HttpPost("api/candidate/profile/resume")]
     public async Task<IActionResult> UploadResume(IFormFile resume)
     {

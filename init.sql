@@ -1382,3 +1382,232 @@ CREATE INDEX IF NOT EXISTS ix_copilot_saved_rules_job_user_updated_at ON public.
 CREATE INDEX IF NOT EXISTS ix_copilot_saved_rules_job_user_deleted ON public.copilot_saved_rules USING btree (job_id, user_id, is_deleted);
 CREATE INDEX IF NOT EXISTS ix_copilot_candidate_tags_job_tag ON public.copilot_candidate_tags USING btree (job_id, tag_name);
 
+--
+-- Candidate profile / job skill redesign patch
+-- Keeps init.sql aligned with the newer structured profile model.
+--
+
+ALTER TABLE public.candidate_profiles
+    ADD COLUMN IF NOT EXISTS experience_entries_json text,
+    ADD COLUMN IF NOT EXISTS education_records_json text,
+    ADD COLUMN IF NOT EXISTS certification_records_json text,
+    ADD COLUMN IF NOT EXISTS language_records_json text;
+
+ALTER TABLE public.job_skills
+    ALTER COLUMN min_years_experience TYPE numeric(5,1)
+    USING min_years_experience::numeric(5,1);
+
+CREATE TABLE IF NOT EXISTS public.candidate_resumes (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    candidate_profile_id uuid NOT NULL,
+    storage_key text NOT NULL,
+    file_name character varying(255) NOT NULL,
+    version integer NOT NULL,
+    upload_date timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    is_current boolean DEFAULT false NOT NULL
+);
+
+ALTER TABLE public.candidate_resumes OWNER TO postgres;
+
+CREATE TABLE IF NOT EXISTS public.candidate_projects (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    candidate_profile_id uuid NOT NULL,
+    name character varying(255) NOT NULL,
+    role character varying(255),
+    description text,
+    technologies_json text,
+    start_month integer NOT NULL,
+    start_year integer NOT NULL,
+    end_month integer,
+    end_year integer,
+    is_current boolean DEFAULT false NOT NULL
+);
+
+ALTER TABLE public.candidate_projects OWNER TO postgres;
+
+CREATE TABLE IF NOT EXISTS public.candidate_skill_details (
+    candidate_id uuid NOT NULL,
+    skill_id uuid NOT NULL,
+    years_of_experience numeric(5,1)
+);
+
+ALTER TABLE public.candidate_skill_details OWNER TO postgres;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'candidate_resumes_pkey'
+    ) THEN
+        ALTER TABLE ONLY public.candidate_resumes
+            ADD CONSTRAINT candidate_resumes_pkey PRIMARY KEY (id);
+    END IF;
+END $$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'candidate_projects_pkey'
+    ) THEN
+        ALTER TABLE ONLY public.candidate_projects
+            ADD CONSTRAINT candidate_projects_pkey PRIMARY KEY (id);
+    END IF;
+END $$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'candidate_skill_details_pkey'
+    ) THEN
+        ALTER TABLE ONLY public.candidate_skill_details
+            ADD CONSTRAINT candidate_skill_details_pkey PRIMARY KEY (candidate_id, skill_id);
+    END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS ix_candidate_resumes_candidate_profile_id
+    ON public.candidate_resumes USING btree (candidate_profile_id, upload_date DESC);
+
+CREATE INDEX IF NOT EXISTS ix_candidate_projects_candidate_profile_id
+    ON public.candidate_projects USING btree (candidate_profile_id, start_year DESC, start_month DESC);
+
+CREATE INDEX IF NOT EXISTS ix_candidate_skill_details_skill_id
+    ON public.candidate_skill_details USING btree (skill_id);
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'candidate_resumes_candidate_profile_id_fkey'
+    ) THEN
+        ALTER TABLE ONLY public.candidate_resumes
+            ADD CONSTRAINT candidate_resumes_candidate_profile_id_fkey
+            FOREIGN KEY (candidate_profile_id) REFERENCES public.candidate_profiles(id) ON DELETE CASCADE;
+    END IF;
+END $$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'candidate_projects_candidate_profile_id_fkey'
+    ) THEN
+        ALTER TABLE ONLY public.candidate_projects
+            ADD CONSTRAINT candidate_projects_candidate_profile_id_fkey
+            FOREIGN KEY (candidate_profile_id) REFERENCES public.candidate_profiles(id) ON DELETE CASCADE;
+    END IF;
+END $$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'candidate_skill_details_candidate_id_fkey'
+    ) THEN
+        ALTER TABLE ONLY public.candidate_skill_details
+            ADD CONSTRAINT candidate_skill_details_candidate_id_fkey
+            FOREIGN KEY (candidate_id) REFERENCES public.candidate_profiles(id) ON DELETE CASCADE;
+    END IF;
+END $$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'candidate_skill_details_skill_id_fkey'
+    ) THEN
+        ALTER TABLE ONLY public.candidate_skill_details
+            ADD CONSTRAINT candidate_skill_details_skill_id_fkey
+            FOREIGN KEY (skill_id) REFERENCES public.skills(id) ON DELETE CASCADE;
+    END IF;
+END $$;
+
+INSERT INTO public.candidate_resumes (
+    id,
+    candidate_profile_id,
+    storage_key,
+    file_name,
+    version,
+    upload_date,
+    is_current
+)
+SELECT
+    gen_random_uuid(),
+    cp.id,
+    cp.resume_url,
+    regexp_replace(split_part(cp.resume_url, '/', array_length(string_to_array(cp.resume_url, '/'), 1)), '^[^_]*_', ''),
+    1,
+    CURRENT_TIMESTAMP,
+    true
+FROM public.candidate_profiles cp
+WHERE cp.resume_url IS NOT NULL
+  AND NOT EXISTS (
+      SELECT 1
+      FROM public.candidate_resumes cr
+      WHERE cr.candidate_profile_id = cp.id
+        AND cr.is_current = true
+  );
+
+INSERT INTO public.candidate_skill_details (
+    candidate_id,
+    skill_id,
+    years_of_experience
+)
+SELECT
+    cs.candidate_id,
+    cs.skill_id,
+    CASE
+        WHEN cp.experience_years IS NULL THEN NULL
+        ELSE cp.experience_years::numeric(5,1)
+    END
+FROM public.candidate_skills cs
+INNER JOIN public.candidate_profiles cp
+    ON cp.id = cs.candidate_id
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM public.candidate_skill_details csd
+    WHERE csd.candidate_id = cs.candidate_id
+      AND csd.skill_id = cs.skill_id
+);
+
+UPDATE public.candidate_profiles cp
+SET education_records_json = json_build_array(
+        json_build_object(
+            'id', md5(cp.id::text || '-education'),
+            'school', cp.education,
+            'degree', cp.current_position,
+            'fieldOfStudy', NULL,
+            'startYear', NULL,
+            'endYear', NULL,
+            'description', cp.education
+        )
+    )::text
+WHERE cp.education IS NOT NULL
+  AND cp.education_records_json IS NULL;
+
+UPDATE public.candidate_profiles cp
+SET language_records_json = json_build_array(
+        json_build_object(
+            'id', md5(cp.id::text || '-english'),
+            'name', 'English',
+            'proficiency', 'Working'
+        )
+    )::text
+WHERE cp.language_records_json IS NULL
+  AND EXISTS (
+      SELECT 1
+      FROM public.candidate_skills cs
+      INNER JOIN public.skills s
+          ON s.id = cs.skill_id
+      WHERE cs.candidate_id = cp.id
+        AND lower(s.name) = 'english'
+  );
+

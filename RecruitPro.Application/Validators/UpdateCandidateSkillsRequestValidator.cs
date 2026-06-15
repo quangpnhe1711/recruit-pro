@@ -7,6 +7,10 @@ public class UpdateCandidateSkillsRequestValidator : AbstractValidator<UpdateCan
 {
     public UpdateCandidateSkillsRequestValidator()
     {
-        RuleFor(request => request.SkillIds).NotNull();
+        RuleFor(request => request)
+            .Must(request => request.SkillIds != null || request.Skills != null)
+            .WithMessage("At least one skill payload must be provided.");
+
+        RuleForEach(request => request.Skills).SetValidator(new CandidateSkillUpsertRequestValidator());
     }
 }

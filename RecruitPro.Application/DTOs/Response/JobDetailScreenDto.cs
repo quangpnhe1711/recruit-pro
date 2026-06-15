@@ -8,11 +8,14 @@ public class JobDetailScreenDto
     public DateTime? PostedAt { get; set; }
     public string Status { get; set; } = string.Empty;
     public SalaryRangeDto SalaryRange { get; set; } = new();
+    public string SalaryLabel { get; set; } = string.Empty;
     public string Department { get; set; } = string.Empty;
     public string JobType { get; set; } = string.Empty;
     public int? VacancyCount { get; set; }
     public List<string> Description { get; set; } = [];
     public List<string> Requirements { get; set; } = [];
+    public List<JobSkillDto> RequiredSkills { get; set; } = [];
+    public List<JobSkillDto> NiceToHaveSkills { get; set; } = [];
     public List<JobSkillDto> Skills { get; set; } = [];
     public ApplicationSummaryDto ApplicationSummary { get; set; } = new();
 }

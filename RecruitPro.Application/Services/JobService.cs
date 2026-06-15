@@ -73,10 +73,10 @@ public class JobService : IJobService
         {
             SalaryRanges =
             [
-                new SalaryRangeDto { Label = "$50k - $80k", Min = 50000, Max = 80000 },
-                new SalaryRangeDto { Label = "$80k - $120k", Min = 80000, Max = 120000 },
-                new SalaryRangeDto { Label = "$120k - $180k", Min = 120000, Max = 180000 },
-                new SalaryRangeDto { Label = "$180k+", Min = 180000, Max = null }
+                new SalaryRangeDto { Label = "15.000.000 - 30.000.000 VNĐ", Min = 15000000, Max = 30000000 },
+                new SalaryRangeDto { Label = "30.000.000 - 50.000.000 VNĐ", Min = 30000000, Max = 50000000 },
+                new SalaryRangeDto { Label = "50.000.000 - 80.000.000 VNĐ", Min = 50000000, Max = 80000000 },
+                new SalaryRangeDto { Label = "80.000.000+ VNĐ", Min = 80000000, Max = null }
             ],
             EmploymentTypes = ["Full-time", "Contract", "Internship", "Part-time"],
             Skills = skills.ToList()
@@ -128,20 +128,23 @@ public class JobService : IJobService
             {
                 Min = job.SalaryMin,
                 Max = job.SalaryMax,
-                Label = "USD"
+                Label = "VND"
             },
+            SalaryLabel = BuildSalaryLabel(job.SalaryMin, job.SalaryMax),
             Department = job.Department?.Name ?? string.Empty,
             JobType = $"{MapEmploymentType(job.EmploymentType)}, {job.WorkMode}",
             VacancyCount = job.VacancyCount,
             Description = ParseJsonArray(job.Description),
             Requirements = ParseJsonArray(job.Requirements),
-            Skills = job.JobSkills.Select(jobSkill => new JobSkillDto
-            {
-                Id = jobSkill.SkillId,
-                Name = jobSkill.Skill.Name,
-                MinYearsExperience = jobSkill.MinYearsExperience,
-                IsRequired = jobSkill.IsRequired
-            }).ToList(),
+            RequiredSkills = job.JobSkills
+                .Where(jobSkill => jobSkill.IsRequired)
+                .Select(MapJobSkill)
+                .ToList(),
+            NiceToHaveSkills = job.JobSkills
+                .Where(jobSkill => !jobSkill.IsRequired)
+                .Select(MapJobSkill)
+                .ToList(),
+            Skills = job.JobSkills.Select(MapJobSkill).ToList(),
             ApplicationSummary = new ApplicationSummaryDto
             {
                 TotalApplications = applications.Count,
@@ -329,7 +332,9 @@ public class JobService : IJobService
                     SkillId = jobSkill.SkillId.ToString(),
                     Name = jobSkill.Skill.Name,
                     MinYearsExperience = jobSkill.MinYearsExperience,
-                    IsRequired = jobSkill.IsRequired
+                    IsRequired = jobSkill.IsRequired,
+                    SkillType = jobSkill.SkillType,
+                    MinimumYearsOfExperience = jobSkill.MinimumYearsOfExperience
                 }).ToList(),
             Insights = new ManagerJobApprovalInsightDto
             {
@@ -385,7 +390,7 @@ public class JobService : IJobService
     public async Task<ApiResponse<HrCreateJobResponseDto>> CreateJobAsync(CreateJobRequest request, Guid currentUserId)
     {
         Department? department = await ResolveDepartmentAsync(request.DepartmentId, request.Department);
-        List<JobSkill> jobSkills = await BuildJobSkillsAsync(request.SkillIds, request.Skills);
+        List<JobSkill> jobSkills = await BuildJobSkillsAsync(request.SkillRequirements, request.SkillIds, request.Skills);
         List<string> benefits = request.Benefits.Count > 0 ? request.Benefits : request.Responsibilities;
 
         Job job = new()
@@ -515,9 +520,9 @@ public class JobService : IJobService
             job.Deadline = request.Deadline;
         }
 
-        if (request.SkillIds != null || request.Skills != null)
+        if (request.SkillRequirements != null || request.SkillIds != null || request.Skills != null)
         {
-            List<JobSkill> jobSkills = await BuildJobSkillsAsync(request.SkillIds ?? [], request.Skills ?? []);
+            List<JobSkill> jobSkills = await BuildJobSkillsAsync(request.SkillRequirements, request.SkillIds ?? [], request.Skills ?? []);
             job.JobSkills.Clear();
             foreach (JobSkill jobSkill in jobSkills)
             {
@@ -615,18 +620,15 @@ public class JobService : IJobService
             Location = job.Location,
             WorkMode = job.WorkMode.ToString(),
             Requirements = ParseJsonArray(job.Requirements),
-            Skills = job.JobSkills.Select(jobSkill => new JobSkillDto
-            {
-                Id = jobSkill.SkillId,
-                Name = jobSkill.Skill.Name,
-                MinYearsExperience = jobSkill.MinYearsExperience,
-                IsRequired = jobSkill.IsRequired
-            }).ToList(),
+            RequiredSkills = job.JobSkills.Where(jobSkill => jobSkill.IsRequired).Select(MapJobSkill).ToList(),
+            NiceToHaveSkills = job.JobSkills.Where(jobSkill => !jobSkill.IsRequired).Select(MapJobSkill).ToList(),
+            Skills = job.JobSkills.Select(MapJobSkill).ToList(),
             SalaryMin = job.SalaryMin,
             SalaryMax = job.SalaryMax,
             Deadline = job.Deadline,
             JobType = $"{MapEmploymentType(job.EmploymentType)} / {job.WorkMode}",
-            SalaryRange = $"{job.SalaryMin:0}-{job.SalaryMax:0}",
+            SalaryRange = BuildSalaryLabel(job.SalaryMin, job.SalaryMax),
+            SalaryLabel = BuildSalaryLabel(job.SalaryMin, job.SalaryMax),
             Posted = job.CreatedAt?.ToString("yyyy-MM-dd") ?? string.Empty,
             VacancyCount = job.VacancyCount,
             Status = job.Status.ToString(),
@@ -750,8 +752,44 @@ public class JobService : IJobService
         return null;
     }
 
-    private async Task<List<JobSkill>> BuildJobSkillsAsync(IReadOnlyCollection<string> skillIds, IReadOnlyCollection<string> skillNames)
+    private async Task<List<JobSkill>> BuildJobSkillsAsync(
+        IReadOnlyCollection<JobSkillRequirementRequest>? skillRequirements,
+        IReadOnlyCollection<string> skillIds,
+        IReadOnlyCollection<string> skillNames)
     {
+        if (skillRequirements != null && skillRequirements.Count > 0)
+        {
+            List<Skill> allSkills = (await _jobRepository.GetSkillsAsync()).ToList();
+
+            return skillRequirements
+                .Select(requirement =>
+                {
+                    Skill? matchedSkill = !string.IsNullOrWhiteSpace(requirement.SkillId) && Guid.TryParse(requirement.SkillId, out Guid requirementSkillId)
+                        ? allSkills.FirstOrDefault(skill => skill.Id == requirementSkillId)
+                        : allSkills.FirstOrDefault(skill =>
+                            !string.IsNullOrWhiteSpace(requirement.SkillName)
+                            && skill.Name.Equals(requirement.SkillName, StringComparison.OrdinalIgnoreCase));
+
+                    return matchedSkill == null
+                        ? null
+                        : new JobSkill
+                        {
+                            JobId = Guid.Empty,
+                            SkillId = matchedSkill.Id,
+                            Skill = matchedSkill,
+                            IsRequired = !string.Equals(requirement.SkillType, "NiceToHave", StringComparison.OrdinalIgnoreCase),
+                            MinYearsExperience = requirement.MinimumYearsOfExperience
+                        };
+                })
+                .Where(jobSkill => jobSkill != null)
+                .GroupBy(jobSkill => jobSkill!.SkillId)
+                .Select(group => group
+                    .OrderByDescending(jobSkill => jobSkill!.IsRequired)
+                    .ThenByDescending(jobSkill => jobSkill!.MinYearsExperience ?? 0)
+                    .First()!)
+                .ToList();
+        }
+
         List<Guid> parsedSkillIds = skillIds
             .Select(value => Guid.TryParse(value, out Guid parsed) ? parsed : Guid.Empty)
             .Where(value => value != Guid.Empty)
@@ -769,9 +807,24 @@ public class JobService : IJobService
             .Select(skill => new JobSkill
             {
                 JobId = Guid.Empty,
-                SkillId = skill.Id
+                SkillId = skill.Id,
+                Skill = skill,
+                IsRequired = true
             })
             .ToList();
+    }
+
+    private static JobSkillDto MapJobSkill(JobSkill jobSkill)
+    {
+        return new JobSkillDto
+        {
+            Id = jobSkill.SkillId,
+            Name = jobSkill.Skill.Name,
+            MinYearsExperience = jobSkill.MinYearsExperience,
+            IsRequired = jobSkill.IsRequired,
+            SkillType = jobSkill.SkillType,
+            MinimumYearsOfExperience = jobSkill.MinimumYearsOfExperience
+        };
     }
 
     private static EmploymentType ParseEmploymentType(string? value)
@@ -818,5 +871,25 @@ public class JobService : IJobService
             EmploymentType.Contract => "Contract",
             _ => type.ToString()
         };
+    }
+
+    private static string BuildSalaryLabel(decimal? salaryMin, decimal? salaryMax)
+    {
+        if (!salaryMin.HasValue && !salaryMax.HasValue)
+        {
+            return "Thương lượng";
+        }
+
+        if (salaryMin.HasValue && salaryMax.HasValue)
+        {
+            return $"{salaryMin.Value:N0} - {salaryMax.Value:N0} VNĐ";
+        }
+
+        if (salaryMin.HasValue)
+        {
+            return $"{salaryMin.Value:N0}+ VNĐ";
+        }
+
+        return $"Up to {salaryMax!.Value:N0} VNĐ";
     }
 }

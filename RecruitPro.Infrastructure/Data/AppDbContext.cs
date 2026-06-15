@@ -26,6 +26,12 @@ public partial class AppDbContext : DbContext
 
     public virtual DbSet<CandidateProfile> CandidateProfiles { get; set; }
 
+    public virtual DbSet<CandidateProject> CandidateProjects { get; set; }
+
+    public virtual DbSet<CandidateResume> CandidateResumes { get; set; }
+
+    public virtual DbSet<CandidateSkillDetail> CandidateSkillDetails { get; set; }
+
     public virtual DbSet<CopilotCandidateTag> CopilotCandidateTags { get; set; }
 
     public virtual DbSet<CopilotConversation> CopilotConversations { get; set; }
@@ -209,14 +215,18 @@ public partial class AppDbContext : DbContext
                 .HasColumnName("id");
             entity.Property(e => e.Address).HasColumnName("address");
             entity.Property(e => e.Bio).HasColumnName("bio");
+            entity.Property(e => e.CertificationRecordsJson).HasColumnName("certification_records_json");
             entity.Property(e => e.CurrentPosition)
                 .HasMaxLength(255)
                 .HasColumnName("current_position");
             entity.Property(e => e.Education).HasColumnName("education");
+            entity.Property(e => e.EducationRecordsJson).HasColumnName("education_records_json");
+            entity.Property(e => e.ExperienceEntriesJson).HasColumnName("experience_entries_json");
             entity.Property(e => e.ExperienceYears)
                 .HasDefaultValue(0)
                 .HasColumnName("experience_years");
             entity.Property(e => e.GithubUrl).HasColumnName("github_url");
+            entity.Property(e => e.LanguageRecordsJson).HasColumnName("language_records_json");
             entity.Property(e => e.LinkedinUrl).HasColumnName("linkedin_url");
             entity.Property(e => e.ResumeUrl).HasColumnName("resume_url");
             entity.Property(e => e.UserId).HasColumnName("user_id");
@@ -241,6 +251,85 @@ public partial class AppDbContext : DbContext
                         j.IndexerProperty<Guid>("CandidateId").HasColumnName("candidate_id");
                         j.IndexerProperty<Guid>("SkillId").HasColumnName("skill_id");
                     });
+
+            entity.HasMany(d => d.Projects).WithOne(p => p.CandidateProfile)
+                .HasForeignKey(p => p.CandidateProfileId)
+                .HasConstraintName("candidate_projects_candidate_profile_id_fkey");
+
+            entity.HasMany(d => d.Resumes).WithOne(p => p.CandidateProfile)
+                .HasForeignKey(p => p.CandidateProfileId)
+                .HasConstraintName("candidate_resumes_candidate_profile_id_fkey");
+
+            entity.HasMany(d => d.CandidateSkillDetails).WithOne(p => p.Candidate)
+                .HasForeignKey(p => p.CandidateId)
+                .HasConstraintName("candidate_skill_details_candidate_id_fkey");
+        });
+
+        modelBuilder.Entity<CandidateProject>(entity =>
+        {
+            entity.HasKey(e => e.Id).HasName("candidate_projects_pkey");
+
+            entity.ToTable("candidate_projects");
+
+            entity.Property(e => e.Id)
+                .HasDefaultValueSql("gen_random_uuid()")
+                .HasColumnName("id");
+            entity.Property(e => e.CandidateProfileId).HasColumnName("candidate_profile_id");
+            entity.Property(e => e.Description).HasColumnName("description");
+            entity.Property(e => e.EndMonth).HasColumnName("end_month");
+            entity.Property(e => e.EndYear).HasColumnName("end_year");
+            entity.Property(e => e.IsCurrent)
+                .HasDefaultValue(false)
+                .HasColumnName("is_current");
+            entity.Property(e => e.Name)
+                .HasMaxLength(255)
+                .HasColumnName("name");
+            entity.Property(e => e.Role)
+                .HasMaxLength(255)
+                .HasColumnName("role");
+            entity.Property(e => e.StartMonth).HasColumnName("start_month");
+            entity.Property(e => e.StartYear).HasColumnName("start_year");
+            entity.Property(e => e.TechnologiesJson).HasColumnName("technologies_json");
+        });
+
+        modelBuilder.Entity<CandidateResume>(entity =>
+        {
+            entity.HasKey(e => e.Id).HasName("candidate_resumes_pkey");
+
+            entity.ToTable("candidate_resumes");
+
+            entity.Property(e => e.Id)
+                .HasDefaultValueSql("gen_random_uuid()")
+                .HasColumnName("id");
+            entity.Property(e => e.CandidateProfileId).HasColumnName("candidate_profile_id");
+            entity.Property(e => e.FileName)
+                .HasMaxLength(255)
+                .HasColumnName("file_name");
+            entity.Property(e => e.IsCurrent)
+                .HasDefaultValue(false)
+                .HasColumnName("is_current");
+            entity.Property(e => e.StorageKey).HasColumnName("storage_key");
+            entity.Property(e => e.UploadDate)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("upload_date");
+            entity.Property(e => e.Version).HasColumnName("version");
+        });
+
+        modelBuilder.Entity<CandidateSkillDetail>(entity =>
+        {
+            entity.HasKey(e => new { e.CandidateId, e.SkillId }).HasName("candidate_skill_details_pkey");
+
+            entity.ToTable("candidate_skill_details");
+
+            entity.Property(e => e.CandidateId).HasColumnName("candidate_id");
+            entity.Property(e => e.SkillId).HasColumnName("skill_id");
+            entity.Property(e => e.YearsOfExperience)
+                .HasPrecision(5, 1)
+                .HasColumnName("years_of_experience");
+
+            entity.HasOne(d => d.Skill).WithMany(p => p.CandidateSkillDetails)
+                .HasForeignKey(d => d.SkillId)
+                .HasConstraintName("candidate_skill_details_skill_id_fkey");
         });
 
         modelBuilder.Entity<CopilotConversation>(entity =>
@@ -511,7 +600,9 @@ public partial class AppDbContext : DbContext
             entity.Property(e => e.IsRequired)
                 .HasDefaultValue(true)
                 .HasColumnName("is_required");
-            entity.Property(e => e.MinYearsExperience).HasColumnName("min_years_experience");
+            entity.Property(e => e.MinYearsExperience)
+                .HasPrecision(5, 1)
+                .HasColumnName("min_years_experience");
 
             entity.HasOne(d => d.Job).WithMany(p => p.JobSkills)
                 .HasForeignKey(d => d.JobId)

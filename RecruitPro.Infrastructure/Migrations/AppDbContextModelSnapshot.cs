@@ -25,9 +25,9 @@ namespace RecruitPro.Infrastructure.Migrations
 
             modelBuilder.Entity("CandidateSkill", b =>
                 {
-                    b.Property<Guid>("UserId")
+                    b.Property<Guid>("CandidateId")
                         .HasColumnType("uuid")
-                        .HasColumnName("user_id");
+                        .HasColumnName("candidate_id");
 
                     b.Property<Guid>("SkillId")
                         .HasColumnType("uuid")
@@ -77,9 +77,9 @@ namespace RecruitPro.Infrastructure.Migrations
                         .HasColumnType("text")
                         .HasColumnName("cover_letter");
 
-                    b.Property<Guid>("CandidateId")
+                    b.Property<Guid>("UserId")
                         .HasColumnType("uuid")
-                        .HasColumnName("candidate_id");
+                        .HasColumnName("user_id");
 
                     b.Property<Guid>("JobId")
                         .HasColumnType("uuid")

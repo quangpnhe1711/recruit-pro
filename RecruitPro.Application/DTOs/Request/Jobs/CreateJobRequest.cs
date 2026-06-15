@@ -29,11 +29,13 @@ public class CreateJobRequest
 
     public List<string> SkillIds { get; set; } = [];
 
+    public List<JobSkillRequirementRequest> SkillRequirements { get; set; } = [];
+
     public decimal? SalaryMin { get; set; }
 
     public decimal? SalaryMax { get; set; }
 
-    public string Currency { get; set; } = "USD";
+    public string Currency { get; set; } = "VND";
 
     public int VacancyCount { get; set; } = 1;
 
@@ -42,4 +44,12 @@ public class CreateJobRequest
     public List<string> Benefits { get; set; } = [];
 
     public DateTime? Deadline { get; set; }
+}
+
+public class JobSkillRequirementRequest
+{
+    public string? SkillId { get; set; }
+    public string? SkillName { get; set; }
+    public string SkillType { get; set; } = "Required";
+    public decimal? MinimumYearsOfExperience { get; set; }
 }

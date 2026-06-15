@@ -47,8 +47,10 @@ public class ManagerJobApprovalSkillDto
 {
     public string SkillId { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
-    public int? MinYearsExperience { get; set; }
+    public decimal? MinYearsExperience { get; set; }
     public bool IsRequired { get; set; }
+    public string SkillType { get; set; } = string.Empty;
+    public decimal? MinimumYearsOfExperience { get; set; }
 }
 
 public class ManagerJobApprovalInsightDto

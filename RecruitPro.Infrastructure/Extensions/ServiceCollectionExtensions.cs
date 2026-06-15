@@ -27,6 +27,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<IJwtService, JwtService>();
         services.AddSingleton<IResumeTextExtractor, PdfResumeTextExtractor>();
+        services.AddHttpClient<IResumeParsingAiProvider, OpenAiResumeParserProvider>();
         services.AddHttpClient<IAiCopilotProvider, OpenAiCopilotProvider>();
         services.AddSingleton<IMinioClient>(serviceProvider =>
         {

@@ -19,4 +19,5 @@ public class PatchJobRequest
     public DateTime? Deadline { get; set; }
     public List<string>? SkillIds { get; set; }
     public List<string>? Skills { get; set; }
+    public List<JobSkillRequirementRequest>? SkillRequirements { get; set; }
 }

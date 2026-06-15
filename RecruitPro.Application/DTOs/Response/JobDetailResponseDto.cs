@@ -23,6 +23,10 @@ namespace RecruitPro.Application.DTOs.Response
 
         public List<string> Requirements { get; set; } = [];
 
+        public List<JobSkillDto> RequiredSkills { get; set; } = [];
+
+        public List<JobSkillDto> NiceToHaveSkills { get; set; } = [];
+
         public List<JobSkillDto> Skills { get; set; } = [];
 
         public decimal? SalaryMin { get; set; }
@@ -34,6 +38,8 @@ namespace RecruitPro.Application.DTOs.Response
         public string JobType { get; set; }
 
         public string SalaryRange { get; set; }
+
+        public string SalaryLabel { get; set; } = string.Empty;
 
         public string Posted { get; set; }
 

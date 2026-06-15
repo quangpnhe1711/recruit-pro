@@ -21,6 +21,14 @@ public partial class CandidateProfile
 
     public string? ResumeUrl { get; set; }
 
+    public string? ExperienceEntriesJson { get; set; }
+
+    public string? EducationRecordsJson { get; set; }
+
+    public string? CertificationRecordsJson { get; set; }
+
+    public string? LanguageRecordsJson { get; set; }
+
     public string? GithubUrl { get; set; }
 
     public string? LinkedinUrl { get; set; }
@@ -28,4 +36,10 @@ public partial class CandidateProfile
     public virtual User User { get; set; } = null!;
 
     public virtual ICollection<Skill> Skills { get; set; } = new List<Skill>();
+
+    public virtual ICollection<CandidateProject> Projects { get; set; } = new List<CandidateProject>();
+
+    public virtual ICollection<CandidateResume> Resumes { get; set; } = new List<CandidateResume>();
+
+    public virtual ICollection<CandidateSkillDetail> CandidateSkillDetails { get; set; } = new List<CandidateSkillDetail>();
 }

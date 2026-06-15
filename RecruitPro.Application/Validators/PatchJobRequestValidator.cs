@@ -27,7 +27,8 @@ public class PatchJobRequestValidator : AbstractValidator<PatchJobRequest>
                 request.SalaryMax.HasValue ||
                 request.Deadline.HasValue ||
                 request.SkillIds != null ||
-                request.Skills != null)
+                request.Skills != null ||
+                request.SkillRequirements != null)
             .WithMessage("At least one field must be provided.");
     }
 }

@@ -14,6 +14,14 @@ public class SkillRepository : ISkillRepository
         _context = context;
     }
 
+    public async Task<IReadOnlyList<Skill>> GetAllAsync()
+    {
+        return await _context.Skills
+            .AsNoTracking()
+            .OrderBy(skill => skill.Name)
+            .ToListAsync();
+    }
+
     public async Task<IReadOnlyList<Skill>> GetByIdsAsync(IReadOnlyCollection<Guid> skillIds)
     {
         if (skillIds.Count == 0)

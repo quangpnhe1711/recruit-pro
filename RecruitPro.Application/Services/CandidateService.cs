@@ -1,6 +1,8 @@
 using AutoMapper;
 using ClosedXML.Excel;
 using Microsoft.Extensions.Logging;
+using System.IO.Compression;
+using System.Net;
 using System.Net.Mail;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -23,6 +25,8 @@ public class CandidateService : ICandidateService
     private readonly IUnitOfWork _unitOfWork;
     private readonly IFileStorageService _fileStorage;
     private readonly IEmailService _emailService;
+    private readonly IResumeTextExtractor _resumeTextExtractor;
+    private readonly IResumeParsingAiProvider _resumeParsingAiProvider;
     private readonly IMapper _mapper;
     private readonly ILogger<CandidateService> _logger;
     private const string CandidateRoleName = "Candidate";
@@ -30,6 +34,10 @@ public class CandidateService : ICandidateService
     private const string ImportedNotesPrefix = "[Imported Notes]";
     private const string CandidateLoginUrl = "http://localhost:5173/login";
     private static readonly Regex PhonePattern = new(@"^0\d{9}$", RegexOptions.Compiled);
+    private static readonly Regex EmailExtractorPattern = new(@"(?<email>[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex PhoneExtractorPattern = new(@"(?<phone>(?:\+?84|0)[\s\-.]?(?:\d[\s\-.]?){8,10})", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex UrlPattern = new(@"https?://[^\s)]+", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex YearPattern = new(@"\b(19|20)\d{2}\b", RegexOptions.Compiled);
 
     public CandidateService(
         ICandidateProfileRepository candidateRepository,
@@ -38,6 +46,8 @@ public class CandidateService : ICandidateService
         IUnitOfWork unitOfWork,
         IFileStorageService fileStorage,
         IEmailService emailService,
+        IResumeTextExtractor resumeTextExtractor,
+        IResumeParsingAiProvider resumeParsingAiProvider,
         IMapper mapper,
         ILogger<CandidateService> logger)
     {
@@ -47,6 +57,8 @@ public class CandidateService : ICandidateService
         _unitOfWork = unitOfWork;
         _fileStorage = fileStorage;
         _emailService = emailService;
+        _resumeTextExtractor = resumeTextExtractor;
+        _resumeParsingAiProvider = resumeParsingAiProvider;
         _mapper = mapper;
         _logger = logger;
     }
@@ -75,6 +87,7 @@ public class CandidateService : ICandidateService
             if (request.Profile != null)
             {
                 string? resumeObjectKey = null;
+                CandidateResume? initialResume = null;
                 if (resumeStream != null && !string.IsNullOrWhiteSpace(resumeFileName))
                 {
                     uploadedObjectName = $"resumes/{user.Id}/{Guid.NewGuid()}_{Path.GetFileName(resumeFileName)}";
@@ -82,6 +95,16 @@ public class CandidateService : ICandidateService
                         resumeStream,
                         uploadedObjectName,
                         resumeContentType ?? "application/octet-stream");
+
+                    initialResume = new CandidateResume
+                    {
+                        Id = Guid.NewGuid(),
+                        FileName = Path.GetFileName(resumeFileName),
+                        StorageKey = resumeObjectKey,
+                        UploadDate = DbDateTime.Now,
+                        Version = 1,
+                        IsCurrent = true
+                    };
                 }
 
                 profile = new CandidateProfile
@@ -97,6 +120,12 @@ public class CandidateService : ICandidateService
                     LinkedinUrl = request.Profile.LinkedInUrl,
                     ResumeUrl = resumeObjectKey
                 };
+
+                if (initialResume != null)
+                {
+                    initialResume.CandidateProfileId = profile.Id;
+                    profile.Resumes.Add(initialResume);
+                }
 
                 await _candidateRepository.SaveAsync(profile);
             }
@@ -130,7 +159,10 @@ public class CandidateService : ICandidateService
     {
         (IReadOnlyList<CandidateProfile> candidates, int total) = await _candidateRepository.GetPagedAsync(page, pageSize, keyword);
 
-        IEnumerable<HrCandidateListItemDto> items = candidates.Select(candidate =>
+        IEnumerable<CandidateProfile> visibleCandidates = candidates.Where(candidate =>
+            candidate.User.Applications.Any() || IsProfileComplete(candidate));
+
+        IEnumerable<HrCandidateListItemDto> items = visibleCandidates.Select(candidate =>
         {
             string[] names = candidate.User.FullName.Split(' ', StringSplitOptions.RemoveEmptyEntries);
             Domain.Entities.Application? latestApplication = candidate.User.Applications.OrderByDescending(application => application.AppliedAt).FirstOrDefault();
@@ -211,7 +243,12 @@ public class CandidateService : ICandidateService
             Profile = baseProfile.Profile,
             Skills = baseProfile.Skills,
             ExperienceEntries = baseProfile.ExperienceEntries,
+            Projects = baseProfile.Projects,
+            Educations = baseProfile.Educations,
+            Certifications = baseProfile.Certifications,
+            Languages = baseProfile.Languages,
             Resume = baseProfile.Resume,
+            ResumeHistory = baseProfile.ResumeHistory,
             ApplicationHistory = applicationHistory,
             InterviewHistory = interviewHistory
         });
@@ -350,6 +387,41 @@ public class CandidateService : ICandidateService
         profile.GithubUrl = request.Github ?? profile.GithubUrl;
         profile.LinkedinUrl = request.Linkedin ?? profile.LinkedinUrl;
 
+        if (request.Skills != null)
+        {
+            await SynchronizeCandidateSkillsAsync(profile, request.Skills);
+        }
+
+        if (request.ExperienceEntries != null)
+        {
+            profile.ExperienceEntriesJson = SerializeDocuments(request.ExperienceEntries.Select(MapExperienceRequest).ToList());
+        }
+
+        if (request.Projects != null)
+        {
+            profile.Projects.Clear();
+            foreach (CandidateProject project in request.Projects.Select(MapProjectRequest))
+            {
+                project.CandidateProfileId = profile.Id;
+                profile.Projects.Add(project);
+            }
+        }
+
+        if (request.Educations != null)
+        {
+            profile.EducationRecordsJson = SerializeDocuments(request.Educations.Select(MapEducationRequest).ToList());
+        }
+
+        if (request.Certifications != null)
+        {
+            profile.CertificationRecordsJson = SerializeDocuments(request.Certifications.Select(MapCertificationRequest).ToList());
+        }
+
+        if (request.Languages != null)
+        {
+            profile.LanguageRecordsJson = SerializeDocuments(request.Languages.Select(MapLanguageRequest).ToList());
+        }
+
         await _unitOfWork.BeginTransactionAsync();
         await _candidateRepository.UpdateAsync(profile);
         await _userRepository.UpdateAsync(profile.User);
@@ -362,13 +434,14 @@ public class CandidateService : ICandidateService
     public async Task<ApiResponse<CandidateProfileResponseDto>> UpdateSkillsAsync(Guid userId, UpdateCandidateSkillsRequest request)
     {
         CandidateProfile profile = await GetProfileEntityAsync(userId);
-        List<Guid> skillIds = request.SkillIds
-            .Select(value => Guid.TryParse(value, out Guid parsed) ? parsed : Guid.Empty)
-            .Where(value => value != Guid.Empty)
-            .Distinct()
-            .ToList();
-        IReadOnlyList<Skill> skills = await _skillRepository.GetByIdsAsync(skillIds);
-        profile.Skills = skills.ToList();
+        List<CandidateSkillUpsertRequest> requestedSkills = request.Skills.Count > 0
+            ? request.Skills
+            : request.SkillIds.Select(skillId => new CandidateSkillUpsertRequest
+            {
+                SkillId = skillId
+            }).ToList();
+
+        await SynchronizeCandidateSkillsAsync(profile, requestedSkills);
 
         await _unitOfWork.BeginTransactionAsync();
         await _candidateRepository.UpdateAsync(profile);
@@ -383,7 +456,7 @@ public class CandidateService : ICandidateService
         CandidateProfile profile = await GetProfileEntityAsync(userId);
         List<CandidateExperienceDocument> experiences = LoadExperiences(profile);
         experiences.Add(MapExperienceRequest(request, null));
-        profile.Education = SerializeExperiences(experiences);
+        profile.ExperienceEntriesJson = SerializeDocuments(experiences);
 
         await SaveProfileAsync(profile);
         return ApiResponse<CandidateProfileResponseDto>.Ok(await MapProfileAsync(profile));
@@ -401,7 +474,7 @@ public class CandidateService : ICandidateService
 
         int index = experiences.IndexOf(existing);
         experiences[index] = MapExperienceRequest(request, existing.Id);
-        profile.Education = SerializeExperiences(experiences);
+        profile.ExperienceEntriesJson = SerializeDocuments(experiences);
 
         await SaveProfileAsync(profile);
         return ApiResponse<CandidateProfileResponseDto>.Ok(await MapProfileAsync(profile));
@@ -417,19 +490,78 @@ public class CandidateService : ICandidateService
             throw new NotFoundException("Experience entry not found.");
         }
 
-        profile.Education = SerializeExperiences(experiences);
+        profile.ExperienceEntriesJson = SerializeDocuments(experiences);
 
         await SaveProfileAsync(profile);
         return ApiResponse<CandidateProfileResponseDto>.Ok(await MapProfileAsync(profile));
     }
 
+    public async Task<ApiResponse<CandidateResumeParseResponseDto>> ParseResumeAsync(Guid userId, Stream resumeStream, string fileName, string? contentType = null)
+    {
+        if (resumeStream == null || string.IsNullOrWhiteSpace(fileName))
+        {
+            return ApiResponse<CandidateResumeParseResponseDto>.BadRequest("Please select a valid resume file.");
+        }
+
+        CandidateProfile profile = await GetProfileEntityAsync(userId);
+        string extractedText;
+        try
+        {
+            extractedText = await ExtractResumeTextAsync(resumeStream, fileName);
+        }
+        catch (NotSupportedException exception)
+        {
+            _logger.LogWarning(exception, "Unsupported resume format for parsing: {FileName}", fileName);
+            return ApiResponse<CandidateResumeParseResponseDto>.BadRequest(exception.Message);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Failed to parse resume file {FileName} for user {UserId}.", fileName, userId);
+            return ApiResponse<CandidateResumeParseResponseDto>.BadRequest("We could not read this resume file. Please upload a PDF or DOCX resume.");
+        }
+
+        if (string.IsNullOrWhiteSpace(extractedText))
+        {
+            return ApiResponse<CandidateResumeParseResponseDto>.BadRequest("We could not extract readable text from this resume.");
+        }
+
+        IReadOnlyList<Skill> allSkills = await _skillRepository.GetAllAsync();
+        ResumeParsingAiResult aiResult = await _resumeParsingAiProvider.TryParseResumeAsync(extractedText, allSkills);
+        CandidateResumeParseResponseDto preview = aiResult.UsedAi && aiResult.Data != null
+            ? BuildResumeParsePreviewFromAi(aiResult.Data, extractedText, allSkills, profile, aiResult.ModelName)
+            : BuildResumeParsePreview(extractedText, allSkills, profile);
+        preview.ModelName ??= aiResult.ModelName;
+        preview.AiFallbackReason = aiResult.UsedAi ? null : aiResult.FailureReason;
+        return ApiResponse<CandidateResumeParseResponseDto>.Ok(
+            preview,
+            aiResult.UsedAi
+                ? "Resume parsed with AI assistance. Please review and confirm the extracted information."
+                : "Resume parsed with fallback parsing. Please review and confirm the extracted information.");
+    }
+
     public async Task<ApiResponse<ResumeUploadResponseDto>> UploadResumeAsync(Guid userId, Stream resumeStream, string fileName, string contentType)
     {
         CandidateProfile profile = await GetProfileEntityAsync(userId);
-        string? previousResumeObjectKey = profile.ResumeUrl;
         DateTime uploadedAt = DbDateTime.Now;
         string objectName = $"resumes/{userId}/{Guid.NewGuid()}_{Path.GetFileName(fileName)}";
         string uploadedObjectKey = await _fileStorage.UploadFileAsync(resumeStream, objectName, contentType);
+        foreach (CandidateResume existingResume in profile.Resumes)
+        {
+            existingResume.IsCurrent = false;
+        }
+
+        int nextVersion = profile.Resumes.Count == 0 ? 1 : profile.Resumes.Max(resume => resume.Version) + 1;
+        CandidateResume candidateResume = new()
+        {
+            CandidateProfileId = profile.Id,
+            FileName = Path.GetFileName(fileName),
+            StorageKey = uploadedObjectKey,
+            UploadDate = uploadedAt,
+            Version = nextVersion,
+            IsCurrent = true
+        };
+
+        profile.Resumes.Add(candidateResume);
         profile.ResumeUrl = uploadedObjectKey;
         profile.User.UpdatedAt = uploadedAt;
 
@@ -448,19 +580,15 @@ public class CandidateService : ICandidateService
             throw;
         }
 
-        if (!string.IsNullOrWhiteSpace(previousResumeObjectKey)
-            && !previousResumeObjectKey.Equals(uploadedObjectKey, StringComparison.Ordinal))
-        {
-            await _fileStorage.DeleteFileAsync(previousResumeObjectKey);
-        }
-
         _logger.LogInformation("Updated resume for candidate user {UserId} with profile {ProfileId}.", userId, profile.Id);
 
         return ApiResponse<ResumeUploadResponseDto>.Ok(new ResumeUploadResponseDto
         {
-            ResumeId = profile.Id.ToString(),
-            FileName = ExtractFileName(uploadedObjectKey),
-            UploadedAt = uploadedAt
+            ResumeId = candidateResume.Id.ToString(),
+            FileName = candidateResume.FileName,
+            UploadedAt = uploadedAt,
+            Version = candidateResume.Version,
+            IsCurrent = true
         });
     }
 
@@ -471,17 +599,18 @@ public class CandidateService : ICandidateService
             return ApiResponse<ResumeFileResponseDto>.NotFound("Resume not found.");
         }
 
-        CandidateProfile? profile = await _candidateRepository.GetByIdAsync(resumeGuid);
-        if (profile == null || string.IsNullOrWhiteSpace(profile.ResumeUrl))
+        CandidateProfile? profile = await _candidateRepository.GetByResumeIdAsync(resumeGuid);
+        CandidateResume? resume = profile?.Resumes.FirstOrDefault(item => item.Id == resumeGuid);
+        if (profile == null || resume == null)
         {
             return ApiResponse<ResumeFileResponseDto>.NotFound("Resume not found.");
         }
 
-        string presignedUrl = await _fileStorage.GetPresignedUrlAsync(profile.ResumeUrl);
+        string presignedUrl = await _fileStorage.GetPresignedUrlAsync(resume.StorageKey);
         return ApiResponse<ResumeFileResponseDto>.Ok(new ResumeFileResponseDto
         {
-            ResumeId = profile.Id.ToString(),
-            FileName = ExtractFileName(profile.ResumeUrl),
+            ResumeId = resume.Id.ToString(),
+            FileName = resume.FileName,
             FileUrl = presignedUrl
         });
     }
@@ -500,19 +629,34 @@ public class CandidateService : ICandidateService
     private async Task<CandidateProfileResponseDto> MapProfileAsync(CandidateProfile profile)
     {
         List<CandidateExperienceDocument> experiences = LoadExperiences(profile);
-        CandidateResumeDto? resume = null;
+        List<CandidateEducationDocument> educations = LoadDocuments<CandidateEducationDocument>(profile.EducationRecordsJson);
+        List<CandidateCertificationDocument> certifications = LoadDocuments<CandidateCertificationDocument>(profile.CertificationRecordsJson);
+        List<CandidateLanguageDocument> languages = LoadDocuments<CandidateLanguageDocument>(profile.LanguageRecordsJson);
+        Dictionary<Guid, decimal?> skillYearsMap = profile.CandidateSkillDetails
+            .GroupBy(item => item.SkillId)
+            .ToDictionary(group => group.Key, group => group.First().YearsOfExperience);
+        List<CandidateResumeDto> resumeHistory = [];
 
-        if (!string.IsNullOrWhiteSpace(profile.ResumeUrl))
+        foreach (CandidateResume candidateResume in profile.Resumes.OrderByDescending(item => item.Version))
         {
-            string presignedUrl = await _fileStorage.GetPresignedUrlAsync(profile.ResumeUrl);
-            resume = new CandidateResumeDto
+            resumeHistory.Add(await MapResumeAsync(candidateResume));
+        }
+
+        if (resumeHistory.Count == 0 && !string.IsNullOrWhiteSpace(profile.ResumeUrl))
+        {
+            resumeHistory.Add(new CandidateResumeDto
             {
                 Id = profile.Id.ToString(),
                 FileName = ExtractFileName(profile.ResumeUrl),
-                FileUrl = presignedUrl,
-                UploadedAt = profile.User.UpdatedAt ?? profile.User.CreatedAt ?? DbDateTime.Now
-            };
+                FileUrl = await _fileStorage.GetPresignedUrlAsync(profile.ResumeUrl),
+                UploadedAt = profile.User.UpdatedAt ?? profile.User.CreatedAt ?? DbDateTime.Now,
+                Version = 1,
+                IsCurrent = true
+            });
         }
+
+        CandidateResumeDto? resume = resumeHistory.FirstOrDefault(item => item.IsCurrent) ?? resumeHistory.FirstOrDefault();
+        decimal completionScore = CalculateProfileCompletionScore(profile, experiences, educations, certifications, languages, resume);
 
         return new CandidateProfileResponseDto
         {
@@ -528,13 +672,17 @@ public class CandidateService : ICandidateService
                 MemberSince = (profile.User.CreatedAt ?? DbDateTime.Now).ToString("yyyy-MM-dd"),
                 Bio = profile.Bio,
                 Github = profile.GithubUrl,
-                Linkedin = profile.LinkedinUrl
+                Linkedin = profile.LinkedinUrl,
+                CompletionScore = completionScore
             },
             Skills = profile.Skills.Select(skill => new CandidateSkillViewDto
             {
                 Id = skill.Id.ToString(),
                 Label = skill.Name,
-                Active = true
+                Active = true,
+                YearsOfExperience = skillYearsMap.TryGetValue(skill.Id, out decimal? yearsOfExperience)
+                    ? yearsOfExperience
+                    : null
             }).ToList(),
             ExperienceEntries = experiences
                 .OrderByDescending(item => item.Period.StartYear)
@@ -555,7 +703,54 @@ public class CandidateService : ICandidateService
                     Bullets = item.Bullets
                 })
                 .ToList(),
-            Resume = resume
+            Projects = profile.Projects
+                .OrderByDescending(item => item.StartYear)
+                .ThenByDescending(item => item.StartMonth)
+                .Select(item => new CandidateProjectDto
+                {
+                    Id = item.Id.ToString(),
+                    Name = item.Name,
+                    Role = item.Role,
+                    Description = item.Description,
+                    Technologies = LoadStringList(item.TechnologiesJson),
+                    Period = new CandidateExperiencePeriodDto
+                    {
+                        StartMonth = item.StartMonth,
+                        StartYear = item.StartYear,
+                        EndMonth = item.EndMonth,
+                        EndYear = item.EndYear,
+                        IsCurrent = item.IsCurrent
+                    }
+                })
+                .ToList(),
+            Educations = educations.Select(item => new CandidateEducationDto
+            {
+                Id = item.Id,
+                School = item.School,
+                Degree = item.Degree,
+                FieldOfStudy = item.FieldOfStudy,
+                StartYear = item.StartYear,
+                EndYear = item.EndYear,
+                Description = item.Description
+            }).ToList(),
+            Certifications = certifications.Select(item => new CandidateCertificationDto
+            {
+                Id = item.Id,
+                Name = item.Name,
+                Issuer = item.Issuer,
+                IssuedOn = item.IssuedOn,
+                ExpiresOn = item.ExpiresOn,
+                CredentialId = item.CredentialId,
+                CredentialUrl = item.CredentialUrl
+            }).ToList(),
+            Languages = languages.Select(item => new CandidateLanguageDto
+            {
+                Id = item.Id,
+                Name = item.Name,
+                Proficiency = item.Proficiency
+            }).ToList(),
+            Resume = resume,
+            ResumeHistory = resumeHistory
         };
     }
 
@@ -569,6 +764,11 @@ public class CandidateService : ICandidateService
 
     private static List<CandidateExperienceDocument> LoadExperiences(CandidateProfile profile)
     {
+        if (!string.IsNullOrWhiteSpace(profile.ExperienceEntriesJson))
+        {
+            return LoadDocuments<CandidateExperienceDocument>(profile.ExperienceEntriesJson);
+        }
+
         if (string.IsNullOrWhiteSpace(profile.Education))
         {
             return [];
@@ -585,9 +785,9 @@ public class CandidateService : ICandidateService
         }
     }
 
-    private static string? SerializeExperiences(List<CandidateExperienceDocument> experiences)
+    private static string? SerializeDocuments<TDocument>(List<TDocument> documents)
     {
-        return experiences.Count == 0 ? null : JsonSerializer.Serialize(experiences);
+        return documents.Count == 0 ? null : JsonSerializer.Serialize(documents);
     }
 
     private static CandidateExperienceDocument MapExperienceRequest(UpsertCandidateExperienceRequest request, string? existingId)
@@ -612,6 +812,911 @@ public class CandidateService : ICandidateService
         };
     }
 
+    private static CandidateExperienceDocument MapExperienceRequest(CandidateExperienceUpsertItemRequest request)
+    {
+        return new CandidateExperienceDocument
+        {
+            Id = string.IsNullOrWhiteSpace(request.Id) ? Guid.NewGuid().ToString("N") : request.Id,
+            Title = request.Title.Trim(),
+            Company = request.Company.Trim(),
+            Period = new CandidateExperiencePeriodDocument
+            {
+                StartMonth = request.Period.StartMonth,
+                StartYear = request.Period.StartYear,
+                EndMonth = request.Period.IsCurrent ? null : request.Period.EndMonth,
+                EndYear = request.Period.IsCurrent ? null : request.Period.EndYear,
+                IsCurrent = request.Period.IsCurrent
+            },
+            Bullets = request.Bullets
+                .Select(value => value.Trim())
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .ToList()
+        };
+    }
+
+    private static CandidateProject MapProjectRequest(CandidateProjectUpsertRequest request)
+    {
+        return new CandidateProject
+        {
+            Id = string.IsNullOrWhiteSpace(request.Id) ? Guid.NewGuid() : Guid.Parse(request.Id),
+            Name = request.Name.Trim(),
+            Role = NormalizeOptionalText(request.Role),
+            Description = NormalizeOptionalText(request.Description),
+            TechnologiesJson = SerializeDocuments(request.Technologies
+                .Select(value => value.Trim())
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList()),
+            StartMonth = request.Period.StartMonth,
+            StartYear = request.Period.StartYear,
+            EndMonth = request.Period.IsCurrent ? null : request.Period.EndMonth,
+            EndYear = request.Period.IsCurrent ? null : request.Period.EndYear,
+            IsCurrent = request.Period.IsCurrent
+        };
+    }
+
+    private static CandidateEducationDocument MapEducationRequest(CandidateEducationUpsertRequest request)
+    {
+        return new CandidateEducationDocument
+        {
+            Id = string.IsNullOrWhiteSpace(request.Id) ? Guid.NewGuid().ToString("N") : request.Id,
+            School = request.School.Trim(),
+            Degree = request.Degree.Trim(),
+            FieldOfStudy = NormalizeOptionalText(request.FieldOfStudy),
+            StartYear = request.StartYear,
+            EndYear = request.EndYear,
+            Description = NormalizeOptionalText(request.Description)
+        };
+    }
+
+    private static CandidateCertificationDocument MapCertificationRequest(CandidateCertificationUpsertRequest request)
+    {
+        return new CandidateCertificationDocument
+        {
+            Id = string.IsNullOrWhiteSpace(request.Id) ? Guid.NewGuid().ToString("N") : request.Id,
+            Name = request.Name.Trim(),
+            Issuer = NormalizeOptionalText(request.Issuer),
+            IssuedOn = request.IssuedOn,
+            ExpiresOn = request.ExpiresOn,
+            CredentialId = NormalizeOptionalText(request.CredentialId),
+            CredentialUrl = NormalizeOptionalText(request.CredentialUrl)
+        };
+    }
+
+    private static CandidateLanguageDocument MapLanguageRequest(CandidateLanguageUpsertRequest request)
+    {
+        return new CandidateLanguageDocument
+        {
+            Id = string.IsNullOrWhiteSpace(request.Id) ? Guid.NewGuid().ToString("N") : request.Id,
+            Name = request.Name.Trim(),
+            Proficiency = request.Proficiency.Trim()
+        };
+    }
+
+    private async Task SynchronizeCandidateSkillsAsync(CandidateProfile profile, List<CandidateSkillUpsertRequest> requestedSkills)
+    {
+        List<Guid> skillIds = requestedSkills
+            .Select(value => Guid.TryParse(value.SkillId, out Guid parsed) ? parsed : Guid.Empty)
+            .Where(value => value != Guid.Empty)
+            .Distinct()
+            .ToList();
+        IReadOnlyList<Skill> skills = await _skillRepository.GetByIdsAsync(skillIds);
+        profile.Skills = skills.ToList();
+        profile.CandidateSkillDetails.Clear();
+
+        foreach (Skill skill in skills)
+        {
+            CandidateSkillUpsertRequest? request = requestedSkills.FirstOrDefault(item =>
+                Guid.TryParse(item.SkillId, out Guid parsedSkillId) && parsedSkillId == skill.Id);
+
+            profile.CandidateSkillDetails.Add(new CandidateSkillDetail
+            {
+                CandidateId = profile.Id,
+                SkillId = skill.Id,
+                YearsOfExperience = request?.YearsOfExperience
+            });
+        }
+    }
+
+    private static List<TDocument> LoadDocuments<TDocument>(string? jsonString)
+    {
+        if (string.IsNullOrWhiteSpace(jsonString))
+        {
+            return [];
+        }
+
+        try
+        {
+            List<TDocument>? parsed = JsonSerializer.Deserialize<List<TDocument>>(jsonString);
+            return parsed ?? [];
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
+    private static List<string> LoadStringList(string? jsonString)
+    {
+        return LoadDocuments<string>(jsonString)
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .ToList();
+    }
+
+    private async Task<CandidateResumeDto> MapResumeAsync(CandidateResume candidateResume)
+    {
+        return new CandidateResumeDto
+        {
+            Id = candidateResume.Id.ToString(),
+            FileName = candidateResume.FileName,
+            FileUrl = await _fileStorage.GetPresignedUrlAsync(candidateResume.StorageKey),
+            UploadedAt = candidateResume.UploadDate,
+            Version = candidateResume.Version,
+            IsCurrent = candidateResume.IsCurrent
+        };
+    }
+
+    private static decimal CalculateProfileCompletionScore(
+        CandidateProfile profile,
+        IReadOnlyCollection<CandidateExperienceDocument> experiences,
+        IReadOnlyCollection<CandidateEducationDocument> educations,
+        IReadOnlyCollection<CandidateCertificationDocument> certifications,
+        IReadOnlyCollection<CandidateLanguageDocument> languages,
+        CandidateResumeDto? currentResume)
+    {
+        decimal score = 0;
+
+        if (!string.IsNullOrWhiteSpace(profile.User.FullName)
+            && !string.IsNullOrWhiteSpace(profile.User.Email)
+            && !string.IsNullOrWhiteSpace(profile.Address))
+        {
+            score += 20;
+        }
+
+        if (!string.IsNullOrWhiteSpace(profile.CurrentPosition) && !string.IsNullOrWhiteSpace(profile.Bio))
+        {
+            score += 15;
+        }
+
+        if (profile.Skills.Count > 0)
+        {
+            score += 20;
+        }
+
+        if (experiences.Count > 0)
+        {
+            score += 15;
+        }
+
+        if (profile.Projects.Count > 0)
+        {
+            score += 10;
+        }
+
+        if (educations.Count > 0)
+        {
+            score += 10;
+        }
+
+        if (certifications.Count > 0 || languages.Count > 0)
+        {
+            score += 5;
+        }
+
+        if (currentResume != null)
+        {
+            score += 5;
+        }
+
+        return Math.Min(score, 100);
+    }
+
+    private static bool IsProfileComplete(CandidateProfile profile)
+    {
+        List<CandidateExperienceDocument> experiences = LoadExperiences(profile);
+        List<CandidateEducationDocument> educations = LoadDocuments<CandidateEducationDocument>(profile.EducationRecordsJson);
+        List<CandidateCertificationDocument> certifications = LoadDocuments<CandidateCertificationDocument>(profile.CertificationRecordsJson);
+        List<CandidateLanguageDocument> languages = LoadDocuments<CandidateLanguageDocument>(profile.LanguageRecordsJson);
+        CandidateResumeDto? currentResume = profile.Resumes.Any(item => item.IsCurrent) || !string.IsNullOrWhiteSpace(profile.ResumeUrl)
+            ? new CandidateResumeDto()
+            : null;
+
+        return CalculateProfileCompletionScore(profile, experiences, educations, certifications, languages, currentResume) >= 70;
+    }
+
+    private async Task<string> ExtractResumeTextAsync(Stream resumeStream, string fileName)
+    {
+        string extension = Path.GetExtension(fileName).Trim().ToLowerInvariant();
+        if (resumeStream.CanSeek)
+        {
+            resumeStream.Position = 0;
+        }
+
+        return extension switch
+        {
+            ".pdf" => await _resumeTextExtractor.ExtractTextAsync(resumeStream),
+            ".docx" => await ExtractDocxTextAsync(resumeStream),
+            ".txt" => await ReadPlainTextAsync(resumeStream),
+            ".doc" => throw new NotSupportedException("Legacy .doc resumes are not supported for parsing yet. Please upload a PDF or DOCX file."),
+            _ => throw new NotSupportedException("Unsupported resume format. Please upload a PDF or DOCX file.")
+        };
+    }
+
+    private static async Task<string> ReadPlainTextAsync(Stream stream)
+    {
+        if (stream.CanSeek)
+        {
+            stream.Position = 0;
+        }
+
+        using StreamReader reader = new(stream, leaveOpen: true);
+        string content = await reader.ReadToEndAsync();
+        return NormalizeResumeText(content);
+    }
+
+    private static async Task<string> ExtractDocxTextAsync(Stream stream)
+    {
+        if (stream.CanSeek)
+        {
+            stream.Position = 0;
+        }
+
+        using ZipArchive archive = new(stream, ZipArchiveMode.Read, leaveOpen: true);
+        ZipArchiveEntry? documentEntry = archive.GetEntry("word/document.xml");
+        if (documentEntry == null)
+        {
+            return string.Empty;
+        }
+
+        await using Stream entryStream = documentEntry.Open();
+        using StreamReader reader = new(entryStream);
+        string xml = await reader.ReadToEndAsync();
+        string text = Regex.Replace(xml, "<w:tab[^>]*/>", "\t", RegexOptions.IgnoreCase);
+        text = Regex.Replace(text, "</w:p>", Environment.NewLine, RegexOptions.IgnoreCase);
+        text = Regex.Replace(text, "<[^>]+>", " ");
+        text = WebUtility.HtmlDecode(text);
+        return NormalizeResumeText(text);
+    }
+
+    private CandidateResumeParseResponseDto BuildResumeParsePreview(string extractedText, IReadOnlyList<Skill> allSkills, CandidateProfile profile)
+    {
+        string normalizedText = NormalizeResumeText(extractedText);
+        List<string> lines = normalizedText
+            .Split('\n')
+            .Select(line => line.Trim())
+            .Where(line => !string.IsNullOrWhiteSpace(line))
+            .ToList();
+        Dictionary<string, List<string>> sections = ExtractResumeSections(lines);
+
+        string email = ExtractEmail(normalizedText) ?? profile.User.Email;
+        string phone = ExtractPhone(normalizedText) ?? profile.User.Phone ?? string.Empty;
+        string github = ExtractUrl(normalizedText, "github.com") ?? profile.GithubUrl ?? string.Empty;
+        string linkedin = ExtractUrl(normalizedText, "linkedin.com") ?? profile.LinkedinUrl ?? string.Empty;
+        string name = ExtractCandidateName(lines) ?? profile.User.FullName;
+        string headline = ExtractHeadline(lines, name) ?? profile.CurrentPosition ?? string.Empty;
+        string location = ExtractLocation(lines) ?? profile.Address ?? string.Empty;
+        string bio = ExtractSummary(sections) ?? profile.Bio ?? string.Empty;
+
+        List<CandidateSkillViewDto> parsedSkills = MatchSkills(normalizedText, allSkills)
+            .Select(skill => new CandidateSkillViewDto
+            {
+                Id = skill.Id.ToString(),
+                Label = skill.Name,
+                Active = true,
+                YearsOfExperience = ExtractYearsOfExperienceForSkill(normalizedText, skill.Name)
+            })
+            .ToList();
+
+        List<CandidateExperienceDto> experiences = ParseExperienceEntries(sections.TryGetValue("experience", out List<string>? experienceLines) ? experienceLines : lines, "Experience", defaultCompany: "Not specified");
+        List<CandidateProjectDto> projects = ParseProjects(sections.TryGetValue("projects", out List<string>? projectLines) ? projectLines : []);
+        List<CandidateEducationDto> educations = ParseEducations(sections.TryGetValue("education", out List<string>? educationLines) ? educationLines : []);
+        List<CandidateCertificationDto> certifications = ParseCertifications(sections.TryGetValue("certifications", out List<string>? certificationLines) ? certificationLines : []);
+        List<CandidateLanguageDto> languages = ParseLanguages(sections.TryGetValue("languages", out List<string>? languageLines) ? languageLines : []);
+
+        List<string> notes = [];
+        notes.Add($"Detected {parsedSkills.Count} skills from the resume.");
+        if (experiences.Count > 0)
+        {
+            notes.Add($"Detected {experiences.Count} work experience entries.");
+        }
+
+        if (projects.Count > 0)
+        {
+            notes.Add($"Detected {projects.Count} projects.");
+        }
+
+        if (educations.Count > 0)
+        {
+            notes.Add($"Detected {educations.Count} education records.");
+        }
+
+        if (certifications.Count > 0)
+        {
+            notes.Add($"Detected {certifications.Count} certifications.");
+        }
+
+        if (languages.Count > 0)
+        {
+            notes.Add($"Detected {languages.Count} languages.");
+        }
+
+        if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(email))
+        {
+            notes.Add("Some personal information could not be confidently extracted. Please review carefully before saving.");
+        }
+
+        return new CandidateResumeParseResponseDto
+        {
+            UsedAi = false,
+            ParsingMode = "Heuristic",
+            Profile = new CandidateResumeParseProfileDto
+            {
+                Name = name,
+                Headline = headline,
+                Email = email,
+                Phone = phone,
+                Location = location,
+                Bio = bio,
+                Github = github,
+                Linkedin = linkedin
+            },
+            Skills = parsedSkills,
+            ExperienceEntries = experiences,
+            Projects = projects,
+            Educations = educations,
+            Certifications = certifications,
+            Languages = languages,
+            Notes = notes,
+            ExtractedTextPreview = string.Join(Environment.NewLine, lines.Take(40))
+        };
+    }
+
+    private CandidateResumeParseResponseDto BuildResumeParsePreviewFromAi(
+        CandidateResumeAiParseDto aiPreview,
+        string extractedText,
+        IReadOnlyList<Skill> allSkills,
+        CandidateProfile profile,
+        string? modelName)
+    {
+        Dictionary<string, Skill> skillLookup = allSkills
+            .GroupBy(skill => skill.Name.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+
+        List<CandidateSkillViewDto> parsedSkills = aiPreview.Skills
+            .Where(skill => !string.IsNullOrWhiteSpace(skill.Name))
+            .Select(skill =>
+            {
+                Skill? matchedSkill = skillLookup.TryGetValue(skill.Name.Trim(), out Skill? foundSkill)
+                    ? foundSkill
+                    : skillLookup.Values.FirstOrDefault(value =>
+                        value.Name.Contains(skill.Name.Trim(), StringComparison.OrdinalIgnoreCase)
+                        || skill.Name.Trim().Contains(value.Name, StringComparison.OrdinalIgnoreCase));
+
+                return new CandidateSkillViewDto
+                {
+                    Id = matchedSkill?.Id.ToString() ?? Guid.NewGuid().ToString(),
+                    Label = matchedSkill?.Name ?? skill.Name.Trim(),
+                    Active = true,
+                    YearsOfExperience = skill.YearsOfExperience
+                };
+            })
+            .DistinctBy(skill => skill.Label.ToLowerInvariant())
+            .ToList();
+
+        return new CandidateResumeParseResponseDto
+        {
+            UsedAi = true,
+            ParsingMode = "AI",
+            ModelName = modelName,
+            Profile = new CandidateResumeParseProfileDto
+            {
+                Name = aiPreview.Profile.Name ?? profile.User.FullName,
+                Headline = aiPreview.Profile.Headline ?? profile.CurrentPosition ?? string.Empty,
+                Email = aiPreview.Profile.Email ?? profile.User.Email,
+                Phone = aiPreview.Profile.Phone ?? profile.User.Phone ?? string.Empty,
+                Location = aiPreview.Profile.Location ?? profile.Address ?? string.Empty,
+                Bio = aiPreview.Profile.Bio ?? profile.Bio ?? string.Empty,
+                Github = aiPreview.Profile.Github ?? profile.GithubUrl ?? string.Empty,
+                Linkedin = aiPreview.Profile.Linkedin ?? profile.LinkedinUrl ?? string.Empty
+            },
+            Skills = parsedSkills,
+            ExperienceEntries = aiPreview.ExperienceEntries
+                .Select(item => new CandidateExperienceDto
+                {
+                    Id = Guid.NewGuid().ToString("N"),
+                    Title = string.IsNullOrWhiteSpace(item.Title) ? "Experience" : item.Title.Trim(),
+                    Company = string.IsNullOrWhiteSpace(item.Company) ? "Not specified" : item.Company.Trim(),
+                    Period = new CandidateExperiencePeriodDto
+                    {
+                        StartMonth = item.StartMonth ?? 1,
+                        StartYear = item.StartYear ?? DateTime.UtcNow.Year,
+                        EndMonth = item.IsCurrent ? null : item.EndMonth,
+                        EndYear = item.IsCurrent ? null : item.EndYear,
+                        IsCurrent = item.IsCurrent
+                    },
+                    Bullets = item.Bullets
+                        .Select(value => value.Trim())
+                        .Where(value => !string.IsNullOrWhiteSpace(value))
+                        .ToList()
+                })
+                .Where(item => !string.IsNullOrWhiteSpace(item.Title))
+                .ToList(),
+            Projects = aiPreview.Projects
+                .Select(item => new CandidateProjectDto
+                {
+                    Id = Guid.NewGuid().ToString(),
+                    Name = string.IsNullOrWhiteSpace(item.Name) ? "Project" : item.Name.Trim(),
+                    Role = NormalizeOptionalText(item.Role),
+                    Description = NormalizeOptionalText(item.Description),
+                    Technologies = item.Technologies
+                        .Select(value => value.Trim())
+                        .Where(value => !string.IsNullOrWhiteSpace(value))
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToList(),
+                    Period = new CandidateExperiencePeriodDto
+                    {
+                        StartMonth = item.StartMonth ?? 1,
+                        StartYear = item.StartYear ?? DateTime.UtcNow.Year,
+                        EndMonth = item.IsCurrent ? null : item.EndMonth,
+                        EndYear = item.IsCurrent ? null : item.EndYear,
+                        IsCurrent = item.IsCurrent
+                    }
+                })
+                .Where(item => !string.IsNullOrWhiteSpace(item.Name))
+                .ToList(),
+            Educations = aiPreview.Educations
+                .Select(item => new CandidateEducationDto
+                {
+                    Id = Guid.NewGuid().ToString("N"),
+                    School = item.School.Trim(),
+                    Degree = item.Degree.Trim(),
+                    FieldOfStudy = NormalizeOptionalText(item.FieldOfStudy),
+                    StartYear = item.StartYear,
+                    EndYear = item.EndYear,
+                    Description = NormalizeOptionalText(item.Description)
+                })
+                .Where(item => !string.IsNullOrWhiteSpace(item.School) && !string.IsNullOrWhiteSpace(item.Degree))
+                .ToList(),
+            Certifications = aiPreview.Certifications
+                .Select(item => new CandidateCertificationDto
+                {
+                    Id = Guid.NewGuid().ToString("N"),
+                    Name = item.Name.Trim(),
+                    Issuer = NormalizeOptionalText(item.Issuer),
+                    IssuedOn = item.IssuedOn,
+                    ExpiresOn = item.ExpiresOn,
+                    CredentialId = NormalizeOptionalText(item.CredentialId),
+                    CredentialUrl = NormalizeOptionalText(item.CredentialUrl)
+                })
+                .Where(item => !string.IsNullOrWhiteSpace(item.Name))
+                .ToList(),
+            Languages = aiPreview.Languages
+                .Select(item => new CandidateLanguageDto
+                {
+                    Id = Guid.NewGuid().ToString("N"),
+                    Name = item.Name.Trim(),
+                    Proficiency = string.IsNullOrWhiteSpace(item.Proficiency) ? "Unspecified" : item.Proficiency.Trim()
+                })
+                .Where(item => !string.IsNullOrWhiteSpace(item.Name))
+                .DistinctBy(item => item.Name.ToLowerInvariant())
+                .ToList(),
+            Notes = aiPreview.Notes.Count > 0
+                ? aiPreview.Notes
+                : ["AI parser extracted structured data from the resume. Please verify before saving."],
+            ExtractedTextPreview = string.Join(Environment.NewLine, NormalizeResumeText(extractedText).Split('\n').Take(40))
+        };
+    }
+
+    private static string NormalizeResumeText(string text)
+    {
+        string normalized = text.Replace("\r\n", "\n").Replace('\r', '\n');
+        normalized = Regex.Replace(normalized, @"[ \t]+", " ");
+        normalized = Regex.Replace(normalized, @"\n{3,}", "\n\n");
+        return normalized.Trim();
+    }
+
+    private static Dictionary<string, List<string>> ExtractResumeSections(List<string> lines)
+    {
+        Dictionary<string, List<string>> sections = new(StringComparer.OrdinalIgnoreCase);
+        string currentSection = "general";
+        sections[currentSection] = [];
+
+        foreach (string line in lines)
+        {
+            string? detectedSection = DetectSectionKey(line);
+            if (detectedSection != null)
+            {
+                currentSection = detectedSection;
+                if (!sections.ContainsKey(currentSection))
+                {
+                    sections[currentSection] = [];
+                }
+
+                continue;
+            }
+
+            sections[currentSection].Add(line);
+        }
+
+        return sections;
+    }
+
+    private static string? DetectSectionKey(string line)
+    {
+        string normalized = line.Trim().Trim(':').ToLowerInvariant();
+        if (normalized is "experience" or "work experience" or "employment history" or "professional experience")
+        {
+            return "experience";
+        }
+
+        if (normalized is "projects" or "personal projects" or "project experience")
+        {
+            return "projects";
+        }
+
+        if (normalized is "education" or "academic background")
+        {
+            return "education";
+        }
+
+        if (normalized is "skills" or "technical skills" or "core skills")
+        {
+            return "skills";
+        }
+
+        if (normalized is "certifications" or "licenses" or "awards")
+        {
+            return "certifications";
+        }
+
+        if (normalized is "languages" or "language")
+        {
+            return "languages";
+        }
+
+        if (normalized is "summary" or "profile" or "objective" or "about")
+        {
+            return "summary";
+        }
+
+        return null;
+    }
+
+    private static string? ExtractEmail(string text)
+    {
+        Match match = EmailExtractorPattern.Match(text);
+        return match.Success ? match.Groups["email"].Value.Trim() : null;
+    }
+
+    private static string? ExtractPhone(string text)
+    {
+        Match match = PhoneExtractorPattern.Match(text);
+        if (!match.Success)
+        {
+            return null;
+        }
+
+        string digits = Regex.Replace(match.Groups["phone"].Value, @"[^\d+]", string.Empty);
+        return digits.StartsWith("+84", StringComparison.Ordinal) ? "0" + digits[3..] : digits;
+    }
+
+    private static string? ExtractUrl(string text, string hostKeyword)
+    {
+        Match match = UrlPattern.Matches(text)
+            .FirstOrDefault(item => item.Value.Contains(hostKeyword, StringComparison.OrdinalIgnoreCase));
+        return match?.Value.Trim();
+    }
+
+    private static string? ExtractCandidateName(List<string> lines)
+    {
+        return lines
+            .Take(6)
+            .Select(line => line.Trim(' ', '-', '*', '\t'))
+            .FirstOrDefault(line =>
+                line.Length >= 4
+                && line.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length <= 5
+                && !line.Contains('@')
+                && !line.Contains("linkedin", StringComparison.OrdinalIgnoreCase)
+                && !line.Contains("github", StringComparison.OrdinalIgnoreCase)
+                && !line.Any(char.IsDigit));
+    }
+
+    private static string? ExtractHeadline(List<string> lines, string? name)
+    {
+        return lines
+            .SkipWhile(line => string.Equals(line, name, StringComparison.OrdinalIgnoreCase))
+            .Skip(1)
+            .FirstOrDefault(line =>
+                line.Length >= 4
+                && !line.Contains('@')
+                && !line.Contains("http", StringComparison.OrdinalIgnoreCase)
+                && !YearPattern.IsMatch(line));
+    }
+
+    private static string? ExtractLocation(List<string> lines)
+    {
+        return lines.FirstOrDefault(line =>
+            line.Contains("location", StringComparison.OrdinalIgnoreCase)
+            || line.Contains("address", StringComparison.OrdinalIgnoreCase)
+            || line.Contains("ho chi minh", StringComparison.OrdinalIgnoreCase)
+            || line.Contains("hanoi", StringComparison.OrdinalIgnoreCase)
+            || line.Contains("da nang", StringComparison.OrdinalIgnoreCase)
+            || line.Contains("vietnam", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string? ExtractSummary(Dictionary<string, List<string>> sections)
+    {
+        if (!sections.TryGetValue("summary", out List<string>? summaryLines) || summaryLines.Count == 0)
+        {
+            return null;
+        }
+
+        return string.Join(" ", summaryLines.Take(4));
+    }
+
+    private static List<Skill> MatchSkills(string text, IReadOnlyList<Skill> allSkills)
+    {
+        List<Skill> matches = [];
+        foreach (Skill skill in allSkills.OrderByDescending(item => item.Name.Length))
+        {
+            string escapedSkillName = Regex.Escape(skill.Name);
+            if (Regex.IsMatch(text, $@"(?<!\w){escapedSkillName}(?!\w)", RegexOptions.IgnoreCase))
+            {
+                matches.Add(skill);
+            }
+        }
+
+        return matches
+            .DistinctBy(skill => skill.Id)
+            .Take(20)
+            .ToList();
+    }
+
+    private static decimal? ExtractYearsOfExperienceForSkill(string text, string skillName)
+    {
+        string escapedSkillName = Regex.Escape(skillName);
+        string[] patterns =
+        [
+            $@"{escapedSkillName}[^\n\.]{{0,32}}?(?<years>\d+(?:\.\d+)?)\s*(?:\+)?\s*(?:years?|yrs?)",
+            $@"(?<years>\d+(?:\.\d+)?)\s*(?:\+)?\s*(?:years?|yrs?)[^\n\.]{{0,32}}?{escapedSkillName}",
+            $@"{escapedSkillName}\s*[-:()]*\s*(?<years>\d+(?:\.\d+)?)"
+        ];
+
+        foreach (string pattern in patterns)
+        {
+            Match match = Regex.Match(text, pattern, RegexOptions.IgnoreCase);
+            if (match.Success && decimal.TryParse(match.Groups["years"].Value, out decimal parsedYears))
+            {
+                return parsedYears;
+            }
+        }
+
+        return null;
+    }
+
+    private static List<List<string>> SplitIntoChunks(List<string> lines)
+    {
+        List<List<string>> chunks = [];
+        List<string> currentChunk = [];
+        foreach (string line in lines)
+        {
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                if (currentChunk.Count > 0)
+                {
+                    chunks.Add([.. currentChunk]);
+                    currentChunk.Clear();
+                }
+
+                continue;
+            }
+
+            bool startsNewChunk = currentChunk.Count > 0 && ContainsDateRange(line);
+            if (startsNewChunk)
+            {
+                chunks.Add([.. currentChunk]);
+                currentChunk.Clear();
+            }
+
+            currentChunk.Add(line.Trim());
+        }
+
+        if (currentChunk.Count > 0)
+        {
+            chunks.Add(currentChunk);
+        }
+
+        return chunks;
+    }
+
+    private static bool ContainsDateRange(string line)
+    {
+        return Regex.IsMatch(line, @"(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+)?(?:19|20)\d{2}\s*[-–]\s*(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+)?(?:(?:19|20)\d{2}|present|current)", RegexOptions.IgnoreCase)
+            || Regex.IsMatch(line, @"\b(19|20)\d{2}\b");
+    }
+
+    private static CandidateExperiencePeriodDto ParsePeriodFromChunk(IEnumerable<string> lines)
+    {
+        string combined = string.Join(" ", lines);
+        List<int> years = YearPattern.Matches(combined)
+            .Select(match => int.TryParse(match.Value, out int year) ? year : 0)
+            .Where(year => year > 0)
+            .Take(2)
+            .ToList();
+
+        int startYear = years.FirstOrDefault();
+        int? endYear = years.Skip(1).FirstOrDefault();
+        bool isCurrent = Regex.IsMatch(combined, @"\b(present|current|now)\b", RegexOptions.IgnoreCase);
+
+        return new CandidateExperiencePeriodDto
+        {
+            StartMonth = ExtractMonthNumber(combined) ?? 1,
+            StartYear = startYear == 0 ? DateTime.UtcNow.Year : startYear,
+            EndMonth = isCurrent ? null : ExtractMonthNumber(combined, last: true),
+            EndYear = isCurrent || endYear == 0 ? null : endYear,
+            IsCurrent = isCurrent
+        };
+    }
+
+    private static int? ExtractMonthNumber(string value, bool last = false)
+    {
+        string[] monthTokens = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "sept", "oct", "nov", "dec"];
+        List<int> monthIndexes = [];
+        foreach ((string token, int index) in monthTokens.Select((token, index) => (token, index)))
+        {
+            if (Regex.IsMatch(value, $@"\b{token}[a-z]*\b", RegexOptions.IgnoreCase))
+            {
+                monthIndexes.Add(index + 1);
+            }
+        }
+
+        if (monthIndexes.Count == 0)
+        {
+            return null;
+        }
+
+        return last ? monthIndexes.Last() : monthIndexes.First();
+    }
+
+    private static List<CandidateExperienceDto> ParseExperienceEntries(List<string> lines, string fallbackTitle, string defaultCompany)
+    {
+        return SplitIntoChunks(lines)
+            .Select(chunk =>
+            {
+                CandidateExperiencePeriodDto period = ParsePeriodFromChunk(chunk);
+                List<string> contentLines = chunk.Where(line => !ContainsDateRange(line)).ToList();
+                string firstLine = contentLines.FirstOrDefault() ?? fallbackTitle;
+                string secondLine = contentLines.Skip(1).FirstOrDefault() ?? defaultCompany;
+                List<string> bulletLines = contentLines.Skip(2)
+                    .Select(line => line.TrimStart('-', '*', '•', ' '))
+                    .Where(line => !string.IsNullOrWhiteSpace(line))
+                    .ToList();
+
+                if (firstLine.Contains(" at ", StringComparison.OrdinalIgnoreCase))
+                {
+                    string[] parts = firstLine.Split(" at ", 2, StringSplitOptions.TrimEntries);
+                    firstLine = parts[0];
+                    secondLine = parts.Length > 1 ? parts[1] : secondLine;
+                }
+
+                return new CandidateExperienceDto
+                {
+                    Id = Guid.NewGuid().ToString("N"),
+                    Title = firstLine,
+                    Company = secondLine,
+                    Period = period,
+                    Bullets = bulletLines
+                };
+            })
+            .Where(item => !string.IsNullOrWhiteSpace(item.Title) && !string.IsNullOrWhiteSpace(item.Company))
+            .Take(8)
+            .ToList();
+    }
+
+    private static List<CandidateProjectDto> ParseProjects(List<string> lines)
+    {
+        return SplitIntoChunks(lines)
+            .Select(chunk =>
+            {
+                CandidateExperiencePeriodDto period = ParsePeriodFromChunk(chunk);
+                List<string> contentLines = chunk.Where(line => !ContainsDateRange(line)).ToList();
+                string name = contentLines.FirstOrDefault() ?? "Project";
+                string? role = contentLines.Skip(1).FirstOrDefault();
+                string? description = string.Join(" ", contentLines.Skip(2)).Trim();
+                List<string> technologies = Regex.Split(string.Join(" ", chunk), @"[,/|]")
+                    .Select(value => value.Trim())
+                    .Where(value => value.Length > 1 && value.Length <= 30)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .Take(8)
+                    .ToList();
+
+                return new CandidateProjectDto
+                {
+                    Id = Guid.NewGuid().ToString(),
+                    Name = name,
+                    Role = role,
+                    Description = string.IsNullOrWhiteSpace(description) ? null : description,
+                    Technologies = technologies,
+                    Period = period
+                };
+            })
+            .Where(item => !string.IsNullOrWhiteSpace(item.Name))
+            .Take(6)
+            .ToList();
+    }
+
+    private static List<CandidateEducationDto> ParseEducations(List<string> lines)
+    {
+        return SplitIntoChunks(lines)
+            .Select(chunk =>
+            {
+                string school = chunk.FirstOrDefault() ?? string.Empty;
+                string degree = chunk.Skip(1).FirstOrDefault() ?? "Education";
+                List<int> years = chunk
+                    .SelectMany(line => YearPattern.Matches(line).Select(match => int.Parse(match.Value)))
+                    .Take(2)
+                    .ToList();
+
+                return new CandidateEducationDto
+                {
+                    Id = Guid.NewGuid().ToString("N"),
+                    School = school,
+                    Degree = degree,
+                    FieldOfStudy = null,
+                    StartYear = years.FirstOrDefault() == 0 ? null : years.FirstOrDefault(),
+                    EndYear = years.Skip(1).FirstOrDefault() == 0 ? null : years.Skip(1).FirstOrDefault(),
+                    Description = chunk.Count > 2 ? string.Join(" ", chunk.Skip(2)) : null
+                };
+            })
+            .Where(item => !string.IsNullOrWhiteSpace(item.School) && !string.IsNullOrWhiteSpace(item.Degree))
+            .Take(5)
+            .ToList();
+    }
+
+    private static List<CandidateCertificationDto> ParseCertifications(List<string> lines)
+    {
+        return SplitIntoChunks(lines)
+            .Select(chunk => new CandidateCertificationDto
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                Name = chunk.FirstOrDefault() ?? string.Empty,
+                Issuer = chunk.Skip(1).FirstOrDefault(),
+                IssuedOn = null,
+                ExpiresOn = null,
+                CredentialId = null,
+                CredentialUrl = null
+            })
+            .Where(item => !string.IsNullOrWhiteSpace(item.Name))
+            .Take(6)
+            .ToList();
+    }
+
+    private static List<CandidateLanguageDto> ParseLanguages(List<string> lines)
+    {
+        List<string> proficiencyKeywords = ["native", "fluent", "advanced", "intermediate", "basic", "professional", "business"];
+        return lines
+            .SelectMany(line => Regex.Split(line, @"[,;|]"))
+            .Select(token => token.Trim())
+            .Where(token => token.Length > 1)
+            .Select(token =>
+            {
+                string proficiency = proficiencyKeywords
+                    .FirstOrDefault(keyword => token.Contains(keyword, StringComparison.OrdinalIgnoreCase))
+                    ?? "Unspecified";
+                string languageName = Regex.Replace(token, @"\((.*?)\)|\b(native|fluent|advanced|intermediate|basic|professional|business)\b", string.Empty, RegexOptions.IgnoreCase).Trim(' ', '-', '–', ':');
+                return new CandidateLanguageDto
+                {
+                    Id = Guid.NewGuid().ToString("N"),
+                    Name = languageName,
+                    Proficiency = proficiency
+                };
+            })
+            .Where(item => !string.IsNullOrWhiteSpace(item.Name))
+            .DistinctBy(item => item.Name.ToLowerInvariant())
+            .Take(8)
+            .ToList();
+    }
+
     private sealed class CandidateExperienceDocument
     {
         public string Id { get; set; } = string.Empty;
@@ -628,6 +1733,35 @@ public class CandidateService : ICandidateService
         public int? EndMonth { get; set; }
         public int? EndYear { get; set; }
         public bool IsCurrent { get; set; }
+    }
+
+    private sealed class CandidateEducationDocument
+    {
+        public string Id { get; set; } = string.Empty;
+        public string School { get; set; } = string.Empty;
+        public string Degree { get; set; } = string.Empty;
+        public string? FieldOfStudy { get; set; }
+        public int? StartYear { get; set; }
+        public int? EndYear { get; set; }
+        public string? Description { get; set; }
+    }
+
+    private sealed class CandidateCertificationDocument
+    {
+        public string Id { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+        public string? Issuer { get; set; }
+        public DateTime? IssuedOn { get; set; }
+        public DateTime? ExpiresOn { get; set; }
+        public string? CredentialId { get; set; }
+        public string? CredentialUrl { get; set; }
+    }
+
+    private sealed class CandidateLanguageDocument
+    {
+        public string Id { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+        public string Proficiency { get; set; } = string.Empty;
     }
 
     private static ApiEnvelopeMeta BuildMeta(int page, int pageSize, int total)

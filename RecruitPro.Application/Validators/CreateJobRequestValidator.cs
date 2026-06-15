@@ -15,8 +15,23 @@ public class CreateJobRequestValidator : AbstractValidator<CreateJobRequest>
         RuleFor(request => request.Requirements).NotEmpty();
         RuleFor(request => request.VacancyCount).GreaterThan(0);
         RuleFor(request => request.MinExperienceYears).GreaterThanOrEqualTo(0).When(request => request.MinExperienceYears.HasValue);
+        RuleForEach(request => request.SkillRequirements).SetValidator(new JobSkillRequirementRequestValidator());
         RuleFor(request => request.SalaryMax)
             .GreaterThanOrEqualTo(request => request.SalaryMin ?? 0)
             .When(request => request.SalaryMin.HasValue && request.SalaryMax.HasValue);
+    }
+}
+
+internal sealed class JobSkillRequirementRequestValidator : AbstractValidator<JobSkillRequirementRequest>
+{
+    public JobSkillRequirementRequestValidator()
+    {
+        RuleFor(request => request.SkillType)
+            .Must(value => string.IsNullOrWhiteSpace(value)
+                || value.Equals("Required", StringComparison.OrdinalIgnoreCase)
+                || value.Equals("NiceToHave", StringComparison.OrdinalIgnoreCase));
+        RuleFor(request => request.MinimumYearsOfExperience)
+            .GreaterThanOrEqualTo(0)
+            .When(request => request.MinimumYearsOfExperience.HasValue);
     }
 }

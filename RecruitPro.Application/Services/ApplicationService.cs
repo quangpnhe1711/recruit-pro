@@ -10,6 +10,7 @@ using RecruitPro.Application.Interfaces.IRepositories;
 using RecruitPro.Application.Interfaces.IServices;
 using RecruitPro.Domain.Entities;
 using RecruitPro.Domain.Enums;
+using System.Text.Json;
 
 namespace RecruitPro.Application.Services;
 
@@ -48,15 +49,16 @@ public class ApplicationService : IApplicationService
         Domain.Entities.Application? existingApplication = await GetExistingApplicationAsync(userId, job.Id);
         ApplyJobEligibilityDto eligibility = BuildApplyEligibility(job, profile, existingApplication);
 
+        CandidateResume? currentResume = GetCurrentResume(profile);
         ApplyJobResumeDto? resume = null;
-        if (!string.IsNullOrWhiteSpace(profile.ResumeUrl))
+        if (currentResume != null)
         {
             resume = new ApplyJobResumeDto
             {
-                ResumeId = profile.Id.ToString(),
-                FileName = ExtractFileName(profile.ResumeUrl),
-                FileUrl = await _fileStorage.GetPresignedUrlAsync(profile.ResumeUrl),
-                UploadedAt = profile.User.UpdatedAt ?? profile.User.CreatedAt ?? DbDateTime.Now
+                ResumeId = currentResume.Id.ToString(),
+                FileName = currentResume.FileName,
+                FileUrl = await _fileStorage.GetPresignedUrlAsync(currentResume.StorageKey),
+                UploadedAt = currentResume.UploadDate
             };
         }
 
@@ -390,13 +392,15 @@ public class ApplicationService : IApplicationService
             return ApiResponse<ResumeFileResponseDto>.NotFound("Application not found.");
         }
 
-        string? resumeObjectKey = application.User.CandidateProfile?.ResumeUrl;
-        if (string.IsNullOrWhiteSpace(resumeObjectKey))
+        CandidateResume? resume = application.User.CandidateProfile == null
+            ? null
+            : GetCurrentResume(application.User.CandidateProfile);
+        if (resume == null)
         {
             return ApiResponse<ResumeFileResponseDto>.NotFound("Resume not found.");
         }
 
-        string presignedUrl = await _fileStorage.GetPresignedUrlAsync(resumeObjectKey);
+        string presignedUrl = await _fileStorage.GetPresignedUrlAsync(resume.StorageKey);
         _logger.LogInformation(
             "Generated resume download URL for application {ApplicationId} and candidate {CandidateId}.",
             application.Id,
@@ -404,8 +408,8 @@ public class ApplicationService : IApplicationService
 
         return ApiResponse<ResumeFileResponseDto>.Ok(new ResumeFileResponseDto
         {
-            ResumeId = application.UserId.ToString(),
-            FileName = ExtractFileName(resumeObjectKey),
+            ResumeId = resume.Id.ToString(),
+            FileName = resume.FileName,
             FileUrl = presignedUrl
         });
     }
@@ -461,7 +465,7 @@ public class ApplicationService : IApplicationService
             blockers.Add("Your profile is missing required contact information.");
         }
 
-        if (string.IsNullOrWhiteSpace(profile.ResumeUrl))
+        if (GetCurrentResume(profile) == null)
         {
             blockers.Add("Please upload your latest resume before applying.");
         }
@@ -582,6 +586,7 @@ public class ApplicationService : IApplicationService
             .ToList() ?? [];
 
         List<string> requiredSkills = application.Job.JobSkills
+            .Where(jobSkill => jobSkill.IsRequired)
             .Select(jobSkill => jobSkill.Skill.Name)
             .Where(name => !string.IsNullOrWhiteSpace(name))
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -694,41 +699,192 @@ public class ApplicationService : IApplicationService
 
     private static (double Score, string Recommendation) BuildReviewScore(Domain.Entities.Application application)
     {
-        List<string> candidateSkills = application.User.CandidateProfile?.Skills
-            .Select(skill => skill.Name)
-            .Where(name => !string.IsNullOrWhiteSpace(name))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList() ?? [];
+        CandidateProfile? profile = application.User.CandidateProfile;
+        if (profile == null)
+        {
+            return (0, "Flagged");
+        }
 
-        List<string> requiredSkills = application.Job.JobSkills
-            .Select(jobSkill => jobSkill.Skill.Name)
-            .Where(name => !string.IsNullOrWhiteSpace(name))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
+        Dictionary<string, decimal?> candidateSkillYears = new(StringComparer.OrdinalIgnoreCase);
+        foreach (CandidateSkillDetail candidateSkill in profile.CandidateSkillDetails)
+        {
+            string? skillName = candidateSkill.Skill?.Name;
+            if (!string.IsNullOrWhiteSpace(skillName))
+            {
+                candidateSkillYears[skillName] = candidateSkill.YearsOfExperience;
+            }
+        }
+
+        foreach (Skill skill in profile.Skills)
+        {
+            if (!candidateSkillYears.ContainsKey(skill.Name))
+            {
+                candidateSkillYears[skill.Name] = null;
+            }
+        }
+
+        List<JobSkill> requiredSkills = application.Job.JobSkills
+            .Where(jobSkill => jobSkill.IsRequired)
+            .ToList();
+        List<JobSkill> niceToHaveSkills = application.Job.JobSkills
+            .Where(jobSkill => !jobSkill.IsRequired)
             .ToList();
 
-        int matchedSkillCount = requiredSkills.Count(requiredSkill =>
-            candidateSkills.Any(candidateSkill => candidateSkill.Equals(requiredSkill, StringComparison.OrdinalIgnoreCase)));
-
-        double skillRatio = requiredSkills.Count == 0 ? 1 : matchedSkillCount / (double)requiredSkills.Count;
-        int totalInterviews = application.Interviews.Count;
-        int completedInterviews = application.Interviews.Count(interview => interview.Status == InterviewStatus.Completed);
-        double interviewCompletionRatio = totalInterviews == 0 ? 0 : completedInterviews / (double)totalInterviews;
-        double noteCoverageRatio = totalInterviews == 0
+        double requiredSkillMatchRatio = requiredSkills.Count == 0
             ? 0
-            : application.Interviews.Count(interview => !string.IsNullOrWhiteSpace(interview.Notes)) / (double)totalInterviews;
+            : requiredSkills.Count(jobSkill => candidateSkillYears.ContainsKey(jobSkill.Skill.Name)) / (double)requiredSkills.Count;
 
-        double score = Math.Round(((skillRatio * 3d) + (interviewCompletionRatio * 1.25d) + (noteCoverageRatio * 0.75d)), 1);
-        score = Math.Min(Math.Max(score, 0), 5);
+        List<JobSkill> experienceDrivenRequirements = requiredSkills
+            .Where(jobSkill => jobSkill.MinimumYearsOfExperience.HasValue && jobSkill.MinimumYearsOfExperience.Value > 0)
+            .ToList();
+
+        double skillExperienceMatchRatio = experienceDrivenRequirements.Count == 0
+            ? 0
+            : experienceDrivenRequirements
+                .Average(jobSkill =>
+                {
+                    decimal candidateYears = candidateSkillYears.TryGetValue(jobSkill.Skill.Name, out decimal? yearsOfExperience)
+                        ? yearsOfExperience ?? 0
+                        : 0;
+                    decimal requiredYears = jobSkill.MinimumYearsOfExperience ?? 0;
+                    if (requiredYears <= 0)
+                    {
+                        return candidateYears > 0 ? 1d : 0d;
+                    }
+
+                    return (double)Math.Min(candidateYears / requiredYears, 1);
+                });
+
+        double niceToHaveMatchRatio = niceToHaveSkills.Count == 0
+            ? 0
+            : niceToHaveSkills.Count(jobSkill => candidateSkillYears.ContainsKey(jobSkill.Skill.Name)) / (double)niceToHaveSkills.Count;
+
+        int projectCount = profile.Projects.Count;
+        int experienceCount = LoadDocumentCount(profile.ExperienceEntriesJson);
+        double projectMatchRatio = projectCount > 0
+            ? 1
+            : experienceCount > 0
+                ? 0.5
+                : 0;
+
+        int educationCount = LoadDocumentCount(profile.EducationRecordsJson);
+        int certificationCount = LoadDocumentCount(profile.CertificationRecordsJson);
+        int languageCount = LoadDocumentCount(profile.LanguageRecordsJson);
+        double educationAndCertificationRatio = 0;
+        if (educationCount > 0)
+        {
+            educationAndCertificationRatio += 0.5;
+        }
+
+        if (certificationCount > 0 || languageCount > 0)
+        {
+            educationAndCertificationRatio += 0.5;
+        }
+
+        double completionRatio = (double)CalculateProfileCompletionScore(profile) / 100d;
+
+        List<(double Ratio, double Weight)> components = [];
+        if (requiredSkills.Count > 0)
+        {
+            components.Add((requiredSkillMatchRatio, 40));
+        }
+
+        if (experienceDrivenRequirements.Count > 0)
+        {
+            components.Add((skillExperienceMatchRatio, 25));
+        }
+
+        if (niceToHaveSkills.Count > 0)
+        {
+            components.Add((niceToHaveMatchRatio, 15));
+        }
+
+        components.Add((projectMatchRatio, 10));
+        components.Add((educationAndCertificationRatio, 5));
+        components.Add((completionRatio, 5));
+
+        double totalWeight = components.Sum(component => component.Weight);
+        double score = totalWeight == 0
+            ? 0
+            : Math.Round(components.Sum(component => component.Ratio * component.Weight) / totalWeight * 100, 1);
+        score = Math.Min(Math.Max(score, 0), 100);
 
         string recommendation = score switch
         {
-            >= 4.5 => "Strong Hire",
-            >= 4.0 => "Hire",
-            >= 3.0 => "Hold",
+            >= 85 => "Strong Hire",
+            >= 70 => "Hire",
+            >= 50 => "Hold",
             _ => "Flagged"
         };
 
         return (score, recommendation);
+    }
+
+    private static int LoadDocumentCount(string? jsonString)
+    {
+        if (string.IsNullOrWhiteSpace(jsonString))
+        {
+            return 0;
+        }
+
+        try
+        {
+            List<JsonElement>? parsed = JsonSerializer.Deserialize<List<JsonElement>>(jsonString);
+            return parsed?.Count ?? 0;
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    private static decimal CalculateProfileCompletionScore(CandidateProfile profile)
+    {
+        decimal score = 0;
+
+        if (!string.IsNullOrWhiteSpace(profile.User.FullName)
+            && !string.IsNullOrWhiteSpace(profile.User.Email)
+            && !string.IsNullOrWhiteSpace(profile.Address))
+        {
+            score += 20;
+        }
+
+        if (!string.IsNullOrWhiteSpace(profile.CurrentPosition) && !string.IsNullOrWhiteSpace(profile.Bio))
+        {
+            score += 15;
+        }
+
+        if (profile.Skills.Count > 0)
+        {
+            score += 20;
+        }
+
+        if (LoadDocumentCount(profile.ExperienceEntriesJson) > 0)
+        {
+            score += 15;
+        }
+
+        if (profile.Projects.Count > 0)
+        {
+            score += 10;
+        }
+
+        if (LoadDocumentCount(profile.EducationRecordsJson) > 0)
+        {
+            score += 10;
+        }
+
+        if (LoadDocumentCount(profile.CertificationRecordsJson) > 0 || LoadDocumentCount(profile.LanguageRecordsJson) > 0)
+        {
+            score += 5;
+        }
+
+        if (profile.Resumes.Any(item => item.IsCurrent) || !string.IsNullOrWhiteSpace(profile.ResumeUrl))
+        {
+            score += 5;
+        }
+
+        return Math.Min(score, 100);
     }
 
     private static ApiEnvelopeMeta BuildMeta(int page, int pageSize, int total)
@@ -746,12 +902,20 @@ public class ApplicationService : IApplicationService
     {
         if (!salaryMin.HasValue && !salaryMax.HasValue)
         {
-            return "Negotiable";
+            return "Thương lượng";
         }
 
-        decimal effectiveMin = salaryMin ?? salaryMax ?? 0;
-        decimal effectiveMax = salaryMax ?? salaryMin ?? 0;
-        return $"{effectiveMin:N0} - {effectiveMax:N0} USD";
+        if (salaryMin.HasValue && salaryMax.HasValue)
+        {
+            return $"{salaryMin.Value:N0} - {salaryMax.Value:N0} VNĐ";
+        }
+
+        if (salaryMin.HasValue)
+        {
+            return $"{salaryMin.Value:N0}+ VNĐ";
+        }
+
+        return $"Up to {salaryMax!.Value:N0} VNĐ";
     }
 
     private static ApplicationStatus? ParseApplicationStatus(string? value)
@@ -785,6 +949,34 @@ public class ApplicationService : IApplicationService
     {
         string compactId = applicationId.ToString("N")[..8].ToUpperInvariant();
         return $"APP-{compactId}";
+    }
+
+    private static CandidateResume? GetCurrentResume(CandidateProfile profile)
+    {
+        CandidateResume? currentResume = profile.Resumes
+            .OrderByDescending(item => item.Version)
+            .FirstOrDefault(item => item.IsCurrent);
+
+        if (currentResume != null)
+        {
+            return currentResume;
+        }
+
+        if (string.IsNullOrWhiteSpace(profile.ResumeUrl))
+        {
+            return null;
+        }
+
+        return new CandidateResume
+        {
+            Id = profile.Id,
+            CandidateProfileId = profile.Id,
+            FileName = ExtractFileName(profile.ResumeUrl),
+            StorageKey = profile.ResumeUrl,
+            UploadDate = profile.User.UpdatedAt ?? profile.User.CreatedAt ?? DbDateTime.Now,
+            Version = 1,
+            IsCurrent = true
+        };
     }
 
     private static string BuildStageLabel(Domain.Entities.Application application)

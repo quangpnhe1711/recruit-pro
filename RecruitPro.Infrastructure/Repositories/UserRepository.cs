@@ -82,7 +82,18 @@ namespace RecruitPro.Infrastructure.Repositories
 
         public Task UpdateAsync(User user)
         {
-            _context.Users.Update(user);
+            var entry = _context.Entry(user);
+            if (entry.State == EntityState.Detached)
+            {
+                _context.Users.Attach(user);
+                entry = _context.Entry(user);
+            }
+
+            if (entry.State == EntityState.Unchanged)
+            {
+                entry.State = EntityState.Modified;
+            }
+
             return Task.CompletedTask;
         }
 

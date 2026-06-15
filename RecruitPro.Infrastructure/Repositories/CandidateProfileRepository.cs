@@ -31,6 +31,10 @@ namespace RecruitPro.Infrastructure.Repositories
                     .ThenInclude(user => user.Applications)
                         .ThenInclude(application => application.Interviews)
                 .Include(profile => profile.Skills)
+                .Include(profile => profile.CandidateSkillDetails)
+                    .ThenInclude(candidateSkill => candidateSkill.Skill)
+                .Include(profile => profile.Projects)
+                .Include(profile => profile.Resumes)
                 .FirstOrDefaultAsync(profile => profile.UserId == userId);
         }
 
@@ -40,7 +44,23 @@ namespace RecruitPro.Infrastructure.Repositories
                 .AsNoTracking()
                 .Include(profile => profile.User)
                 .Include(profile => profile.Skills)
+                .Include(profile => profile.CandidateSkillDetails)
+                    .ThenInclude(candidateSkill => candidateSkill.Skill)
+                .Include(profile => profile.Projects)
+                .Include(profile => profile.Resumes)
                 .FirstOrDefaultAsync(profile => profile.Id == candidateId);
+        }
+
+        public Task<CandidateProfile?> GetByResumeIdAsync(Guid resumeId)
+        {
+            return _context.CandidateProfiles
+                .Include(profile => profile.User)
+                .Include(profile => profile.Skills)
+                .Include(profile => profile.CandidateSkillDetails)
+                    .ThenInclude(candidateSkill => candidateSkill.Skill)
+                .Include(profile => profile.Projects)
+                .Include(profile => profile.Resumes)
+                .FirstOrDefaultAsync(profile => profile.Resumes.Any(resume => resume.Id == resumeId));
         }
 
         public Task<CandidateProfile?> GetHrDetailByIdAsync(Guid candidateId)
@@ -55,6 +75,10 @@ namespace RecruitPro.Infrastructure.Repositories
                     .ThenInclude(user => user.Applications)
                         .ThenInclude(application => application.Interviews)
                 .Include(profile => profile.Skills)
+                .Include(profile => profile.CandidateSkillDetails)
+                    .ThenInclude(candidateSkill => candidateSkill.Skill)
+                .Include(profile => profile.Projects)
+                .Include(profile => profile.Resumes)
                 .FirstOrDefaultAsync(profile => profile.Id == candidateId);
         }
 
@@ -64,6 +88,9 @@ namespace RecruitPro.Infrastructure.Repositories
                 .AsNoTracking()
                 .Include(profile => profile.User)
                     .ThenInclude(user => user.Applications)
+                .Include(profile => profile.Resumes)
+                .Include(profile => profile.Skills)
+                .Include(profile => profile.CandidateSkillDetails)
                 .AsQueryable();
 
             if (!string.IsNullOrWhiteSpace(keyword))
@@ -71,6 +98,12 @@ namespace RecruitPro.Infrastructure.Repositories
                 string loweredKeyword = keyword.Trim().ToLowerInvariant();
                 query = query.Where(profile => profile.User.FullName.ToLower().Contains(loweredKeyword) || profile.User.Email.ToLower().Contains(loweredKeyword));
             }
+
+            query = query.Where(profile =>
+                profile.User.Applications.Any() ||
+                (!string.IsNullOrWhiteSpace(profile.ResumeUrl)
+                 && !string.IsNullOrWhiteSpace(profile.CurrentPosition)
+                 && profile.Skills.Any()));
 
             int total = await query.CountAsync();
             List<CandidateProfile> candidates = await query
@@ -89,13 +122,27 @@ namespace RecruitPro.Infrastructure.Repositories
                 .Include(profile => profile.User)
                     .ThenInclude(user => user.Applications)
                         .ThenInclude(application => application.Job)
+                .Include(profile => profile.Resumes)
+                .Include(profile => profile.Skills)
+                .Include(profile => profile.CandidateSkillDetails)
                 .OrderBy(profile => profile.User.FullName)
                 .FirstOrDefaultAsync();
         }
 
         public Task UpdateAsync(CandidateProfile profile)
         {
-            _context.CandidateProfiles.Update(profile);
+            var entry = _context.Entry(profile);
+            if (entry.State == EntityState.Detached)
+            {
+                _context.CandidateProfiles.Attach(profile);
+                entry = _context.Entry(profile);
+            }
+
+            if (entry.State == EntityState.Unchanged)
+            {
+                entry.State = EntityState.Modified;
+            }
+
             return Task.CompletedTask;
         }
     }
