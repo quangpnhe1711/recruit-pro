@@ -160,6 +160,63 @@ public class CandidateService : ICandidateService
         });
     }
 
+    public async Task<ApiResponse<HrCandidateDetailDto>> GetCandidateDetailAsync(string candidateId)
+    {
+        if (!Guid.TryParse(candidateId, out Guid candidateGuid))
+        {
+            return ApiResponse<HrCandidateDetailDto>.NotFound("Candidate not found.");
+        }
+
+        CandidateProfile? profile = await _candidateRepository.GetHrDetailByIdAsync(candidateGuid);
+        if (profile == null)
+        {
+            return ApiResponse<HrCandidateDetailDto>.NotFound("Candidate not found.");
+        }
+
+        CandidateProfileResponseDto baseProfile = await MapProfileAsync(profile);
+        List<Domain.Entities.Application> orderedApplications = profile.User.Applications
+            .OrderByDescending(application => application.AppliedAt)
+            .ToList();
+
+        List<HrCandidateApplicationHistoryItemDto> applicationHistory = orderedApplications
+            .Select(application => new HrCandidateApplicationHistoryItemDto
+            {
+                ApplicationId = application.Id.ToString(),
+                JobId = application.JobId.ToString(),
+                JobTitle = application.Job.Title,
+                DepartmentName = application.Job.Department?.Name ?? "RecruitPro",
+                Status = application.Status.ToString(),
+                AppliedAt = application.AppliedAt,
+                InterviewCount = application.Interviews.Count
+            })
+            .ToList();
+
+        List<HrCandidateInterviewHistoryItemDto> interviewHistory = orderedApplications
+            .SelectMany(application => application.Interviews.Select(interview => new HrCandidateInterviewHistoryItemDto
+            {
+                InterviewId = interview.Id.ToString(),
+                ApplicationId = application.Id.ToString(),
+                JobId = application.JobId.ToString(),
+                JobTitle = application.Job.Title,
+                DepartmentName = application.Job.Department?.Name ?? "RecruitPro",
+                InterviewDate = interview.InterviewDate,
+                Status = (interview.Status ?? Domain.Enums.InterviewStatus.Scheduled).ToString(),
+                Notes = interview.Notes
+            }))
+            .OrderByDescending(interview => interview.InterviewDate)
+            .ToList();
+
+        return ApiResponse<HrCandidateDetailDto>.Ok(new HrCandidateDetailDto
+        {
+            Profile = baseProfile.Profile,
+            Skills = baseProfile.Skills,
+            ExperienceEntries = baseProfile.ExperienceEntries,
+            Resume = baseProfile.Resume,
+            ApplicationHistory = applicationHistory,
+            InterviewHistory = interviewHistory
+        });
+    }
+
     public Task<CandidateImportTemplateDto> GenerateImportTemplateAsync()
     {
         using XLWorkbook workbook = new();

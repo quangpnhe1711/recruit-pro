@@ -1,6 +1,5 @@
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc;
+using RecruitPro.API.Extensions;
 using RecruitPro.Application.DTOs.Request.Candidate;
 using RecruitPro.Application.Interfaces.IServices;
 
@@ -37,42 +36,42 @@ public class CandidateController : ControllerBase
     [HttpGet("api/candidate/profile")]
     public async Task<IActionResult> GetProfile()
     {
-        var result = await _candidateService.GetProfileAsync(GetCurrentUserId());
+        var result = await _candidateService.GetProfileAsync(User.GetCurrentUserId());
         return StatusCode(result.StatusCode, result);
     }
 
     [HttpPut("api/candidate/profile")]
     public async Task<IActionResult> UpdateProfile([FromBody] UpdateCandidateProfileRequest request)
     {
-        var result = await _candidateService.UpdateProfileAsync(GetCurrentUserId(), request);
+        var result = await _candidateService.UpdateProfileAsync(User.GetCurrentUserId(), request);
         return StatusCode(result.StatusCode, result);
     }
 
     [HttpPut("api/candidate/profile/skills")]
     public async Task<IActionResult> UpdateSkills([FromBody] UpdateCandidateSkillsRequest request)
     {
-        var result = await _candidateService.UpdateSkillsAsync(GetCurrentUserId(), request);
+        var result = await _candidateService.UpdateSkillsAsync(User.GetCurrentUserId(), request);
         return StatusCode(result.StatusCode, result);
     }
 
     [HttpPost("api/candidate/profile/experience")]
     public async Task<IActionResult> CreateExperience([FromBody] UpsertCandidateExperienceRequest request)
     {
-        var result = await _candidateService.CreateExperienceAsync(GetCurrentUserId(), request);
+        var result = await _candidateService.CreateExperienceAsync(User.GetCurrentUserId(), request);
         return StatusCode(result.StatusCode, result);
     }
 
     [HttpPut("api/candidate/profile/experience/{experienceId}")]
     public async Task<IActionResult> UpdateExperience(string experienceId, [FromBody] UpsertCandidateExperienceRequest request)
     {
-        var result = await _candidateService.UpdateExperienceAsync(GetCurrentUserId(), experienceId, request);
+        var result = await _candidateService.UpdateExperienceAsync(User.GetCurrentUserId(), experienceId, request);
         return StatusCode(result.StatusCode, result);
     }
 
     [HttpDelete("api/candidate/profile/experience/{experienceId}")]
     public async Task<IActionResult> DeleteExperience(string experienceId)
     {
-        var result = await _candidateService.DeleteExperienceAsync(GetCurrentUserId(), experienceId);
+        var result = await _candidateService.DeleteExperienceAsync(User.GetCurrentUserId(), experienceId);
         return StatusCode(result.StatusCode, result);
     }
 
@@ -80,7 +79,7 @@ public class CandidateController : ControllerBase
     public async Task<IActionResult> UploadResume(IFormFile resume)
     {
         await using Stream resumeStream = resume.OpenReadStream();
-        var result = await _candidateService.UploadResumeAsync(GetCurrentUserId(), resumeStream, resume.FileName, resume.ContentType);
+        var result = await _candidateService.UploadResumeAsync(User.GetCurrentUserId(), resumeStream, resume.FileName, resume.ContentType);
         return StatusCode(result.StatusCode, result);
     }
 
@@ -88,6 +87,13 @@ public class CandidateController : ControllerBase
     public async Task<IActionResult> GetCandidates([FromQuery] int page = 1, [FromQuery] int pageSize = 10, [FromQuery] string? keyword = null, [FromQuery] string? status = null, [FromQuery] string? source = null)
     {
         var result = await _candidateService.GetCandidatesAsync(page, pageSize, keyword, status, source);
+        return StatusCode(result.StatusCode, result);
+    }
+
+    [HttpGet("api/hr/candidates/{candidateId}")]
+    public async Task<IActionResult> GetCandidateDetail(string candidateId)
+    {
+        var result = await _candidateService.GetCandidateDetailAsync(candidateId);
         return StatusCode(result.StatusCode, result);
     }
 
@@ -116,14 +122,5 @@ public class CandidateController : ControllerBase
     {
         var result = await _candidateService.ImportCandidatesAsync(request);
         return StatusCode(result.StatusCode, result);
-    }
-
-    private Guid GetCurrentUserId()
-    {
-        string sub = User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
-            ?? User.FindFirst("sub")?.Value
-            ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value
-            ?? throw new UnauthorizedAccessException("Missing user id claim.");
-        return Guid.Parse(sub);
     }
 }

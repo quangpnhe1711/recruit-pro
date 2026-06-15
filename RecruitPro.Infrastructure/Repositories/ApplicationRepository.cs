@@ -28,7 +28,7 @@ public class ApplicationRepository : IApplicationRepository
             .ToListAsync();
     }
 
-    public async Task<(IReadOnlyList<JobApplication> Applications, int Total)> GetPagedAsync(int page, int pageSize, string? keyword, string? department, ApplicationStatus? status)
+    public async Task<(IReadOnlyList<JobApplication> Applications, int Total)> GetPagedAsync(int page, int pageSize, string? keyword, string? department, ApplicationStatus? status, Guid? jobId = null)
     {
         IQueryable<JobApplication> query = BuildApplicationQuery();
 
@@ -47,6 +47,11 @@ public class ApplicationRepository : IApplicationRepository
         if (status.HasValue)
         {
             query = query.Where(application => application.Status == status.Value);
+        }
+
+        if (jobId.HasValue)
+        {
+            query = query.Where(application => application.JobId == jobId.Value);
         }
 
         int total = await query.CountAsync();

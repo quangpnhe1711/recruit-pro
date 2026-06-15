@@ -92,11 +92,45 @@ public class CopilotRepository : ICopilotRepository
             .FirstOrDefaultAsync(conversation => conversation.Id == conversationId);
     }
 
+    public Task<CopilotConversation?> GetConversationWithDetailsAsync(Guid conversationId)
+    {
+        return _context.CopilotConversations
+            .Include(conversation => conversation.Messages.OrderBy(message => message.SequenceNo))
+            .Include(conversation => conversation.RankingSessions)
+                .ThenInclude(session => session.Results)
+            .FirstOrDefaultAsync(conversation => conversation.Id == conversationId);
+    }
+
     public Task<CopilotConversation?> GetLatestConversationAsync(Guid jobId, Guid userId)
     {
         return _context.CopilotConversations
             .OrderByDescending(conversation => conversation.CreatedAt)
             .FirstOrDefaultAsync(conversation => conversation.JobId == jobId && conversation.UserId == userId);
+    }
+
+    public Task<CopilotRankingSession?> GetRankingSessionAsync(Guid rankingSessionId)
+    {
+        return _context.CopilotRankingSessions
+            .Include(session => session.Results)
+                .ThenInclude(result => result.Application)
+                    .ThenInclude(application => application.User)
+            .FirstOrDefaultAsync(session => session.Id == rankingSessionId);
+    }
+
+    public async Task<IReadOnlyList<CopilotSavedRule>> GetSavedRulesAsync(Guid jobId, Guid userId)
+    {
+        return await _context.CopilotSavedRules
+            .AsNoTracking()
+            .Where(rule => rule.JobId == jobId && rule.UserId == userId && !rule.IsDeleted)
+            .OrderByDescending(rule => rule.IsActive)
+            .ThenByDescending(rule => rule.UpdatedAt)
+            .ToListAsync();
+    }
+
+    public Task<CopilotSavedRule?> GetSavedRuleAsync(Guid ruleId, Guid userId)
+    {
+        return _context.CopilotSavedRules
+            .FirstOrDefaultAsync(rule => rule.Id == ruleId && rule.UserId == userId && !rule.IsDeleted);
     }
 
     public async Task<int> GetNextMessageSequenceAsync(Guid conversationId)
@@ -123,6 +157,11 @@ public class CopilotRepository : ICopilotRepository
     public async Task AddRankingSessionAsync(CopilotRankingSession session)
     {
         await _context.CopilotRankingSessions.AddAsync(session);
+    }
+
+    public async Task AddSavedRuleAsync(CopilotSavedRule rule)
+    {
+        await _context.CopilotSavedRules.AddAsync(rule);
     }
 
     private static IReadOnlyList<string> SplitText(string? value)

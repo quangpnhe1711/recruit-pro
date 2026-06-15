@@ -1,11 +1,10 @@
 namespace RecruitPro.Application.DTOs.Request.Copilot;
 
-public class CopilotPromptRequest
+public class CreateCopilotSavedRuleRequest
 {
     public Guid JobId { get; set; }
-    public string Prompt { get; set; } = string.Empty;
-    public bool ForceRanking { get; set; }
-    public bool UseLatestRankingContext { get; set; } = true;
+    public string Name { get; set; } = string.Empty;
     public IReadOnlyList<CopilotRuleCriterionRequestDto> PriorityCriteria { get; set; } = [];
     public IReadOnlyList<CopilotRuleCriterionRequestDto> NegativeCriteria { get; set; } = [];
+    public bool IsActive { get; set; } = true;
 }

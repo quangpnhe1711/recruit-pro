@@ -256,10 +256,11 @@ public class ApplicationService : IApplicationService
         return ApiResponse<string>.Ok("Offer accepted successfully", "Offer accepted successfully");
     }
 
-    public async Task<ApiResponse<PaginatedResponseDto<ApplicationListItemDto>>> GetHrApplicationsAsync(int page, int pageSize, string? keyword, string? department, string? status)
+    public async Task<ApiResponse<PaginatedResponseDto<ApplicationListItemDto>>> GetHrApplicationsAsync(int page, int pageSize, string? keyword, string? department, string? status, string? jobId)
     {
         ApplicationStatus? parsedStatus = ParseApplicationStatus(status);
-        (IReadOnlyList<Domain.Entities.Application> applications, int total) = await _applicationRepository.GetPagedAsync(page, pageSize, keyword, department, parsedStatus);
+        Guid? parsedJobId = Guid.TryParse(jobId, out Guid jobGuid) ? jobGuid : null;
+        (IReadOnlyList<Domain.Entities.Application> applications, int total) = await _applicationRepository.GetPagedAsync(page, pageSize, keyword, department, parsedStatus, parsedJobId);
 
         return ApiResponse<PaginatedResponseDto<ApplicationListItemDto>>.Ok(new PaginatedResponseDto<ApplicationListItemDto>
         {
@@ -531,12 +532,14 @@ public class ApplicationService : IApplicationService
 
     private static ApplicationListItemDto MapApplicationToDto(Domain.Entities.Application application)
     {
+        (double score, _) = BuildReviewScore(application);
+
         return new ApplicationListItemDto
         {
             Id = application.Id.ToString(),
             Candidate = new ApplicationCandidateSummaryDto
             {
-                Id = application.UserId.ToString(),
+                Id = application.User.CandidateProfile?.Id.ToString() ?? application.UserId.ToString(),
                 FullName = application.User.FullName,
                 Email = application.User.Email,
                 AvatarUrl = application.User.AvatarUrl,
@@ -564,6 +567,7 @@ public class ApplicationService : IApplicationService
                 Phone = application.ReviewedByNavigation.Phone,
                 Roles = application.ReviewedByNavigation.UserRoles.Select(userRole => userRole.Role.Name).ToList()
             },
+            Score = score,
             NextStep = application.Interviews.Any() ? "Interview scheduled" : "In review"
         };
     }
@@ -616,7 +620,7 @@ public class ApplicationService : IApplicationService
             },
             Candidate = new ApplicationReviewCandidateDto
             {
-                Id = application.UserId.ToString(),
+                Id = application.User.CandidateProfile?.Id.ToString() ?? application.UserId.ToString(),
                 FullName = application.User.FullName,
                 Email = application.User.Email,
                 Phone = application.User.Phone,

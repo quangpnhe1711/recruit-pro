@@ -11,4 +11,10 @@ public interface IAiCopilotProvider
         string userPrompt,
         Guid conversationId,
         CancellationToken cancellationToken = default);
+
+    Task<string?> TryCreateChatReplyAsync(
+        CopilotCandidatePoolDto pool,
+        string userPrompt,
+        Guid conversationId,
+        CancellationToken cancellationToken = default);
 }

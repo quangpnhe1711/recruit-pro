@@ -1,7 +1,6 @@
 using RecruitPro.Application.DTOs.Request.Applications;
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc;
+using RecruitPro.API.Extensions;
 using RecruitPro.Application.DTOs.Request;
 using RecruitPro.Application.DTOs.Request.Jobs;
 using RecruitPro.Application.Interfaces.IServices;
@@ -21,7 +20,7 @@ public class ApplicationController : ControllerBase
     [HttpGet("api/jobs/{jobId}/apply-context")]
     public async Task<IActionResult> GetApplyContext(string jobId)
     {
-        var result = await _applicationService.GetApplyScreenAsync(GetCurrentUserId(), jobId);
+        var result = await _applicationService.GetApplyScreenAsync(User.GetCurrentUserId(), jobId);
         return StatusCode(result.StatusCode, result);
     }
 
@@ -42,35 +41,41 @@ public class ApplicationController : ControllerBase
     [HttpPost("api/jobs/{jobId}/apply")]
     public async Task<IActionResult> Apply(string jobId, [FromBody] ApplyJobRequest request)
     {
-        var result = await _applicationService.ApplyAsync(GetCurrentUserId(), jobId, request);
+        var result = await _applicationService.ApplyAsync(User.GetCurrentUserId(), jobId, request);
         return StatusCode(result.StatusCode, result);
     }
 
     [HttpGet("api/candidate/applications")]
     public async Task<IActionResult> GetCandidateApplications([FromQuery] int page = 1, [FromQuery] int pageSize = 10, [FromQuery] string? status = null, [FromQuery] string? keyword = null)
     {
-        var result = await _applicationService.GetCandidateApplicationsAsync(GetCurrentUserId(), page, pageSize, status, keyword);
+        var result = await _applicationService.GetCandidateApplicationsAsync(User.GetCurrentUserId(), page, pageSize, status, keyword);
         return StatusCode(result.StatusCode, result);
     }
 
     [HttpPost("api/candidate/applications/{applicationId}/withdraw")]
     public async Task<IActionResult> WithdrawApplication(string applicationId)
     {
-        var result = await _applicationService.WithdrawApplicationAsync(GetCurrentUserId(), applicationId);
+        var result = await _applicationService.WithdrawApplicationAsync(User.GetCurrentUserId(), applicationId);
         return StatusCode(result.StatusCode, result);
     }
 
     [HttpPost("api/candidate/applications/{applicationId}/accept-offer")]
     public async Task<IActionResult> AcceptOffer(string applicationId)
     {
-        var result = await _applicationService.AcceptOfferAsync(GetCurrentUserId(), applicationId);
+        var result = await _applicationService.AcceptOfferAsync(User.GetCurrentUserId(), applicationId);
         return StatusCode(result.StatusCode, result);
     }
 
     [HttpGet("api/hr/applications")]
-    public async Task<IActionResult> GetHrApplications([FromQuery] int page = 1, [FromQuery] int pageSize = 10, [FromQuery] string? keyword = null, [FromQuery] string? department = null, [FromQuery] string? status = null)
+    public async Task<IActionResult> GetHrApplications([FromQuery] HrApplicationQueryRequest request)
     {
-        var result = await _applicationService.GetHrApplicationsAsync(page, pageSize, keyword, department, status);
+        var result = await _applicationService.GetHrApplicationsAsync(
+            request.Page,
+            request.PageSize,
+            request.Keyword,
+            request.Department,
+            request.Status,
+            request.JobId);
         return StatusCode(result.StatusCode, result);
     }
 
@@ -91,7 +96,7 @@ public class ApplicationController : ControllerBase
     [HttpPatch("api/hr/applications/{applicationId}/decision")]
     public async Task<IActionResult> UpdateApplicationDecision(string applicationId, [FromBody] UpdateApplicationDecisionRequest request)
     {
-        var result = await _applicationService.UpdateApplicationDecisionAsync(applicationId, TryGetCurrentUserId(), request);
+        var result = await _applicationService.UpdateApplicationDecisionAsync(applicationId, User.TryGetCurrentUserId(), request);
         return StatusCode(result.StatusCode, result);
     }
 
@@ -109,21 +114,4 @@ public class ApplicationController : ControllerBase
         return StatusCode(result.StatusCode, result);
     }
 
-    private Guid GetCurrentUserId()
-    {
-        string sub = User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
-            ?? User.FindFirst("sub")?.Value
-            ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value
-            ?? throw new UnauthorizedAccessException("Missing user id claim.");
-        return Guid.Parse(sub);
-    }
-
-    private Guid? TryGetCurrentUserId()
-    {
-        string? sub = User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
-            ?? User.FindFirst("sub")?.Value
-            ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-
-        return Guid.TryParse(sub, out Guid userId) ? userId : null;
-    }
 }

@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
+using RecruitPro.API.Extensions;
 using RecruitPro.Application.DTOs.Request.Interviews;
 using RecruitPro.Application.Interfaces.IServices;
 
@@ -26,7 +25,7 @@ public class InterviewController : ControllerBase
     [HttpGet("api/candidate/interviews")]
     public async Task<IActionResult> GetCandidateInterviews()
     {
-        var result = await _interviewService.GetCandidateInterviewsAsync(GetCurrentUserId());
+        var result = await _interviewService.GetCandidateInterviewsAsync(User.GetCurrentUserId());
         return StatusCode(result.StatusCode, result);
     }
 
@@ -56,14 +55,5 @@ public class InterviewController : ControllerBase
     {
         var result = await _interviewService.DeleteInterviewAsync(interviewId);
         return StatusCode(result.StatusCode, result);
-    }
-
-    private Guid GetCurrentUserId()
-    {
-        string sub = User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
-            ?? User.FindFirst("sub")?.Value
-            ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value
-            ?? throw new UnauthorizedAccessException("Missing user id claim.");
-        return Guid.Parse(sub);
     }
 }

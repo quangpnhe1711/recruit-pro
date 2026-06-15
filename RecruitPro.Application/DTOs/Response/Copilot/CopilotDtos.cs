@@ -16,6 +16,21 @@ public class CopilotConversationDto
     public Guid? LatestRankingSessionId { get; set; }
 }
 
+public class CopilotMessageDto
+{
+    public Guid MessageId { get; set; }
+    public string Role { get; set; } = string.Empty;
+    public string Content { get; set; } = string.Empty;
+    public string? MetadataJson { get; set; }
+    public int SequenceNo { get; set; }
+    public DateTime? CreatedAt { get; set; }
+}
+
+public class CopilotConversationDetailDto : CopilotConversationDto
+{
+    public IReadOnlyList<CopilotMessageDto> Messages { get; set; } = [];
+}
+
 public class CopilotJobContextDto
 {
     public Guid JobId { get; set; }
@@ -50,6 +65,18 @@ public class CopilotNormalizedRulesDto
     public int? MinExperienceYears { get; set; }
     public IReadOnlyList<CopilotAutoRejectRuleDto> AutoRejectRules { get; set; } = [];
     public decimal? MinTotalScore { get; set; }
+    public IReadOnlyList<CopilotRuleCriterionDto> PriorityCriteria { get; set; } = [];
+    public IReadOnlyList<CopilotRuleCriterionDto> NegativeCriteria { get; set; } = [];
+}
+
+public class CopilotRuleCriterionDto
+{
+    public string Label { get; set; } = string.Empty;
+    public string Field { get; set; } = string.Empty;
+    public string Operator { get; set; } = "contains";
+    public string Value { get; set; } = string.Empty;
+    public string Weight { get; set; } = "medium";
+    public bool AutoReject { get; set; }
 }
 
 public class CopilotAutoRejectRuleDto
@@ -77,12 +104,41 @@ public class CopilotRankingResultDto
     public IReadOnlyList<string> Strengths { get; set; } = [];
     public IReadOnlyList<string> Weaknesses { get; set; } = [];
     public string Summary { get; set; } = string.Empty;
+    public bool IsAiGenerated { get; set; }
 }
 
 public class CopilotPromptResponseDto
 {
     public Guid ConversationId { get; set; }
-    public Guid RankingSessionId { get; set; }
+    public Guid? RankingSessionId { get; set; }
+    public bool DidRank { get; set; }
+    public string AssistantMessage { get; set; } = string.Empty;
     public CopilotNormalizedRulesDto NormalizedRules { get; set; } = new();
     public IReadOnlyList<CopilotRankingResultDto> Results { get; set; } = [];
+}
+
+public class CopilotRankingSessionDetailDto
+{
+    public Guid RankingSessionId { get; set; }
+    public Guid ConversationId { get; set; }
+    public Guid JobId { get; set; }
+    public string UserPrompt { get; set; } = string.Empty;
+    public string? ModelName { get; set; }
+    public int TotalCandidates { get; set; }
+    public int? PromptTokens { get; set; }
+    public int? CompletionTokens { get; set; }
+    public DateTime? CreatedAt { get; set; }
+    public CopilotNormalizedRulesDto NormalizedRules { get; set; } = new();
+    public IReadOnlyList<CopilotRankingResultDto> Results { get; set; } = [];
+}
+
+public class CopilotSavedRuleDto
+{
+    public Guid RuleId { get; set; }
+    public Guid JobId { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public bool IsActive { get; set; }
+    public DateTime? CreatedAt { get; set; }
+    public DateTime? UpdatedAt { get; set; }
+    public CopilotNormalizedRulesDto Rule { get; set; } = new();
 }

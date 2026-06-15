@@ -1,8 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
+using RecruitPro.API.Extensions;
 using RecruitPro.Application.DTOs.Request.Offers;
 using RecruitPro.Application.Interfaces.IServices;
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
 
 namespace RecruitPro.API.Controllers;
 
@@ -26,23 +25,14 @@ public class OfferController : ControllerBase
     [HttpPut("api/hr/applications/{applicationId}/offer")]
     public async Task<IActionResult> SaveOfferDraft(string applicationId, [FromBody] UpsertApplicationOfferRequest request)
     {
-        var result = await _offerService.SaveDraftAsync(applicationId, TryGetCurrentUserId(), request);
+        var result = await _offerService.SaveDraftAsync(applicationId, User.TryGetCurrentUserId(), request);
         return StatusCode(result.StatusCode, result);
     }
 
     [HttpPost("api/hr/applications/{applicationId}/offer/send")]
     public async Task<IActionResult> SendOffer(string applicationId, [FromBody] UpsertApplicationOfferRequest request)
     {
-        var result = await _offerService.SendOfferAsync(applicationId, TryGetCurrentUserId(), request);
+        var result = await _offerService.SendOfferAsync(applicationId, User.TryGetCurrentUserId(), request);
         return StatusCode(result.StatusCode, result);
-    }
-
-    private Guid? TryGetCurrentUserId()
-    {
-        string? sub = User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
-            ?? User.FindFirst("sub")?.Value
-            ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-
-        return Guid.TryParse(sub, out Guid userId) ? userId : null;
     }
 }

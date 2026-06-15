@@ -8,8 +8,10 @@ public partial class CopilotSavedRule
     public string Name { get; set; } = null!;
     public string RuleJson { get; set; } = "{}";
     public bool IsActive { get; set; }
+    public bool IsDeleted { get; set; }
     public DateTime? CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
+    public DateTime? DeletedAt { get; set; }
 
     public virtual Job Job { get; set; } = null!;
     public virtual User User { get; set; } = null!;

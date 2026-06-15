@@ -64,6 +64,9 @@ namespace RecruitPro.Application.DTOs.Response
         [JsonPropertyName("reviewedBy")]
         public UserDto? ReviewedBy { get; set; }
 
+        [JsonPropertyName("score")]
+        public double? Score { get; set; }
+
         [JsonPropertyName("nextStep")]
         public string? NextStep { get; set; }
     }

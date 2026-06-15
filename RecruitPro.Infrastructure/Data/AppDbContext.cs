@@ -257,6 +257,10 @@ public partial class AppDbContext : DbContext
             entity.Property(e => e.UpdatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP").HasColumnType("timestamp without time zone").HasColumnName("updated_at");
 
             entity.HasIndex(e => new { e.JobId, e.UserId, e.CreatedAt }, "ix_copilot_conversations_job_user_created_at");
+            entity.HasIndex(e => e.LatestRankingSessionId, "ix_copilot_conversations_latest_ranking_session_id");
+            entity.HasIndex(e => new { e.JobId, e.UserId }, "ux_copilot_conversations_active_job_user")
+                .IsUnique()
+                .HasFilter("status = 'Active'");
 
             entity.HasOne(e => e.Job).WithMany().HasForeignKey(e => e.JobId).HasConstraintName("copilot_conversations_job_id_fkey");
             entity.HasOne(e => e.User).WithMany().HasForeignKey(e => e.UserId).HasConstraintName("copilot_conversations_user_id_fkey");
@@ -341,10 +345,13 @@ public partial class AppDbContext : DbContext
             entity.Property(e => e.Name).HasMaxLength(200).HasColumnName("name");
             entity.Property(e => e.RuleJson).HasColumnType("jsonb").HasColumnName("rule_json");
             entity.Property(e => e.IsActive).HasDefaultValue(true).HasColumnName("is_active");
+            entity.Property(e => e.IsDeleted).HasDefaultValue(false).HasColumnName("is_deleted");
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP").HasColumnType("timestamp without time zone").HasColumnName("created_at");
             entity.Property(e => e.UpdatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP").HasColumnType("timestamp without time zone").HasColumnName("updated_at");
+            entity.Property(e => e.DeletedAt).HasColumnType("timestamp without time zone").HasColumnName("deleted_at");
 
             entity.HasIndex(e => new { e.JobId, e.IsActive }, "ix_copilot_saved_rules_job_active");
+            entity.HasIndex(e => new { e.JobId, e.UserId, e.UpdatedAt }, "ix_copilot_saved_rules_job_user_updated_at");
             entity.HasOne(e => e.Job).WithMany().HasForeignKey(e => e.JobId).HasConstraintName("copilot_saved_rules_job_id_fkey");
             entity.HasOne(e => e.User).WithMany().HasForeignKey(e => e.UserId).HasConstraintName("copilot_saved_rules_user_id_fkey");
         });

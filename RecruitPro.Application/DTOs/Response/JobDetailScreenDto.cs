@@ -13,5 +13,6 @@ public class JobDetailScreenDto
     public int? VacancyCount { get; set; }
     public List<string> Description { get; set; } = [];
     public List<string> Requirements { get; set; } = [];
+    public List<JobSkillDto> Skills { get; set; } = [];
     public ApplicationSummaryDto ApplicationSummary { get; set; } = new();
 }

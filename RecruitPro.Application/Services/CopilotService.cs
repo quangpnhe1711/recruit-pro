@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Options;
+using RecruitPro.Application.Common;
 using RecruitPro.Application.Configurations;
 using RecruitPro.Application.DTOs.Request.Copilot;
 using RecruitPro.Application.DTOs.Response;
@@ -65,6 +66,17 @@ public class CopilotService : ICopilotService
         return ApiResponse<CopilotConversationDto>.Created(MapConversation(conversation));
     }
 
+    public async Task<ApiResponse<CopilotConversationDetailDto>> GetConversationAsync(Guid conversationId, Guid userId)
+    {
+        CopilotConversation? conversation = await _copilotRepository.GetConversationWithDetailsAsync(conversationId);
+        if (conversation is null || conversation.UserId != userId)
+        {
+            return ApiResponse<CopilotConversationDetailDto>.NotFound("Conversation not found");
+        }
+
+        return ApiResponse<CopilotConversationDetailDto>.Ok(MapConversationDetail(conversation));
+    }
+
     public async Task<ApiResponse<CopilotCandidatePoolDto>> GetCandidatePoolAsync(Guid jobId)
     {
         CopilotCandidatePoolDto? pool = await _copilotRepository.GetCandidatePoolAsync(jobId);
@@ -88,7 +100,63 @@ public class CopilotService : ICopilotService
         }
 
         pool = await EnrichPoolWithResumeTextAsync(pool);
-        CopilotNormalizedRulesDto rules = BuildRules(request.Prompt, pool.Job.RequiredSkills);
+        bool shouldRunRanking = request.ForceRanking
+            && (!string.IsNullOrWhiteSpace(request.Prompt)
+                || request.PriorityCriteria.Count > 0
+                || request.NegativeCriteria.Count > 0);
+
+        if (!shouldRunRanking)
+        {
+            string assistantReply = await _aiCopilotProvider.TryCreateChatReplyAsync(pool, request.Prompt, conversationId)
+                ?? "AI copilot returned an empty response.";
+
+            int replySequence = await _copilotRepository.GetNextMessageSequenceAsync(conversationId);
+            await _copilotRepository.AddMessageAsync(new CopilotMessage
+            {
+                ConversationId = conversationId,
+                Role = "User",
+                Content = request.Prompt,
+                SequenceNo = replySequence
+            });
+            await _copilotRepository.AddMessageAsync(new CopilotMessage
+            {
+                ConversationId = conversationId,
+                Role = "Assistant",
+                Content = assistantReply,
+                SequenceNo = replySequence + 1
+            });
+
+            conversation.UpdatedAt = DbDateTime.Now;
+            await _unitOfWork.SaveChangesAsync();
+
+            return ApiResponse<CopilotPromptResponseDto>.Ok(new CopilotPromptResponseDto
+            {
+                ConversationId = conversationId,
+                DidRank = false,
+                AssistantMessage = assistantReply,
+                NormalizedRules = new CopilotNormalizedRulesDto(),
+                Results = []
+            });
+        }
+
+        IReadOnlyList<CopilotSavedRule> savedRules = await _copilotRepository.GetSavedRulesAsync(request.JobId, userId);
+        CopilotNormalizedRulesDto rules = BuildRules(
+            request.Prompt,
+            pool.Job.RequiredSkills,
+            request.PriorityCriteria,
+            request.NegativeCriteria,
+            savedRules.Where(rule => rule.IsActive).ToList());
+
+        if (request.UseLatestRankingContext && conversation.LatestRankingSessionId.HasValue)
+        {
+            CopilotRankingSession? latestSession = await _copilotRepository.GetRankingSessionAsync(conversation.LatestRankingSessionId.Value);
+            if (latestSession is not null)
+            {
+                CopilotNormalizedRulesDto latestRules = DeserializeRules(latestSession.NormalizedRulesJson);
+                rules = MergeRules(latestRules, rules);
+            }
+        }
+
         List<CopilotRankingResultDto> results = RankCandidates(pool.Candidates, rules);
         CopilotPromptResponseDto? aiResponse = await _aiCopilotProvider.TryCreateRankingAsync(
             pool,
@@ -100,7 +168,12 @@ public class CopilotService : ICopilotService
         if (aiResponse is not null && aiResponse.Results.Count > 0)
         {
             rules = aiResponse.NormalizedRules;
-            results = aiResponse.Results
+            results = NormalizeRankingResults(aiResponse.Results, pool.Candidates)
+                .Select(result =>
+                {
+                    result.IsAiGenerated = !string.IsNullOrWhiteSpace(result.Summary);
+                    return result;
+                })
                 .OrderBy(result => result.IsAutoRejected)
                 .ThenBy(result => result.RankPosition)
                 .ThenByDescending(result => result.TotalScore)
@@ -120,8 +193,10 @@ public class CopilotService : ICopilotService
             UserPrompt = request.Prompt,
             NormalizedRulesJson = JsonSerializer.Serialize(rules),
             TotalCandidates = pool.Candidates.Count,
-            ModelName = "deterministic-copilot-v1",
-            Results = results.Select(result => new CopilotRankingResult
+            ModelName = results.Any(result => result.IsAiGenerated)
+                ? _openAiSettings.Model
+                : "deterministic-copilot-v1",
+            Results = NormalizeRankingResults(results, pool.Candidates).Select(result => new CopilotRankingResult
             {
                 CandidateUserId = result.CandidateUserId,
                 ApplicationId = result.ApplicationId,
@@ -136,7 +211,7 @@ public class CopilotService : ICopilotService
                 IsAutoRejected = result.IsAutoRejected,
                 StrengthsJson = JsonSerializer.Serialize(result.Strengths),
                 WeaknessesJson = JsonSerializer.Serialize(result.Weaknesses),
-                ExplanationJson = JsonSerializer.Serialize(new { result.Summary })
+                ExplanationJson = JsonSerializer.Serialize(new { result.Summary, result.IsAiGenerated })
             }).ToList()
         };
 
@@ -161,16 +236,92 @@ public class CopilotService : ICopilotService
         await _unitOfWork.SaveChangesAsync();
 
         conversation.LatestRankingSessionId = session.Id;
-        conversation.UpdatedAt = DateTime.UtcNow;
+        conversation.UpdatedAt = DbDateTime.Now;
         await _unitOfWork.SaveChangesAsync();
 
         return ApiResponse<CopilotPromptResponseDto>.Ok(new CopilotPromptResponseDto
         {
             ConversationId = conversationId,
             RankingSessionId = session.Id,
+            DidRank = true,
+            AssistantMessage = BuildRankingAssistantMessage(results),
             NormalizedRules = rules,
             Results = results
         });
+    }
+
+    public async Task<ApiResponse<CopilotRankingSessionDetailDto>> GetRankingSessionAsync(Guid rankingSessionId, Guid userId)
+    {
+        CopilotRankingSession? session = await _copilotRepository.GetRankingSessionAsync(rankingSessionId);
+        if (session is null || session.UserId != userId)
+        {
+            return ApiResponse<CopilotRankingSessionDetailDto>.NotFound("Ranking session not found");
+        }
+
+        return ApiResponse<CopilotRankingSessionDetailDto>.Ok(MapRankingSession(session));
+    }
+
+    public async Task<ApiResponse<IReadOnlyList<CopilotSavedRuleDto>>> GetSavedRulesAsync(Guid jobId, Guid userId)
+    {
+        IReadOnlyList<CopilotSavedRule> savedRules = await _copilotRepository.GetSavedRulesAsync(jobId, userId);
+        return ApiResponse<IReadOnlyList<CopilotSavedRuleDto>>.Ok(savedRules.Select(MapSavedRule).ToList());
+    }
+
+    public async Task<ApiResponse<CopilotSavedRuleDto>> CreateSavedRuleAsync(CreateCopilotSavedRuleRequest request, Guid userId)
+    {
+        CopilotNormalizedRulesDto normalizedRule = BuildRules(
+            string.Empty,
+            [],
+            request.PriorityCriteria,
+            request.NegativeCriteria,
+            []);
+
+        CopilotSavedRule rule = new()
+        {
+            JobId = request.JobId,
+            UserId = userId,
+            Name = ResolveSavedRuleName(request.Name, normalizedRule),
+            RuleJson = JsonSerializer.Serialize(normalizedRule),
+            IsActive = request.IsActive,
+            UpdatedAt = DbDateTime.Now
+        };
+
+        await _copilotRepository.AddSavedRuleAsync(rule);
+        await _unitOfWork.SaveChangesAsync();
+
+        return ApiResponse<CopilotSavedRuleDto>.Created(MapSavedRule(rule));
+    }
+
+    public async Task<ApiResponse<CopilotSavedRuleDto>> UpdateSavedRuleStatusAsync(Guid ruleId, UpdateCopilotSavedRuleStatusRequest request, Guid userId)
+    {
+        CopilotSavedRule? rule = await _copilotRepository.GetSavedRuleAsync(ruleId, userId);
+        if (rule is null)
+        {
+            return ApiResponse<CopilotSavedRuleDto>.NotFound("Saved rule not found");
+        }
+
+        rule.IsActive = request.IsActive;
+        rule.UpdatedAt = DbDateTime.Now;
+        await _unitOfWork.SaveChangesAsync();
+
+        return ApiResponse<CopilotSavedRuleDto>.Ok(MapSavedRule(rule));
+    }
+
+    public async Task<ApiResponse<object>> DeleteSavedRuleAsync(Guid ruleId, Guid userId)
+    {
+        CopilotSavedRule? rule = await _copilotRepository.GetSavedRuleAsync(ruleId, userId);
+        if (rule is null)
+        {
+            return ApiResponse<object>.NotFound("Saved rule not found");
+        }
+
+        rule.IsDeleted = true;
+        rule.IsActive = false;
+        rule.DeletedAt = DbDateTime.Now;
+        rule.UpdatedAt = DbDateTime.Now;
+        await _unitOfWork.SaveChangesAsync();
+
+        return ApiResponse<object>.Ok(new { ruleId });
     }
 
     private async Task<CopilotCandidatePoolDto> EnrichPoolWithResumeTextAsync(CopilotCandidatePoolDto pool)
@@ -237,13 +388,119 @@ public class CopilotService : ICopilotService
         };
     }
 
-    private static CopilotNormalizedRulesDto BuildRules(string prompt, IReadOnlyList<string> jobRequiredSkills)
+    private static CopilotConversationDetailDto MapConversationDetail(CopilotConversation conversation)
+    {
+        return new CopilotConversationDetailDto
+        {
+            ConversationId = conversation.Id,
+            JobId = conversation.JobId,
+            Title = conversation.Title ?? "AI Recruitment Copilot",
+            LatestRankingSessionId = conversation.LatestRankingSessionId,
+            Messages = conversation.Messages
+                .OrderBy(message => message.SequenceNo)
+                .Select(message => new CopilotMessageDto
+                {
+                    MessageId = message.Id,
+                    Role = message.Role,
+                    Content = message.Content,
+                    MetadataJson = message.MetadataJson,
+                    SequenceNo = message.SequenceNo,
+                    CreatedAt = message.CreatedAt
+                })
+                .ToList()
+        };
+    }
+
+    private static CopilotRankingSessionDetailDto MapRankingSession(CopilotRankingSession session)
+    {
+        return new CopilotRankingSessionDetailDto
+        {
+            RankingSessionId = session.Id,
+            ConversationId = session.ConversationId,
+            JobId = session.JobId,
+            UserPrompt = session.UserPrompt,
+            ModelName = session.ModelName,
+            TotalCandidates = session.TotalCandidates,
+            PromptTokens = session.PromptTokens,
+            CompletionTokens = session.CompletionTokens,
+            CreatedAt = session.CreatedAt,
+            NormalizedRules = DeserializeRules(session.NormalizedRulesJson),
+            Results = session.Results
+                .OrderBy(result => result.RankPosition)
+                .Select(result => new CopilotRankingResultDto
+                {
+                    CandidateUserId = result.CandidateUserId,
+                    ApplicationId = result.ApplicationId,
+                    FullName = result.Application?.User?.FullName ?? string.Empty,
+                    RankPosition = result.RankPosition,
+                    TotalScore = result.TotalScore,
+                    SkillScore = result.SkillScore,
+                    ExperienceScore = result.ExperienceScore,
+                    EducationScore = result.EducationScore,
+                    ProjectScore = result.ProjectScore,
+                    Recommendation = result.Recommendation,
+                    IsAutoRejected = result.IsAutoRejected,
+                    RejectReason = result.RejectReason,
+                    Strengths = DeserializeStringList(result.StrengthsJson),
+                    Weaknesses = DeserializeStringList(result.WeaknessesJson),
+                    Summary = DeserializeSummary(result.ExplanationJson),
+                    IsAiGenerated = DeserializeIsAiGenerated(result.ExplanationJson)
+                })
+                .ToList()
+        };
+    }
+
+    private static CopilotSavedRuleDto MapSavedRule(CopilotSavedRule rule)
+    {
+        return new CopilotSavedRuleDto
+        {
+            RuleId = rule.Id,
+            JobId = rule.JobId,
+            Name = rule.Name,
+            IsActive = rule.IsActive,
+            CreatedAt = rule.CreatedAt,
+            UpdatedAt = rule.UpdatedAt,
+            Rule = DeserializeRules(rule.RuleJson)
+        };
+    }
+
+    private static string ResolveSavedRuleName(string? requestedName, CopilotNormalizedRulesDto rule)
+    {
+        if (!string.IsNullOrWhiteSpace(requestedName))
+        {
+            return requestedName.Trim();
+        }
+
+        List<string> labels = rule.PriorityCriteria
+            .Select(criterion => string.IsNullOrWhiteSpace(criterion.Label) ? criterion.Value : criterion.Label)
+            .Concat(rule.NegativeCriteria.Select(criterion => string.IsNullOrWhiteSpace(criterion.Label) ? criterion.Value : criterion.Label))
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .ToList();
+
+        if (labels.Count == 0)
+        {
+            return "Saved criteria";
+        }
+
+        string firstLabel = labels[0].Trim();
+        return labels.Count == 1
+            ? firstLabel
+            : $"{firstLabel} +{labels.Count - 1}";
+    }
+
+    private static CopilotNormalizedRulesDto BuildRules(
+        string prompt,
+        IReadOnlyList<string> jobRequiredSkills,
+        IReadOnlyList<CopilotRuleCriterionRequestDto> priorityCriteria,
+        IReadOnlyList<CopilotRuleCriterionRequestDto> negativeCriteria,
+        IReadOnlyList<CopilotSavedRule> savedRules)
     {
         string loweredPrompt = prompt.ToLowerInvariant();
         List<string> requiredSkills = jobRequiredSkills
             .Where(skill => loweredPrompt.Contains(skill.ToLowerInvariant()))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
+        List<string> preferredSkills = [];
 
         string[] commonSkills = ["Java", "Spring Boot", "ReactJS", "Docker", "PostgreSQL", "SQL", "C#", ".NET", "AWS", "Redis", "NodeJS", "TypeScript"];
         requiredSkills.AddRange(commonSkills.Where(skill => loweredPrompt.Contains(skill.ToLowerInvariant())));
@@ -268,11 +525,76 @@ public class CopilotService : ICopilotService
             minExperienceYears = years;
         }
 
+        List<CopilotRuleCriterionDto> normalizedPriorityCriteria = priorityCriteria
+            .Where(criteria => !string.IsNullOrWhiteSpace(criteria.Value))
+            .Select(MapCriterion)
+            .ToList();
+        List<CopilotRuleCriterionDto> normalizedNegativeCriteria = negativeCriteria
+            .Where(criteria => !string.IsNullOrWhiteSpace(criteria.Value))
+            .Select(MapCriterion)
+            .ToList();
+
+        foreach (CopilotRuleCriterionDto criterion in normalizedPriorityCriteria)
+        {
+            if (criterion.Field.Equals("skill", StringComparison.OrdinalIgnoreCase))
+            {
+                if (criterion.Weight.Equals("high", StringComparison.OrdinalIgnoreCase))
+                {
+                    requiredSkills.Add(criterion.Value);
+                }
+                else
+                {
+                    preferredSkills.Add(criterion.Value);
+                }
+            }
+
+            if (criterion.Field.Equals("experienceYears", StringComparison.OrdinalIgnoreCase)
+                && int.TryParse(criterion.Value, out int criterionYears))
+            {
+                minExperienceYears = Math.Max(minExperienceYears ?? 0, criterionYears);
+            }
+        }
+
+        foreach (CopilotRuleCriterionDto criterion in normalizedNegativeCriteria)
+        {
+            if (criterion.AutoReject)
+            {
+                autoRejectRules.Add(new CopilotAutoRejectRuleDto
+                {
+                    Field = criterion.Field,
+                    Operator = criterion.Operator,
+                    Value = criterion.Value,
+                    Reason = string.IsNullOrWhiteSpace(criterion.Label) ? criterion.Value : criterion.Label
+                });
+            }
+        }
+
+        foreach (CopilotSavedRule savedRule in savedRules)
+        {
+            CopilotNormalizedRulesDto savedRulesDto = DeserializeRules(savedRule.RuleJson);
+            requiredSkills.AddRange(savedRulesDto.RequiredSkills);
+            preferredSkills.AddRange(savedRulesDto.PreferredSkills);
+            normalizedPriorityCriteria.AddRange(savedRulesDto.PriorityCriteria);
+            normalizedNegativeCriteria.AddRange(savedRulesDto.NegativeCriteria);
+            autoRejectRules.AddRange(savedRulesDto.AutoRejectRules);
+
+            if (savedRulesDto.MinExperienceYears.HasValue)
+            {
+                minExperienceYears = Math.Max(minExperienceYears ?? 0, savedRulesDto.MinExperienceYears.Value);
+            }
+        }
+
         return new CopilotNormalizedRulesDto
         {
-            RequiredSkills = requiredSkills,
+            RequiredSkills = requiredSkills.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
+            PreferredSkills = preferredSkills.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
             MinExperienceYears = minExperienceYears,
             AutoRejectRules = autoRejectRules
+                .GroupBy(rule => $"{rule.Field}|{rule.Operator}|{rule.Value}|{rule.Reason}", StringComparer.OrdinalIgnoreCase)
+                .Select(group => group.First())
+                .ToList(),
+            PriorityCriteria = DeduplicateCriteria(normalizedPriorityCriteria),
+            NegativeCriteria = DeduplicateCriteria(normalizedNegativeCriteria)
         };
     }
 
@@ -281,31 +603,67 @@ public class CopilotService : ICopilotService
         List<CopilotRankingResultDto> results = candidates.Select(candidate =>
         {
             List<string> candidateSkills = candidate.Skills.ToList();
-            List<string> matchedSkills = rules.RequiredSkills
-                .Where(required => candidateSkills.Any(skill => string.Equals(skill, required, StringComparison.OrdinalIgnoreCase)))
+            string cvText = candidate.CvSummary ?? string.Empty;
+            List<string> cvMatchedSkills = rules.RequiredSkills
+                .Where(required => cvText.Contains(required, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            List<string> profileOnlyMatchedSkills = rules.RequiredSkills
+                .Where(required =>
+                    !cvMatchedSkills.Contains(required, StringComparer.OrdinalIgnoreCase)
+                    && candidateSkills.Any(skill => string.Equals(skill, required, StringComparison.OrdinalIgnoreCase)))
+                .ToList();
+            List<string> matchedSkills = cvMatchedSkills
+                .Concat(profileOnlyMatchedSkills)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            List<string> cvMatchedPreferredSkills = rules.PreferredSkills
+                .Where(required => cvText.Contains(required, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            List<string> profileOnlyPreferredSkills = rules.PreferredSkills
+                .Where(required =>
+                    !cvMatchedPreferredSkills.Contains(required, StringComparer.OrdinalIgnoreCase)
+                    && candidateSkills.Any(skill => string.Equals(skill, required, StringComparison.OrdinalIgnoreCase)))
+                .ToList();
+            List<string> matchedPreferredSkills = cvMatchedPreferredSkills
+                .Concat(profileOnlyPreferredSkills)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
             bool isAutoRejected = rules.AutoRejectRules.Any(rule =>
-                rule.Field.Equals("education", StringComparison.OrdinalIgnoreCase)
-                && !string.IsNullOrWhiteSpace(candidate.Education)
-                && candidate.Education.Contains(rule.Value, StringComparison.OrdinalIgnoreCase));
+                MatchesAutoReject(candidate, rule));
 
             string? rejectReason = isAutoRejected
-                ? rules.AutoRejectRules.First().Reason
+                ? rules.AutoRejectRules.First(rule => MatchesAutoReject(candidate, rule)).Reason
                 : null;
 
+            decimal requiredSkillEvidence = cvMatchedSkills.Count + (profileOnlyMatchedSkills.Count * 0.45m);
+            decimal preferredSkillEvidence = cvMatchedPreferredSkills.Count + (profileOnlyPreferredSkills.Count * 0.35m);
             decimal skillScore = rules.RequiredSkills.Count == 0
-                ? 40
-                : Math.Round((decimal)matchedSkills.Count / rules.RequiredSkills.Count * 40, 2);
+                ? 28
+                : Math.Min(40, Math.Round(requiredSkillEvidence / rules.RequiredSkills.Count * 40, 2));
+            if (preferredSkillEvidence > 0)
+            {
+                skillScore = Math.Min(40, skillScore + Math.Round(preferredSkillEvidence * 2, 2));
+            }
             decimal experienceScore = rules.MinExperienceYears.HasValue && rules.MinExperienceYears.Value > 0
                 ? Math.Min(30, Math.Round((decimal)candidate.ExperienceYears / rules.MinExperienceYears.Value * 30, 2))
                 : Math.Min(30, candidate.ExperienceYears * 6);
             decimal educationScore = string.IsNullOrWhiteSpace(candidate.Education) ? 8 : 18;
-            decimal projectScore = Math.Min(10, candidate.CvSummary.Length / 30);
-            decimal totalScore = isAutoRejected ? Math.Min(35, skillScore + experienceScore + educationScore + projectScore) : Math.Min(100, skillScore + experienceScore + educationScore + projectScore);
+            decimal projectScore = Math.Min(10, (cvMatchedSkills.Count * 2) + (cvMatchedPreferredSkills.Count) + Math.Min(4, candidate.CvSummary.Length / 120m));
+            decimal rawTotalScore = skillScore + experienceScore + educationScore + projectScore;
+            decimal penaltyScore = rules.NegativeCriteria
+                .Where(criteria => !criteria.AutoReject && IsNegativeHit(candidate, criteria))
+                .Sum(GetPenaltyScore);
+            decimal adjustedTotalScore = Math.Max(0, rawTotalScore - penaltyScore);
+            decimal totalScore = isAutoRejected
+                ? Math.Min(35, adjustedTotalScore)
+                : Math.Min(100, adjustedTotalScore);
 
             List<string> weaknesses = [];
             weaknesses.AddRange(rules.RequiredSkills.Except(matchedSkills, StringComparer.OrdinalIgnoreCase).Select(skill => $"Missing {skill}"));
+            weaknesses.AddRange(rules.NegativeCriteria
+                .Where(criteria => IsNegativeHit(candidate, criteria))
+                .Select(criteria => string.IsNullOrWhiteSpace(criteria.Label) ? $"Watch {criteria.Value}" : criteria.Label));
             if (rules.MinExperienceYears.HasValue && candidate.ExperienceYears < rules.MinExperienceYears.Value)
             {
                 weaknesses.Add($"Below {rules.MinExperienceYears.Value} years experience");
@@ -317,16 +675,19 @@ public class CopilotService : ICopilotService
                 ApplicationId = candidate.ApplicationId,
                 FullName = candidate.FullName,
                 TotalScore = totalScore,
-                SkillScore = skillScore,
+                SkillScore = penaltyScore > 0
+                    ? Math.Max(0, skillScore - Math.Min(skillScore, penaltyScore))
+                    : skillScore,
                 ExperienceScore = experienceScore,
                 EducationScore = educationScore,
                 ProjectScore = projectScore,
                 Recommendation = isAutoRejected ? "Reject" : totalScore >= 80 ? "Interview" : totalScore >= 60 ? "Consider" : "Hold",
                 IsAutoRejected = isAutoRejected,
                 RejectReason = rejectReason,
-                Strengths = matchedSkills.Count > 0 ? matchedSkills : candidateSkills.Take(3).ToList(),
+                Strengths = matchedSkills.Count > 0 ? matchedSkills.Concat(matchedPreferredSkills).Distinct(StringComparer.OrdinalIgnoreCase).ToList() : candidateSkills.Take(3).ToList(),
                 Weaknesses = weaknesses.Take(4).ToList(),
-                Summary = isAutoRejected ? $"Rejected by rule: {rejectReason}" : "Ranked by skill, experience, education, and CV summary match."
+                Summary = string.Empty,
+                IsAiGenerated = false
             };
         })
         .OrderBy(result => result.IsAutoRejected)
@@ -341,5 +702,263 @@ public class CopilotService : ICopilotService
         }
 
         return results;
+    }
+
+    private static decimal GetPenaltyScore(CopilotRuleCriterionDto criterion)
+    {
+        return criterion.Weight.ToLowerInvariant() switch
+        {
+            "high" => 18,
+            "low" => 6,
+            _ => 12
+        };
+    }
+
+    private static bool ShouldRunRanking(
+        string prompt,
+        IReadOnlyList<CopilotRuleCriterionRequestDto> priorityCriteria,
+        IReadOnlyList<CopilotRuleCriterionRequestDto> negativeCriteria)
+    {
+        if (priorityCriteria.Count > 0 || negativeCriteria.Count > 0)
+        {
+            return true;
+        }
+
+        string lowered = prompt.ToLowerInvariant();
+        string[] explicitRankingPhrases =
+        [
+            "rank candidates",
+            "rank cvs",
+            "score candidates",
+            "evaluate candidates",
+            "screen candidates",
+            "shortlist candidates",
+            "top candidates",
+            "xếp hạng ứng viên",
+            "xếp hạng cv",
+            "đánh giá ứng viên",
+            "chấm ứng viên",
+            "lọc ứng viên",
+            "xếp loại ứng viên",
+            "so sánh ứng viên",
+            "shortlist cv",
+            "rank applicant",
+            "evaluate applicant"
+        ];
+
+        if (explicitRankingPhrases.Any(keyword => lowered.Contains(keyword)))
+        {
+            return true;
+        }
+
+        bool hasQuestionStyleIntent =
+            lowered.Contains("như thế nào")
+            || lowered.Contains("nên làm gì")
+            || lowered.StartsWith("tôi nên")
+            || lowered.StartsWith("mình nên")
+            || lowered.StartsWith("how should")
+            || lowered.StartsWith("what should");
+
+        if (hasQuestionStyleIntent)
+        {
+            return false;
+        }
+
+        string[] rankingActionKeywords =
+        [
+            "rank", "ranking", "score", "evaluate", "assessment", "screen", "screening",
+            "shortlist", "top", "xếp hạng", "đánh giá", "chấm", "lọc", "xếp loại"
+        ];
+        string[] candidateTargetKeywords =
+        [
+            "candidate", "candidates", "applicant", "applicants", "cv", "resume", "ứng viên", "hồ sơ"
+        ];
+
+        return rankingActionKeywords.Any(action => lowered.Contains(action))
+            && candidateTargetKeywords.Any(target => lowered.Contains(target));
+    }
+
+    private static string BuildRankingAssistantMessage(IReadOnlyList<CopilotRankingResultDto> results)
+    {
+        List<string> lines = results
+            .Where(result => !string.IsNullOrWhiteSpace(result.Summary) || result.IsAutoRejected)
+            .Take(5)
+            .Select(result =>
+            {
+                string reason = !string.IsNullOrWhiteSpace(result.Summary)
+                    ? result.Summary.Trim()
+                    : result.RejectReason ?? "Did not meet the active criteria.";
+                string prefix = result.IsAutoRejected
+                    ? $"Rejected - {result.FullName}:"
+                    : $"{result.RankPosition}. {result.FullName}:";
+                return $"{prefix} {reason}";
+            })
+            .ToList();
+
+        return lines.Count > 0
+            ? string.Join("\n", lines)
+            : "Ranking completed.";
+    }
+
+    private static List<CopilotRankingResultDto> NormalizeRankingResults(
+        IReadOnlyList<CopilotRankingResultDto> results,
+        IReadOnlyList<CopilotCandidateDto> candidates)
+    {
+        Dictionary<Guid, CopilotCandidateDto> candidateLookup = candidates
+            .GroupBy(candidate => candidate.CandidateUserId)
+            .ToDictionary(group => group.Key, group => group.First());
+
+        List<CopilotRankingResultDto> normalized = results
+            .Where(result => candidateLookup.ContainsKey(result.CandidateUserId))
+            .GroupBy(result => result.CandidateUserId)
+            .Select(group =>
+            {
+                CopilotRankingResultDto chosen = group
+                    .OrderBy(result => result.IsAutoRejected)
+                    .ThenBy(result => result.RankPosition <= 0 ? int.MaxValue : result.RankPosition)
+                    .ThenByDescending(result => result.TotalScore)
+                    .First();
+
+                CopilotCandidateDto candidate = candidateLookup[group.Key];
+                chosen.ApplicationId = chosen.ApplicationId == Guid.Empty
+                    ? candidate.ApplicationId
+                    : chosen.ApplicationId;
+                chosen.FullName = string.IsNullOrWhiteSpace(chosen.FullName)
+                    ? candidate.FullName
+                    : chosen.FullName;
+
+                return chosen;
+            })
+            .OrderBy(result => result.IsAutoRejected)
+            .ThenBy(result => result.RankPosition <= 0 ? int.MaxValue : result.RankPosition)
+            .ThenByDescending(result => result.TotalScore)
+            .ToList();
+
+        for (int index = 0; index < normalized.Count; index += 1)
+        {
+            normalized[index].RankPosition = index + 1;
+        }
+
+        return normalized;
+    }
+
+    private static CopilotNormalizedRulesDto MergeRules(CopilotNormalizedRulesDto previousRules, CopilotNormalizedRulesDto currentRules)
+    {
+        return new CopilotNormalizedRulesDto
+        {
+            RequiredSkills = previousRules.RequiredSkills
+                .Concat(currentRules.RequiredSkills)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList(),
+            PreferredSkills = previousRules.PreferredSkills
+                .Concat(currentRules.PreferredSkills)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList(),
+            MinExperienceYears = currentRules.MinExperienceYears ?? previousRules.MinExperienceYears,
+            MinTotalScore = currentRules.MinTotalScore ?? previousRules.MinTotalScore,
+            AutoRejectRules = previousRules.AutoRejectRules
+                .Concat(currentRules.AutoRejectRules)
+                .GroupBy(rule => $"{rule.Field}|{rule.Operator}|{rule.Value}|{rule.Reason}", StringComparer.OrdinalIgnoreCase)
+                .Select(group => group.First())
+                .ToList(),
+            PriorityCriteria = DeduplicateCriteria(previousRules.PriorityCriteria.Concat(currentRules.PriorityCriteria).ToList()),
+            NegativeCriteria = DeduplicateCriteria(previousRules.NegativeCriteria.Concat(currentRules.NegativeCriteria).ToList())
+        };
+    }
+
+    private static CopilotNormalizedRulesDto DeserializeRules(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return new CopilotNormalizedRulesDto();
+        }
+
+        return JsonSerializer.Deserialize<CopilotNormalizedRulesDto>(json) ?? new CopilotNormalizedRulesDto();
+    }
+
+    private static IReadOnlyList<string> DeserializeStringList(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return [];
+        }
+
+        return JsonSerializer.Deserialize<List<string>>(json) ?? [];
+    }
+
+    private static string DeserializeSummary(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return string.Empty;
+        }
+
+        using JsonDocument document = JsonDocument.Parse(json);
+        return document.RootElement.TryGetProperty("Summary", out JsonElement summary)
+            ? summary.GetString() ?? string.Empty
+            : document.RootElement.TryGetProperty("summary", out JsonElement summaryLower)
+                ? summaryLower.GetString() ?? string.Empty
+                : string.Empty;
+    }
+
+    private static bool DeserializeIsAiGenerated(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return false;
+        }
+
+        using JsonDocument document = JsonDocument.Parse(json);
+        return document.RootElement.TryGetProperty("IsAiGenerated", out JsonElement value)
+            ? value.GetBoolean()
+            : document.RootElement.TryGetProperty("isAiGenerated", out JsonElement valueLower)
+                && valueLower.GetBoolean();
+    }
+
+    private static CopilotRuleCriterionDto MapCriterion(CopilotRuleCriterionRequestDto criterion)
+    {
+        return new CopilotRuleCriterionDto
+        {
+            Label = criterion.Label,
+            Field = criterion.Field,
+            Operator = string.IsNullOrWhiteSpace(criterion.Operator) ? "contains" : criterion.Operator,
+            Value = criterion.Value,
+            Weight = string.IsNullOrWhiteSpace(criterion.Weight) ? "medium" : criterion.Weight,
+            AutoReject = criterion.AutoReject
+        };
+    }
+
+    private static IReadOnlyList<CopilotRuleCriterionDto> DeduplicateCriteria(IReadOnlyList<CopilotRuleCriterionDto> criteria)
+    {
+        return criteria
+            .GroupBy(item => $"{item.Field}|{item.Operator}|{item.Value}|{item.Weight}|{item.AutoReject}|{item.Label}", StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .ToList();
+    }
+
+    private static bool MatchesAutoReject(CopilotCandidateDto candidate, CopilotAutoRejectRuleDto rule)
+    {
+        string? value = rule.Field.ToLowerInvariant() switch
+        {
+            "education" => candidate.Education,
+            "cvsummary" => candidate.CvSummary,
+            "fullname" => candidate.FullName,
+            _ => null
+        };
+
+        return !string.IsNullOrWhiteSpace(value)
+            && value.Contains(rule.Value, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsNegativeHit(CopilotCandidateDto candidate, CopilotRuleCriterionDto criterion)
+    {
+        return criterion.Field.ToLowerInvariant() switch
+        {
+            "education" => !string.IsNullOrWhiteSpace(candidate.Education)
+                && candidate.Education.Contains(criterion.Value, StringComparison.OrdinalIgnoreCase),
+            "cvsummary" => candidate.CvSummary.Contains(criterion.Value, StringComparison.OrdinalIgnoreCase),
+            "experienceyears" => int.TryParse(criterion.Value, out int years) && candidate.ExperienceYears < years,
+            _ => false
+        };
     }
 }

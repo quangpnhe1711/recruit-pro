@@ -1323,8 +1323,10 @@ CREATE TABLE IF NOT EXISTS public.copilot_saved_rules (
     name character varying(200) NOT NULL,
     rule_json jsonb NOT NULL,
     is_active boolean DEFAULT true NOT NULL,
+    is_deleted boolean DEFAULT false NOT NULL,
     created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+    updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    deleted_at timestamp without time zone
 );
 
 CREATE TABLE IF NOT EXISTS public.copilot_candidate_tags (
@@ -1368,11 +1370,15 @@ ALTER TABLE ONLY public.copilot_candidate_tags ADD CONSTRAINT copilot_candidate_
 ALTER TABLE ONLY public.copilot_candidate_tags ADD CONSTRAINT copilot_candidate_tags_created_by_user_id_fkey FOREIGN KEY (created_by_user_id) REFERENCES public.users(id) ON DELETE CASCADE;
 
 CREATE INDEX IF NOT EXISTS ix_copilot_conversations_job_user_created_at ON public.copilot_conversations USING btree (job_id, user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS ix_copilot_conversations_latest_ranking_session_id ON public.copilot_conversations USING btree (latest_ranking_session_id);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_copilot_conversations_active_job_user ON public.copilot_conversations USING btree (job_id, user_id) WHERE ((status)::text = 'Active'::text);
 CREATE INDEX IF NOT EXISTS ix_copilot_messages_conversation_sequence ON public.copilot_messages USING btree (conversation_id, sequence_no);
 CREATE INDEX IF NOT EXISTS ix_copilot_ranking_sessions_conversation_created_at ON public.copilot_ranking_sessions USING btree (conversation_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS ix_copilot_ranking_sessions_job_created_at ON public.copilot_ranking_sessions USING btree (job_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS ix_copilot_ranking_results_session_rank ON public.copilot_ranking_results USING btree (ranking_session_id, rank_position);
 CREATE INDEX IF NOT EXISTS ix_copilot_ranking_results_session_reject_score ON public.copilot_ranking_results USING btree (ranking_session_id, is_auto_rejected, total_score DESC);
 CREATE INDEX IF NOT EXISTS ix_copilot_saved_rules_job_active ON public.copilot_saved_rules USING btree (job_id, is_active);
+CREATE INDEX IF NOT EXISTS ix_copilot_saved_rules_job_user_updated_at ON public.copilot_saved_rules USING btree (job_id, user_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS ix_copilot_saved_rules_job_user_deleted ON public.copilot_saved_rules USING btree (job_id, user_id, is_deleted);
 CREATE INDEX IF NOT EXISTS ix_copilot_candidate_tags_job_tag ON public.copilot_candidate_tags USING btree (job_id, tag_name);
 

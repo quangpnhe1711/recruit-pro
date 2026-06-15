@@ -7,19 +7,22 @@ namespace RecruitPro.Application.DTOs.Response
         public string Message { get; set; }
         public T? Data { get; set; }
         public Dictionary<string, string[]>? Errors { get; set; }
+        public object? Extra { get; set; }
 
         private ApiResponse(
             bool success,
             int statusCode,
             string message,
             T? data = default,
-            Dictionary<string, string[]>? errors = null)
+            Dictionary<string, string[]>? errors = null,
+            object? extra = null)
         {
             Success = success;
             StatusCode = statusCode;
             Message = message;
             Data = data;
             Errors = errors;
+            Extra = extra;
         }
 
         public static ApiResponse<T> Ok(T data, string message = "Success")
@@ -57,9 +60,9 @@ namespace RecruitPro.Application.DTOs.Response
             return new ApiResponse<T>(false, 404, message);
         }
 
-        public static ApiResponse<T> Error(string message = "Internal server error")
+        public static ApiResponse<T> Error(string message = "Internal server error", object? extra = null)
         {
-            return new ApiResponse<T>(false, 500, message);
+            return new ApiResponse<T>(false, 500, message, default, null, extra);
         }
     }
 }

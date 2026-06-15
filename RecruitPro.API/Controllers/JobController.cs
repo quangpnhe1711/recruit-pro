@@ -1,6 +1,5 @@
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc;
+using RecruitPro.API.Extensions;
 using RecruitPro.Application.DTOs.Request;
 using RecruitPro.Application.DTOs.Request.Jobs;
 using RecruitPro.Application.Interfaces.IServices;
@@ -55,7 +54,14 @@ public class JobController : ControllerBase
     [HttpGet("api/hr/jobs")]
     public async Task<IActionResult> GetHrJobs([FromQuery] HrJobQueryRequest request)
     {
-        var result = await _jobService.GetHrJobsAsync(request, GetCurrentUserId());
+        var result = await _jobService.GetHrJobsAsync(request, User.GetCurrentUserId());
+        return StatusCode(result.StatusCode, result);
+    }
+
+    [HttpGet("api/hr/jobs/{jobId}")]
+    public async Task<IActionResult> GetHrJobDetail(string jobId)
+    {
+        var result = await _jobService.GetJobDetailAsync(jobId);
         return StatusCode(result.StatusCode, result);
     }
 
@@ -76,7 +82,7 @@ public class JobController : ControllerBase
     [HttpPost("api/hr/jobs")]
     public async Task<IActionResult> CreateJob([FromBody] CreateJobRequest request)
     {
-        var result = await _jobService.CreateJobAsync(request, GetCurrentUserId());
+        var result = await _jobService.CreateJobAsync(request, User.GetCurrentUserId());
         return StatusCode(result.StatusCode, result);
     }
 
@@ -102,14 +108,5 @@ public class JobController : ControllerBase
     {
         var result = await _jobService.DeleteJobAsync(jobId);
         return StatusCode(result.StatusCode, result);
-    }
-
-    private Guid GetCurrentUserId()
-    {
-        string sub = User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
-            ?? User.FindFirst("sub")?.Value
-            ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value
-            ?? throw new UnauthorizedAccessException("Missing user id claim.");
-        return Guid.Parse(sub);
     }
 }

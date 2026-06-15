@@ -8,11 +8,13 @@ namespace RecruitPro.API.Middlewares
     {
         private readonly RequestDelegate _next;
         private readonly ILogger<ExceptionMiddleware> _logger;
+        private readonly IHostEnvironment _environment;
 
-        public ExceptionMiddleware(RequestDelegate next, ILogger<ExceptionMiddleware> logger)
+        public ExceptionMiddleware(RequestDelegate next, ILogger<ExceptionMiddleware> logger, IHostEnvironment environment)
         {
             _next = next;
             _logger = logger;
+            _environment = environment;
         }
 
         public async Task Invoke(HttpContext context)
@@ -23,12 +25,21 @@ namespace RecruitPro.API.Middlewares
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, ex.Message);
-                await HandleExceptionAsync(context, ex);
+                string traceId = context.TraceIdentifier;
+                string rootCause = GetInnermostMessage(ex);
+
+                _logger.LogError(
+                    ex,
+                    "Unhandled exception. TraceId: {TraceId}. Message: {Message}. RootCause: {RootCause}",
+                    traceId,
+                    ex.Message,
+                    rootCause);
+
+                await HandleExceptionAsync(context, ex, _environment.IsDevelopment(), traceId);
             }
         }
 
-        private static async Task HandleExceptionAsync(HttpContext context, Exception exception)
+        private static async Task HandleExceptionAsync(HttpContext context, Exception exception, bool isDevelopment, string traceId)
         {
             context.Response.ContentType = "application/json";
 
@@ -60,11 +71,32 @@ namespace RecruitPro.API.Middlewares
             else
             {
                 statusCode = 500;
-                response = ApiResponse<object>.Error("Đã xảy ra lỗi hệ thống");
+                response = ApiResponse<object>.Error(
+                    exception.Message,
+                    isDevelopment
+                        ? new
+                        {
+                            traceId,
+                            exception = exception.GetType().Name,
+                            innerException = exception.InnerException?.Message,
+                            rootCause = GetInnermostMessage(exception)
+                        }
+                        : new { traceId });
             }
 
             context.Response.StatusCode = statusCode;
             await context.Response.WriteAsJsonAsync(response);
+        }
+
+        private static string GetInnermostMessage(Exception exception)
+        {
+            Exception current = exception;
+            while (current.InnerException is not null)
+            {
+                current = current.InnerException;
+            }
+
+            return current.Message;
         }
     }
 }

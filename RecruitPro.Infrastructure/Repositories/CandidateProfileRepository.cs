@@ -43,6 +43,21 @@ namespace RecruitPro.Infrastructure.Repositories
                 .FirstOrDefaultAsync(profile => profile.Id == candidateId);
         }
 
+        public Task<CandidateProfile?> GetHrDetailByIdAsync(Guid candidateId)
+        {
+            return _context.CandidateProfiles
+                .AsNoTracking()
+                .Include(profile => profile.User)
+                    .ThenInclude(user => user.Applications)
+                        .ThenInclude(application => application.Job)
+                            .ThenInclude(job => job.Department)
+                .Include(profile => profile.User)
+                    .ThenInclude(user => user.Applications)
+                        .ThenInclude(application => application.Interviews)
+                .Include(profile => profile.Skills)
+                .FirstOrDefaultAsync(profile => profile.Id == candidateId);
+        }
+
         public async Task<(IReadOnlyList<CandidateProfile> Candidates, int Total)> GetPagedAsync(int page, int pageSize, string? keyword)
         {
             IQueryable<CandidateProfile> query = _context.CandidateProfiles

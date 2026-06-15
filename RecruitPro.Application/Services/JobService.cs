@@ -106,10 +106,10 @@ public class JobService : IJobService
             }).ToList());
     }
 
-    public async Task<ApiResponse<JobDetailDto>> GetJobDetailAsync(string jobId)
+    public async Task<ApiResponse<JobDetailResponseDto>> GetJobDetailAsync(string jobId)
     {
         Job job = await GetJobAsync(jobId);
-        return ApiResponse<JobDetailDto>.Ok(MapLegacyJobDetail(job));
+        return ApiResponse<JobDetailResponseDto>.Ok(MapLegacyJobDetail(job));
     }
 
     public async Task<ApiResponse<JobDetailScreenDto>> GetJobScreenDetailAsync(string jobId)
@@ -135,6 +135,13 @@ public class JobService : IJobService
             VacancyCount = job.VacancyCount,
             Description = ParseJsonArray(job.Description),
             Requirements = ParseJsonArray(job.Requirements),
+            Skills = job.JobSkills.Select(jobSkill => new JobSkillDto
+            {
+                Id = jobSkill.SkillId,
+                Name = jobSkill.Skill.Name,
+                MinYearsExperience = jobSkill.MinYearsExperience,
+                IsRequired = jobSkill.IsRequired
+            }).ToList(),
             ApplicationSummary = new ApplicationSummaryDto
             {
                 TotalApplications = applications.Count,
@@ -164,7 +171,7 @@ public class JobService : IJobService
         });
     }
 
-    public async Task<ApiResponse<JobDetailDto>> UpdateJobStatusAsync(string jobId, UpdateJobStatusRequest request)
+    public async Task<ApiResponse<JobDetailResponseDto>> UpdateJobStatusAsync(string jobId, UpdateJobStatusRequest request)
     {
         Job job = await GetTrackedJobAsync(jobId);
         if (!Enum.TryParse(request.Status, true, out JobStatus newStatus))
@@ -176,7 +183,7 @@ public class JobService : IJobService
         await _jobRepository.UpdateAsync(job);
         await _unitOfWork.SaveChangesAsync();
 
-        return ApiResponse<JobDetailDto>.Ok(MapLegacyJobDetail(job));
+        return ApiResponse<JobDetailResponseDto>.Ok(MapLegacyJobDetail(job));
     }
 
     public async Task<ApiResponse<HrJobsResponseDto>> GetHrJobsAsync(HrJobQueryRequest request, Guid currentUserId)
@@ -598,9 +605,9 @@ public class JobService : IJobService
         };
     }
 
-    private static JobDetailDto MapLegacyJobDetail(Job job)
+    private static JobDetailResponseDto MapLegacyJobDetail(Job job)
     {
-        return new JobDetailDto
+        return new JobDetailResponseDto
         {
             Id = job.Id,
             Title = job.Title,
@@ -762,8 +769,7 @@ public class JobService : IJobService
             .Select(skill => new JobSkill
             {
                 JobId = Guid.Empty,
-                SkillId = skill.Id,
-                Skill = skill
+                SkillId = skill.Id
             })
             .ToList();
     }
