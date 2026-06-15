@@ -116,6 +116,16 @@ public class OpenAiResumeParserProvider : IResumeParsingAiProvider
                 Data = parsed
             };
         }
+        catch (TaskCanceledException exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogWarning(exception, "AI resume parser timed out.");
+            return new ResumeParsingAiResult
+            {
+                UsedAi = false,
+                ModelName = _settings.Model,
+                FailureReason = "AI parsing timed out before a complete response was returned."
+            };
+        }
         catch (Exception exception)
         {
             _logger.LogWarning(exception, "AI resume parser failed.");
@@ -130,7 +140,8 @@ public class OpenAiResumeParserProvider : IResumeParsingAiProvider
 
     private string BuildPrompt(string extractedText, string[] skillNames)
     {
-        string boundedText = extractedText.Length > 20000 ? extractedText[..20000] : extractedText;
+        int maxResumeChars = _settings.MaxResumeParseChars > 0 ? _settings.MaxResumeParseChars : 12000;
+        string boundedText = extractedText.Length > maxResumeChars ? extractedText[..maxResumeChars] : extractedText;
         return $$"""
         Parse the resume below into structured JSON.
 
@@ -233,6 +244,8 @@ public class OpenAiResumeParserProvider : IResumeParsingAiProvider
             {
                 model = _settings.Model,
                 temperature = 0.1,
+                reasoning_effort = "low",
+                max_completion_tokens = 2400,
                 response_format = requireJson ? new { type = "json_object" } : null,
                 messages = new object[]
                 {
@@ -245,6 +258,7 @@ public class OpenAiResumeParserProvider : IResumeParsingAiProvider
         return new
         {
             model = _settings.Model,
+            max_output_tokens = 2400,
             text = requireJson ? new
             {
                 format = new

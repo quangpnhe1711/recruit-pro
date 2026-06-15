@@ -247,6 +247,8 @@ public class OpenAiCopilotProvider : IAiCopilotProvider
             {
                 model = _settings.Model,
                 temperature = requireJson ? 0.1 : 0.4,
+                reasoning_effort = requireJson ? "low" : null,
+                max_completion_tokens = requireJson ? 3200 : 1200,
                 messages = new object[]
                 {
                     new
@@ -266,6 +268,7 @@ public class OpenAiCopilotProvider : IAiCopilotProvider
         return new
         {
             model = _settings.Model,
+            max_output_tokens = requireJson ? 3200 : 1200,
             input = new object[]
             {
                 new

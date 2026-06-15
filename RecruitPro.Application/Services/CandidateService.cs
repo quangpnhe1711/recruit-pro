@@ -1,5 +1,6 @@
 using AutoMapper;
 using ClosedXML.Excel;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using System.IO.Compression;
 using System.Net;
@@ -376,59 +377,30 @@ public class CandidateService : ICandidateService
 
     public async Task<ApiResponse<CandidateProfileResponseDto>> UpdateProfileAsync(Guid userId, UpdateCandidateProfileRequest request)
     {
-        CandidateProfile profile = await GetProfileEntityAsync(userId);
-        profile.User.FullName = request.Name ?? profile.User.FullName;
-        profile.User.Email = request.Email ?? profile.User.Email;
-        profile.User.Phone = request.Phone ?? profile.User.Phone;
-        profile.User.UpdatedAt = DbDateTime.Now;
-        profile.CurrentPosition = request.Headline ?? profile.CurrentPosition;
-        profile.Address = request.Location ?? profile.Address;
-        profile.Bio = request.Bio ?? profile.Bio;
-        profile.GithubUrl = request.Github ?? profile.GithubUrl;
-        profile.LinkedinUrl = request.Linkedin ?? profile.LinkedinUrl;
-
-        if (request.Skills != null)
+        for (int attempt = 0; attempt < 2; attempt += 1)
         {
-            await SynchronizeCandidateSkillsAsync(profile, request.Skills);
-        }
+            CandidateProfile profile = await GetProfileEntityForUpdateAsync(userId);
+            await ApplyProfileUpdateAsync(profile, request);
 
-        if (request.ExperienceEntries != null)
-        {
-            profile.ExperienceEntriesJson = SerializeDocuments(request.ExperienceEntries.Select(MapExperienceRequest).ToList());
-        }
-
-        if (request.Projects != null)
-        {
-            profile.Projects.Clear();
-            foreach (CandidateProject project in request.Projects.Select(MapProjectRequest))
+            await _unitOfWork.BeginTransactionAsync();
+            try
             {
-                project.CandidateProfileId = profile.Id;
-                profile.Projects.Add(project);
+                await _unitOfWork.SaveChangesAsync();
+                await _unitOfWork.CommitAsync();
+                return ApiResponse<CandidateProfileResponseDto>.Ok(await MapProfileAsync(profile));
+            }
+            catch (DbUpdateConcurrencyException exception) when (attempt == 0)
+            {
+                await _unitOfWork.RollbackAsync();
+                _logger.LogWarning(
+                    exception,
+                    "Retrying candidate profile update after concurrency conflict for user {UserId}. Entries: {Entries}",
+                    userId,
+                    string.Join(", ", exception.Entries.Select(entry => entry.Metadata.ClrType.Name)));
             }
         }
 
-        if (request.Educations != null)
-        {
-            profile.EducationRecordsJson = SerializeDocuments(request.Educations.Select(MapEducationRequest).ToList());
-        }
-
-        if (request.Certifications != null)
-        {
-            profile.CertificationRecordsJson = SerializeDocuments(request.Certifications.Select(MapCertificationRequest).ToList());
-        }
-
-        if (request.Languages != null)
-        {
-            profile.LanguageRecordsJson = SerializeDocuments(request.Languages.Select(MapLanguageRequest).ToList());
-        }
-
-        await _unitOfWork.BeginTransactionAsync();
-        await _candidateRepository.UpdateAsync(profile);
-        await _userRepository.UpdateAsync(profile.User);
-        await _unitOfWork.SaveChangesAsync();
-        await _unitOfWork.CommitAsync();
-
-        return ApiResponse<CandidateProfileResponseDto>.Ok(await MapProfileAsync(profile));
+        throw new InvalidOperationException("Candidate profile update failed after retry.");
     }
 
     public async Task<ApiResponse<CandidateProfileResponseDto>> UpdateSkillsAsync(Guid userId, UpdateCandidateSkillsRequest request)
@@ -441,14 +413,13 @@ public class CandidateService : ICandidateService
                 SkillId = skillId
             }).ToList();
 
-        await SynchronizeCandidateSkillsAsync(profile, requestedSkills);
-
         await _unitOfWork.BeginTransactionAsync();
-        await _candidateRepository.UpdateAsync(profile);
+        await ReplaceCandidateSkillsAsync(profile.Id, requestedSkills);
         await _unitOfWork.SaveChangesAsync();
         await _unitOfWork.CommitAsync();
 
-        return ApiResponse<CandidateProfileResponseDto>.Ok(await MapProfileAsync(profile));
+        CandidateProfile refreshedProfile = await GetProfileEntityAsync(userId);
+        return ApiResponse<CandidateProfileResponseDto>.Ok(await MapProfileAsync(refreshedProfile));
     }
 
     public async Task<ApiResponse<CandidateProfileResponseDto>> CreateExperienceAsync(Guid userId, UpsertCandidateExperienceRequest request)
@@ -626,6 +597,17 @@ public class CandidateService : ICandidateService
         return profile;
     }
 
+    private async Task<CandidateProfile> GetProfileEntityForUpdateAsync(Guid userId)
+    {
+        CandidateProfile? profile = await _candidateRepository.GetByUserIdForUpdateAsync(userId);
+        if (profile == null)
+        {
+            throw new NotFoundException("Candidate profile not found.");
+        }
+
+        return profile;
+    }
+
     private async Task<CandidateProfileResponseDto> MapProfileAsync(CandidateProfile profile)
     {
         List<CandidateExperienceDocument> experiences = LoadExperiences(profile);
@@ -757,9 +739,62 @@ public class CandidateService : ICandidateService
     private async Task SaveProfileAsync(CandidateProfile profile)
     {
         await _unitOfWork.BeginTransactionAsync();
-        await _candidateRepository.UpdateAsync(profile);
         await _unitOfWork.SaveChangesAsync();
         await _unitOfWork.CommitAsync();
+    }
+
+    private async Task ApplyProfileUpdateAsync(CandidateProfile profile, UpdateCandidateProfileRequest request)
+    {
+        profile.User.FullName = request.Name ?? profile.User.FullName;
+        profile.User.Email = request.Email ?? profile.User.Email;
+        profile.User.Phone = request.Phone ?? profile.User.Phone;
+        profile.User.UpdatedAt = DbDateTime.Now;
+        profile.CurrentPosition = request.Headline ?? profile.CurrentPosition;
+        profile.Address = request.Location ?? profile.Address;
+        profile.Bio = request.Bio ?? profile.Bio;
+        profile.GithubUrl = request.Github ?? profile.GithubUrl;
+        profile.LinkedinUrl = request.Linkedin ?? profile.LinkedinUrl;
+
+        if (request.Skills != null)
+        {
+            await ReplaceCandidateSkillsAsync(profile.Id, request.Skills);
+        }
+
+        if (request.ExperienceEntries != null)
+        {
+            profile.ExperienceEntriesJson = SerializeDocuments(request.ExperienceEntries.Select(MapExperienceRequest).ToList());
+        }
+
+        if (request.Projects != null)
+        {
+            await ReplaceCandidateProjectsAsync(profile.Id, request.Projects);
+        }
+
+        if (request.Educations != null)
+        {
+            profile.EducationRecordsJson = SerializeDocuments(request.Educations.Select(MapEducationRequest).ToList());
+        }
+
+        if (request.Certifications != null)
+        {
+            profile.CertificationRecordsJson = SerializeDocuments(request.Certifications.Select(MapCertificationRequest).ToList());
+        }
+
+        if (request.Languages != null)
+        {
+            profile.LanguageRecordsJson = SerializeDocuments(request.Languages.Select(MapLanguageRequest).ToList());
+        }
+    }
+
+    private async Task ReplaceCandidateProjectsAsync(
+        Guid candidateProfileId,
+        IEnumerable<CandidateProjectUpsertRequest> requestedProjects)
+    {
+        List<CandidateProject> projects = requestedProjects
+            .Select(MapProjectRequest)
+            .ToList();
+
+        await _candidateRepository.ReplaceProjectsAsync(candidateProfileId, projects);
     }
 
     private static List<CandidateExperienceDocument> LoadExperiences(CandidateProfile profile)
@@ -893,7 +928,7 @@ public class CandidateService : ICandidateService
         };
     }
 
-    private async Task SynchronizeCandidateSkillsAsync(CandidateProfile profile, List<CandidateSkillUpsertRequest> requestedSkills)
+    private async Task ReplaceCandidateSkillsAsync(Guid candidateProfileId, List<CandidateSkillUpsertRequest> requestedSkills)
     {
         List<Guid> skillIds = requestedSkills
             .Select(value => Guid.TryParse(value.SkillId, out Guid parsed) ? parsed : Guid.Empty)
@@ -901,21 +936,22 @@ public class CandidateService : ICandidateService
             .Distinct()
             .ToList();
         IReadOnlyList<Skill> skills = await _skillRepository.GetByIdsAsync(skillIds);
-        profile.Skills = skills.ToList();
-        profile.CandidateSkillDetails.Clear();
+        List<CandidateSkillDetail> skillDetails = [];
 
         foreach (Skill skill in skills)
         {
             CandidateSkillUpsertRequest? request = requestedSkills.FirstOrDefault(item =>
                 Guid.TryParse(item.SkillId, out Guid parsedSkillId) && parsedSkillId == skill.Id);
 
-            profile.CandidateSkillDetails.Add(new CandidateSkillDetail
+            skillDetails.Add(new CandidateSkillDetail
             {
-                CandidateId = profile.Id,
+                CandidateId = candidateProfileId,
                 SkillId = skill.Id,
                 YearsOfExperience = request?.YearsOfExperience
             });
         }
+
+        await _candidateRepository.ReplaceSkillsAsync(candidateProfileId, skillDetails);
     }
 
     private static List<TDocument> LoadDocuments<TDocument>(string? jsonString)

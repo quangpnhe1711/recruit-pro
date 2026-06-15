@@ -38,6 +38,13 @@ namespace RecruitPro.Infrastructure.Repositories
                 .FirstOrDefaultAsync(profile => profile.UserId == userId);
         }
 
+        public Task<CandidateProfile?> GetByUserIdForUpdateAsync(Guid userId)
+        {
+            return _context.CandidateProfiles
+                .Include(profile => profile.User)
+                .FirstOrDefaultAsync(profile => profile.UserId == userId);
+        }
+
         public Task<CandidateProfile?> GetByIdAsync(Guid candidateId)
         {
             return _context.CandidateProfiles
@@ -144,6 +151,57 @@ namespace RecruitPro.Infrastructure.Repositories
             }
 
             return Task.CompletedTask;
+        }
+
+        public async Task ReplaceProjectsAsync(Guid candidateProfileId, IReadOnlyCollection<CandidateProject> projects)
+        {
+            await _context.CandidateProjects
+                .Where(project => project.CandidateProfileId == candidateProfileId)
+                .ExecuteDeleteAsync();
+
+            if (projects.Count == 0)
+            {
+                return;
+            }
+
+            foreach (CandidateProject project in projects)
+            {
+                project.CandidateProfileId = candidateProfileId;
+            }
+
+            await _context.CandidateProjects.AddRangeAsync(projects);
+        }
+
+        public async Task ReplaceSkillsAsync(Guid candidateProfileId, IReadOnlyCollection<CandidateSkillDetail> skillDetails)
+        {
+            await _context.CandidateSkillDetails
+                .Where(detail => detail.CandidateId == candidateProfileId)
+                .ExecuteDeleteAsync();
+
+            await _context.Set<Dictionary<string, object>>("CandidateSkill")
+                .Where(row => EF.Property<Guid>(row, "CandidateId") == candidateProfileId)
+                .ExecuteDeleteAsync();
+
+            if (skillDetails.Count == 0)
+            {
+                return;
+            }
+
+            foreach (CandidateSkillDetail detail in skillDetails)
+            {
+                detail.CandidateId = candidateProfileId;
+            }
+
+            await _context.CandidateSkillDetails.AddRangeAsync(skillDetails);
+
+            foreach (CandidateSkillDetail detail in skillDetails)
+            {
+                _context.Set<Dictionary<string, object>>("CandidateSkill").Add(new Dictionary<string, object>
+                {
+                    ["CandidateId"] = candidateProfileId,
+                    ["SkillId"] = detail.SkillId
+                });
+            }
         }
     }
 }

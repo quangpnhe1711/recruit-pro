@@ -7,6 +7,7 @@ using RecruitPro.Application.Interfaces.IServices;
 using RecruitPro.Application.Configurations;
 using RecruitPro.Infrastructure.Repositories;
 using RecruitPro.Infrastructure.Service;
+using System;
 
 namespace RecruitPro.Infrastructure.Extensions;
 
@@ -27,8 +28,16 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<IJwtService, JwtService>();
         services.AddSingleton<IResumeTextExtractor, PdfResumeTextExtractor>();
-        services.AddHttpClient<IResumeParsingAiProvider, OpenAiResumeParserProvider>();
-        services.AddHttpClient<IAiCopilotProvider, OpenAiCopilotProvider>();
+        services.AddHttpClient<IResumeParsingAiProvider, OpenAiResumeParserProvider>((serviceProvider, client) =>
+        {
+            OpenAiSettings settings = serviceProvider.GetRequiredService<IOptions<OpenAiSettings>>().Value;
+            client.Timeout = TimeSpan.FromSeconds(Math.Max(30, settings.RequestTimeoutSeconds));
+        });
+        services.AddHttpClient<IAiCopilotProvider, OpenAiCopilotProvider>((serviceProvider, client) =>
+        {
+            OpenAiSettings settings = serviceProvider.GetRequiredService<IOptions<OpenAiSettings>>().Value;
+            client.Timeout = TimeSpan.FromSeconds(Math.Max(30, settings.RequestTimeoutSeconds));
+        });
         services.AddSingleton<IMinioClient>(serviceProvider =>
         {
             MinioSettings settings = serviceProvider.GetRequiredService<IOptions<MinioSettings>>().Value;

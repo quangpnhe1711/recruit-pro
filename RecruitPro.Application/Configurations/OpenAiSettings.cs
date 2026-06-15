@@ -7,5 +7,7 @@ public class OpenAiSettings
     public string Model { get; set; } = "gpt-4.1-mini";
     public int MaxCandidatesForAi { get; set; } = 50;
     public int MaxResumeCharsPerCandidate { get; set; } = 6000;
+    public int MaxResumeParseChars { get; set; } = 12000;
+    public int RequestTimeoutSeconds { get; set; } = 180;
     public bool Enabled { get; set; } = true;
 }
