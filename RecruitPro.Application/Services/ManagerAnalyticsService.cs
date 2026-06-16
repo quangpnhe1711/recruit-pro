@@ -37,8 +37,8 @@ public class ManagerAnalyticsService : IManagerAnalyticsService
         IReadOnlyList<(string DepartmentName, int AverageDays)> departmentReviewCycles = await _applicationRepository.GetAverageReviewCycleByDepartmentAsync();
         IReadOnlyList<(string DepartmentName, int OpenRoles, string RecruiterName)> departmentOpenRoles = await _jobRepository.GetDepartmentOpenRoleSnapshotAsync();
 
-        int offeredCount = statusCounts.GetValueOrDefault(ApplicationStatus.ManagerReview);
-        int acceptedCount = statusCounts.GetValueOrDefault(ApplicationStatus.Accepted);
+        int offeredCount = statusCounts.GetValueOrDefault(ApplicationStatus.Offer);
+        int acceptedCount = statusCounts.GetValueOrDefault(ApplicationStatus.Hired);
         int offerAcceptanceRate = offeredCount + acceptedCount == 0
             ? 0
             : (int)Math.Round((decimal)acceptedCount * 100 / (offeredCount + acceptedCount), MidpointRounding.AwayFromZero);
@@ -59,18 +59,20 @@ public class ManagerAnalyticsService : IManagerAnalyticsService
         int previousPendingInterviews = completedInterviewSeries.Take(3).Sum();
         int currentPendingInterviews = completedInterviewSeries.Skip(3).Sum();
 
-        int reviewStageCount = statusCounts.GetValueOrDefault(ApplicationStatus.Pending) + statusCounts.GetValueOrDefault(ApplicationStatus.Reviewing);
-        int interviewStageCount = statusCounts.GetValueOrDefault(ApplicationStatus.Interviewing);
+        int reviewStageCount = statusCounts.GetValueOrDefault(ApplicationStatus.Applied) + statusCounts.GetValueOrDefault(ApplicationStatus.Screening);
+        int interviewStageCount = statusCounts.GetValueOrDefault(ApplicationStatus.Interview);
         int finalReviewCount = statusCounts.GetValueOrDefault(ApplicationStatus.ManagerReview);
-        int acceptedStageCount = statusCounts.GetValueOrDefault(ApplicationStatus.Accepted);
-        int distributionTotal = reviewStageCount + interviewStageCount + finalReviewCount + acceptedStageCount;
+        int offerCount = statusCounts.GetValueOrDefault(ApplicationStatus.Offer);
+        int acceptedStageCount = statusCounts.GetValueOrDefault(ApplicationStatus.Hired);
+        int distributionTotal = reviewStageCount + interviewStageCount + finalReviewCount + offerCount + acceptedStageCount;
 
         List<ManagerRecruitmentDistributionItemDto> distributionItems =
         [
-            BuildDistributionItem("Review Stage", reviewStageCount, distributionTotal, "primary"),
-            BuildDistributionItem("Interview Stage", interviewStageCount, distributionTotal, "tertiary"),
-            BuildDistributionItem("Final Review", finalReviewCount, distributionTotal, "secondary"),
-            BuildDistributionItem("Accepted", acceptedStageCount, distributionTotal, "surface")
+            BuildDistributionItem("Screening", reviewStageCount, distributionTotal, "primary"),
+            BuildDistributionItem("Interview", interviewStageCount, distributionTotal, "tertiary"),
+            BuildDistributionItem("Manager Review", finalReviewCount, distributionTotal, "secondary"),
+            BuildDistributionItem("Offer", offerCount, distributionTotal, "secondary"),
+            BuildDistributionItem("Hired", acceptedStageCount, distributionTotal, "surface")
         ];
 
         List<ManagerDepartmentBreakdownDto> departmentBreakdown = departmentOpenRoles
@@ -118,10 +120,11 @@ public class ManagerAnalyticsService : IManagerAnalyticsService
             Funnel =
             [
                 BuildFunnelItem("Applied", statusCounts.Values.Sum(), statusCounts.Values.Sum()),
-                BuildFunnelItem("Screened", reviewStageCount, statusCounts.Values.Sum()),
+                BuildFunnelItem("Screening", reviewStageCount, statusCounts.Values.Sum()),
+                BuildFunnelItem("Manager Review", finalReviewCount, statusCounts.Values.Sum()),
                 BuildFunnelItem("Interview", interviewStageCount, statusCounts.Values.Sum()),
-                BuildFunnelItem("Offered", finalReviewCount, statusCounts.Values.Sum()),
-                BuildFunnelItem("Accepted", acceptedStageCount, statusCounts.Values.Sum())
+                BuildFunnelItem("Offer", offerCount, statusCounts.Values.Sum()),
+                BuildFunnelItem("Hired", acceptedStageCount, statusCounts.Values.Sum())
             ],
             Distribution = new ManagerRecruitmentDistributionDto
             {

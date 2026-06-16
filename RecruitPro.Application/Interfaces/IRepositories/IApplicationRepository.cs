@@ -19,6 +19,7 @@ public interface IApplicationRepository
     Task<double?> GetAverageReviewCycleDaysAsync();
     Task<IReadOnlyList<(DateTime Month, int Count)>> GetMonthlyApplicationVolumeAsync(DateTime startMonth, int monthCount);
     Task<IReadOnlyList<(string DepartmentName, int ActiveApplications, int OfferedCandidates, int AcceptedCandidates)>> GetDepartmentPipelineSnapshotAsync();
+    Task<int> CountByStatusAsync(ApplicationStatus status);
     Task<JobApplication?> GetByIdAsync(Guid applicationId);
     Task<JobApplication?> GetTrackedByIdAsync(Guid applicationId);
     Task<bool> CandidateAlreadyAppliedAsync(Guid userId, Guid jobId);

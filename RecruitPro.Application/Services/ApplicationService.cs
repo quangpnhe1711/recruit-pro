@@ -10,6 +10,7 @@ using RecruitPro.Application.Interfaces.IRepositories;
 using RecruitPro.Application.Interfaces.IServices;
 using RecruitPro.Domain.Entities;
 using RecruitPro.Domain.Enums;
+using RecruitPro.Domain.Workflows;
 using System.Text.Json;
 
 namespace RecruitPro.Application.Services;
@@ -113,7 +114,7 @@ public class ApplicationService : IApplicationService
             Id = Guid.NewGuid(),
             UserId = userId,
             JobId = job.Id,
-            Status = ApplicationStatus.Pending,
+            Status = ApplicationStatus.Applied,
             AppliedAt = DbDateTime.Now,
             CoverLetter = string.IsNullOrWhiteSpace(request.CoverLetter)
                 ? null
@@ -195,11 +196,7 @@ public class ApplicationService : IApplicationService
                 AppliedDate = application.AppliedAt,
                 Status = MapCandidateApplicationStatus(application),
                 NextStep = BuildCandidateNextStep(application),
-                AvailableActions = application.Status == ApplicationStatus.Accepted
-                    ? ["viewDetail"]
-                    : application.Status == ApplicationStatus.ManagerReview && application.Offer?.Status == OfferStatus.Sent
-                        ? ["viewDetail", "acceptOffer", "withdraw"]
-                        : ["viewDetail", "withdraw"]
+                AvailableActions = BuildCandidateAvailableActions(application)
             }).ToList();
 
         return ApiResponse<CandidateApplicationsResponseDto>.Ok(new CandidateApplicationsResponseDto
@@ -209,8 +206,8 @@ public class ApplicationService : IApplicationService
             Summary = new CandidateApplicationSummaryDto
             {
                 Total = total,
-                Active = query.Count(application => application.Status != ApplicationStatus.Rejected && application.Status != ApplicationStatus.Accepted),
-                Closed = query.Count(application => application.Status == ApplicationStatus.Rejected || application.Status == ApplicationStatus.Accepted)
+                Active = query.Count(application => !ApplicationStatusWorkflow.IsClosed(application.Status)),
+                Closed = query.Count(application => ApplicationStatusWorkflow.IsClosed(application.Status))
             }
         });
     }
@@ -218,6 +215,11 @@ public class ApplicationService : IApplicationService
     public async Task<ApiResponse<string>> WithdrawApplicationAsync(Guid userId, string applicationId)
     {
         Domain.Entities.Application application = await GetTrackedApplicationForCandidateAsync(userId, applicationId);
+        if (!ApplicationStatusWorkflow.CanCandidateWithdraw(application.Status))
+        {
+            return ApiResponse<string>.BadRequest("This application can no longer be withdrawn.");
+        }
+
         application.Status = ApplicationStatus.Rejected;
 
         await _unitOfWork.BeginTransactionAsync();
@@ -231,17 +233,18 @@ public class ApplicationService : IApplicationService
     {
         Domain.Entities.Application application = await GetTrackedApplicationForCandidateAsync(userId, applicationId);
 
-        if (application.Status != ApplicationStatus.ManagerReview && application.Status != ApplicationStatus.Accepted)
+        if (!ApplicationStatusWorkflow.CanCandidateRespondToOffer(application.Status)
+            && application.Status != ApplicationStatus.Hired)
         {
             return ApiResponse<string>.BadRequest("This application is not ready for offer acceptance.");
         }
 
-        if (application.Status == ApplicationStatus.ManagerReview && application.Offer?.Status != OfferStatus.Sent)
+        if (application.Status == ApplicationStatus.Offer && application.Offer?.Status != OfferStatus.Sent)
         {
             return ApiResponse<string>.BadRequest("An offer has not been sent for this application yet.");
         }
 
-        application.Status = ApplicationStatus.Accepted;
+        application.Status = ApplicationStatus.Hired;
         ApplicationOffer? offer = await _offerRepository.GetTrackedByApplicationIdAsync(application.Id);
         if (offer != null)
         {
@@ -256,6 +259,33 @@ public class ApplicationService : IApplicationService
         await _unitOfWork.CommitAsync();
 
         return ApiResponse<string>.Ok("Offer accepted successfully", "Offer accepted successfully");
+    }
+
+    public async Task<ApiResponse<string>> DeclineOfferAsync(Guid userId, string applicationId)
+    {
+        Domain.Entities.Application application = await GetTrackedApplicationForCandidateAsync(userId, applicationId);
+        if (!ApplicationStatusWorkflow.CanCandidateRespondToOffer(application.Status))
+        {
+            return ApiResponse<string>.BadRequest("This application is not waiting for an offer response.");
+        }
+
+        ApplicationOffer? offer = await _offerRepository.GetTrackedByApplicationIdAsync(application.Id);
+        if (offer?.Status != OfferStatus.Sent)
+        {
+            return ApiResponse<string>.BadRequest("An offer has not been sent for this application yet.");
+        }
+
+        application.Status = ApplicationStatus.OfferDeclined;
+        offer.Status = OfferStatus.Declined;
+        offer.UpdatedAt = DbDateTime.Now;
+
+        await _unitOfWork.BeginTransactionAsync();
+        await _offerRepository.UpdateAsync(offer);
+        await _applicationRepository.UpdateAsync(application);
+        await _unitOfWork.SaveChangesAsync();
+        await _unitOfWork.CommitAsync();
+
+        return ApiResponse<string>.Ok("Offer declined successfully", "Offer declined successfully");
     }
 
     public async Task<ApiResponse<PaginatedResponseDto<ApplicationListItemDto>>> GetHrApplicationsAsync(int page, int pageSize, string? keyword, string? department, string? status, string? jobId)
@@ -338,19 +368,19 @@ public class ApplicationService : IApplicationService
             return ApiResponse<ApplicationReviewDetailDto>.NotFound("Application not found.");
         }
 
-        string normalizedDecision = request.Decision.Trim().ToLowerInvariant();
-        if (application.Status == ApplicationStatus.Accepted && normalizedDecision != "hire")
+        ApplicationStatus? targetStatus = ParseApplicationStatus(request.TargetStatus);
+        if (!targetStatus.HasValue)
         {
-            return ApiResponse<ApplicationReviewDetailDto>.BadRequest("Accepted applications cannot be moved back to hold or rejected.");
+            return ApiResponse<ApplicationReviewDetailDto>.BadRequest("Target application status is invalid.");
         }
 
-        application.Status = normalizedDecision switch
+        if (!ApplicationStatusWorkflow.CanTransition(application.Status, targetStatus.Value))
         {
-            "hire" => ApplicationStatus.ManagerReview,
-            "hold" => ApplicationStatus.Reviewing,
-            "reject" => ApplicationStatus.Rejected,
-            _ => application.Status
-        };
+            return ApiResponse<ApplicationReviewDetailDto>.BadRequest(
+                $"Invalid transition from {application.Status} to {targetStatus.Value}.");
+        }
+
+        application.Status = targetStatus.Value;
 
         if (reviewerId.HasValue)
         {
@@ -368,13 +398,7 @@ public class ApplicationService : IApplicationService
             return ApiResponse<ApplicationReviewDetailDto>.NotFound("Application not found.");
         }
 
-        string message = normalizedDecision switch
-        {
-            "hire" => "Candidate approved for offer workflow.",
-            "hold" => "Application moved back to review.",
-            "reject" => "Application rejected successfully.",
-            _ => "Application updated successfully."
-        };
+        string message = $"Application moved to {targetStatus.Value}.";
 
         return ApiResponse<ApplicationReviewDetailDto>.Ok(MapApplicationToReviewDetailDto(refreshedApplication), message);
     }
@@ -470,7 +494,7 @@ public class ApplicationService : IApplicationService
             blockers.Add("Please upload your latest resume before applying.");
         }
 
-        if (existingApplication != null)
+        if (existingApplication != null && !ApplicationStatusWorkflow.IsClosed(existingApplication.Status))
         {
             blockers.Add("You have already applied for this job.");
         }
@@ -484,7 +508,7 @@ public class ApplicationService : IApplicationService
             Blockers = blockers,
             GuidanceMessage = blockers.Count == 0
                 ? "Your application will be submitted to the recruitment team for review."
-                : existingApplication != null
+                : existingApplication != null && !ApplicationStatusWorkflow.IsClosed(existingApplication.Status)
                     ? "Track the latest status of this application from My Applications."
                     : "Complete the missing requirements before submitting your application."
         };
@@ -572,7 +596,7 @@ public class ApplicationService : IApplicationService
                 Roles = application.ReviewedByNavigation.UserRoles.Select(userRole => userRole.Role.Name).ToList()
             },
             Score = score,
-            NextStep = application.Interviews.Any() ? "Interview scheduled" : "In review"
+            NextStep = BuildReviewNextStep(application)
         };
     }
 
@@ -614,14 +638,15 @@ public class ApplicationService : IApplicationService
             AppliedAt = application.AppliedAt,
             NextStep = application.Status switch
             {
-                ApplicationStatus.ManagerReview when application.Offer?.Status == OfferStatus.Sent => "Offer sent to candidate",
-                ApplicationStatus.ManagerReview when application.Offer != null => "Offer draft in progress",
-                ApplicationStatus.ManagerReview => "Ready for offer preparation",
-                ApplicationStatus.Rejected => "Application closed",
-                ApplicationStatus.Accepted => "Candidate accepted offer",
-                _ => orderedInterviews.Any()
-                    ? "Awaiting final manager decision"
-                    : "Continue application review"
+                ApplicationStatus.Applied => "Đã nhận hồ sơ",
+                ApplicationStatus.Screening => "HR đang sàng lọc hồ sơ.",
+                ApplicationStatus.ManagerReview => "Chờ quản lý tuyển dụng đánh giá hồ sơ.",
+                ApplicationStatus.Interview => "Ứng viên đang ở vòng phỏng vấn.",
+                ApplicationStatus.Offer => "Đang xử lý offer cho ứng viên.",
+                ApplicationStatus.Hired => "Ứng viên đã chấp nhận offer.",
+                ApplicationStatus.OfferDeclined => "Ứng viên đã từ chối offer.",
+                ApplicationStatus.Rejected => "Hồ sơ đã bị từ chối.",
+                _ => orderedInterviews.Any() ? "Theo dõi lịch phỏng vấn." : "Tiếp tục xử lý hồ sơ."
             },
             Candidate = new ApplicationReviewCandidateDto
             {
@@ -922,12 +947,14 @@ public class ApplicationService : IApplicationService
     {
         return value?.Trim().ToLowerInvariant() switch
         {
-            "pending" => ApplicationStatus.Pending,
-            "reviewing" or "under review" => ApplicationStatus.Reviewing,
-            "interviewing" => ApplicationStatus.Interviewing,
+            "applied" or "pending" => ApplicationStatus.Applied,
+            "screening" or "hrscreening" or "hr-screening" or "reviewing" or "under review" => ApplicationStatus.Screening,
             "managerreview" or "manager-review" => ApplicationStatus.ManagerReview,
-            "accepted" => ApplicationStatus.Accepted,
+            "interview" or "interviewscheduled" or "interview-scheduled" or "interviewing" => ApplicationStatus.Interview,
+            "offer" or "waitingoffer" or "waiting-offer" or "offersent" or "offer-sent" or "offered" => ApplicationStatus.Offer,
+            "hired" or "accepted" => ApplicationStatus.Hired,
             "rejected" => ApplicationStatus.Rejected,
+            "offerdeclined" or "offer-declined" or "declined" => ApplicationStatus.OfferDeclined,
             _ => null
         };
     }
@@ -983,12 +1010,15 @@ public class ApplicationService : IApplicationService
     {
         return application.Status switch
         {
-            ApplicationStatus.ManagerReview when application.Offer?.Status == OfferStatus.Sent => "Offer Sent",
-            ApplicationStatus.ManagerReview => "Offer Pending",
-            ApplicationStatus.Accepted => "Hired",
-            ApplicationStatus.Rejected => "Closed",
-            _ when application.Interviews.Any() => "Final Review",
-            _ => "Application Review"
+            ApplicationStatus.Applied => "Applied",
+            ApplicationStatus.Screening => "Screening",
+            ApplicationStatus.ManagerReview => "Manager Review",
+            ApplicationStatus.Interview => "Interview",
+            ApplicationStatus.Offer => "Offer",
+            ApplicationStatus.Hired => "Hired",
+            ApplicationStatus.Rejected => "Rejected",
+            ApplicationStatus.OfferDeclined => "Offer Declined",
+            _ => application.Status.ToString()
         };
     }
 
@@ -996,13 +1026,14 @@ public class ApplicationService : IApplicationService
     {
         return application.Status switch
         {
-            ApplicationStatus.Pending => "New",
-            ApplicationStatus.Reviewing => "Under Review",
-            ApplicationStatus.Interviewing => "Interviewing",
-            ApplicationStatus.ManagerReview when application.Offer?.Status == OfferStatus.Sent => "Offered",
-            ApplicationStatus.ManagerReview => "Final Review",
-            ApplicationStatus.Accepted => "Accepted",
+            ApplicationStatus.Applied => "Applied",
+            ApplicationStatus.Screening => "Screening",
+            ApplicationStatus.ManagerReview => "Manager Review",
+            ApplicationStatus.Interview => "Interview",
+            ApplicationStatus.Offer => "Offer",
+            ApplicationStatus.Hired => "Hired",
             ApplicationStatus.Rejected => "Rejected",
+            ApplicationStatus.OfferDeclined => "Offer Declined",
             _ => application.Status.ToString()
         };
     }
@@ -1011,11 +1042,50 @@ public class ApplicationService : IApplicationService
     {
         return application.Status switch
         {
-            ApplicationStatus.ManagerReview when application.Offer?.Status == OfferStatus.Sent => "Review and respond to your offer package",
-            ApplicationStatus.ManagerReview => "HR is preparing your offer package",
-            _ when application.Interviews.Any() => "Upcoming interview",
+            ApplicationStatus.Applied => "HR will move your profile into screening shortly.",
+            ApplicationStatus.Screening => "HR is reviewing your CV.",
+            ApplicationStatus.ManagerReview => "Waiting for hiring manager review.",
+            ApplicationStatus.Interview => "Prepare for your interview process.",
+            ApplicationStatus.Offer => "Review the offer and accept or decline it.",
+            ApplicationStatus.Hired => "You have accepted the offer.",
+            ApplicationStatus.Rejected => "This application has been closed.",
+            ApplicationStatus.OfferDeclined => "You declined the offer for this role.",
             _ => "Awaiting review"
         };
+    }
+
+    private static string BuildReviewNextStep(Domain.Entities.Application application)
+    {
+        return application.Status switch
+        {
+            ApplicationStatus.Applied => "Move application into HR screening.",
+            ApplicationStatus.Screening => "Advance to manager review or reject.",
+            ApplicationStatus.ManagerReview => "Schedule interview or reject.",
+            ApplicationStatus.Interview => "Complete interviews and decide next step.",
+            ApplicationStatus.Offer => "Prepare, send, and track offer response.",
+            ApplicationStatus.Hired => "Candidate accepted the offer.",
+            ApplicationStatus.OfferDeclined => "Candidate declined the offer.",
+            ApplicationStatus.Rejected => "Application closed.",
+            _ => "Continue workflow."
+        };
+    }
+
+    private static List<string> BuildCandidateAvailableActions(Domain.Entities.Application application)
+    {
+        List<string> actions = ["viewDetail"];
+
+        if (ApplicationStatusWorkflow.CanCandidateWithdraw(application.Status))
+        {
+            actions.Add("withdraw");
+        }
+
+        if (ApplicationStatusWorkflow.CanCandidateRespondToOffer(application.Status))
+        {
+            actions.Add("acceptOffer");
+            actions.Add("declineOffer");
+        }
+
+        return actions;
     }
 
     private static string BuildInitials(string fullName)

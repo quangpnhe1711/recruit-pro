@@ -104,10 +104,7 @@ public class ApplicationRepository : IApplicationRepository
     public async Task<IReadOnlyList<JobApplication>> GetManagerReviewQueueAsync(string? keyword)
     {
         IQueryable<JobApplication> query = BuildApplicationQuery()
-            .Where(application =>
-                application.Status != ApplicationStatus.Accepted &&
-                application.Status != ApplicationStatus.Rejected &&
-                application.Interviews.Any(interview => interview.Status == InterviewStatus.Completed));
+            .Where(application => application.Status == ApplicationStatus.ManagerReview);
 
         if (!string.IsNullOrWhiteSpace(keyword))
         {
@@ -118,9 +115,7 @@ public class ApplicationRepository : IApplicationRepository
         }
 
         return await query
-            .OrderByDescending(application => application.Interviews
-                .Where(interview => interview.Status == InterviewStatus.Completed)
-                .Max(interview => (DateTime?)interview.InterviewDate) ?? application.AppliedAt)
+            .OrderByDescending(application => application.AppliedAt)
             .ThenByDescending(application => application.AppliedAt)
             .ToListAsync();
     }
@@ -170,7 +165,10 @@ public class ApplicationRepository : IApplicationRepository
     {
         return _context.Applications
             .AsNoTracking()
-            .Where(application => application.Status != ApplicationStatus.Accepted && application.Status != ApplicationStatus.Rejected)
+            .Where(application =>
+                application.Status != ApplicationStatus.Hired &&
+                application.Status != ApplicationStatus.Rejected &&
+                application.Status != ApplicationStatus.OfferDeclined)
             .Select(application => application.UserId)
             .Distinct()
             .CountAsync();
@@ -238,10 +236,11 @@ public class ApplicationRepository : IApplicationRepository
             {
                 DepartmentName = group.Key,
                 ActiveApplications = group.Count(application =>
-                    application.Status != ApplicationStatus.Accepted &&
-                    application.Status != ApplicationStatus.Rejected),
-                OfferedCandidates = group.Count(application => application.Status == ApplicationStatus.ManagerReview),
-                AcceptedCandidates = group.Count(application => application.Status == ApplicationStatus.Accepted)
+                    application.Status != ApplicationStatus.Hired &&
+                    application.Status != ApplicationStatus.Rejected &&
+                    application.Status != ApplicationStatus.OfferDeclined),
+                OfferedCandidates = group.Count(application => application.Status == ApplicationStatus.Offer),
+                AcceptedCandidates = group.Count(application => application.Status == ApplicationStatus.Hired)
             })
             .ToListAsync();
 
@@ -249,6 +248,11 @@ public class ApplicationRepository : IApplicationRepository
             .Select(item => (item.DepartmentName, item.ActiveApplications, item.OfferedCandidates, item.AcceptedCandidates))
             .OrderByDescending(item => item.ActiveApplications)
             .ToList();
+    }
+
+    public Task<int> CountByStatusAsync(ApplicationStatus status)
+    {
+        return _context.Applications.AsNoTracking().CountAsync(application => application.Status == status);
     }
 
     public Task<JobApplication?> GetByIdAsync(Guid applicationId)

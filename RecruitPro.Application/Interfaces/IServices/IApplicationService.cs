@@ -14,6 +14,7 @@ public interface IApplicationService
     Task<ApiResponse<CandidateApplicationsResponseDto>> GetCandidateApplicationsAsync(Guid userId, int page, int pageSize, string? status, string? keyword);
     Task<ApiResponse<string>> WithdrawApplicationAsync(Guid userId, string applicationId);
     Task<ApiResponse<string>> AcceptOfferAsync(Guid userId, string applicationId);
+    Task<ApiResponse<string>> DeclineOfferAsync(Guid userId, string applicationId);
     Task<ApiResponse<PaginatedResponseDto<ApplicationListItemDto>>> GetHrApplicationsAsync(int page, int pageSize, string? keyword, string? department, string? status, string? jobId);
     Task<ApiResponse<ManagerReviewQueueResponseDto>> GetManagerReviewQueueAsync(int page, int pageSize, string? keyword);
     Task<ApiResponse<ApplicationReviewDetailDto>> GetApplicationReviewDetailAsync(string applicationId);

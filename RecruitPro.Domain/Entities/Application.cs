@@ -14,7 +14,7 @@ public partial class Application
 
     public Guid? ReviewedBy { get; set; }
 
-    public ApplicationStatus Status { get; set; } = ApplicationStatus.Pending;
+    public ApplicationStatus Status { get; set; } = ApplicationStatus.Applied;
 
     public DateTime? AppliedAt { get; set; }
 

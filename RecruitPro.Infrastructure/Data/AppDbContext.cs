@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 using RecruitPro.Domain.Entities;
 using RecruitPro.Domain.Enums;
+using RecruitPro.Infrastructure.Data.Converters;
 using JobApplication = RecruitPro.Domain.Entities.Application;
 
 namespace RecruitPro.Infrastructure.Data;
@@ -100,7 +101,7 @@ public partial class AppDbContext : DbContext
             entity.Property(e => e.ReviewedBy).HasColumnName("reviewed_by");
             entity.Property(e => e.UserId).HasColumnName("user_id");
             entity.Property(e => e.Status)
-                .HasConversion<string>()
+                .HasConversion(new ApplicationStatusValueConverter())
                 .HasMaxLength(50)
                 .HasColumnType("character varying(50)")
                 .HasColumnName("status");

@@ -2,11 +2,13 @@ namespace RecruitPro.Domain.Enums
 {
     public enum ApplicationStatus
     {
-        Pending,
-        Reviewing,
-        Interviewing,
+        Applied,
+        Screening,
         ManagerReview,
-        Accepted,
+        Interview,
+        Offer,
+        Hired,
         Rejected,
+        OfferDeclined,
     }
 }

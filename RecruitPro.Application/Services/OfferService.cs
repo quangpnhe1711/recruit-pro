@@ -6,6 +6,7 @@ using RecruitPro.Application.Interfaces.IRepositories;
 using RecruitPro.Application.Interfaces.IServices;
 using RecruitPro.Domain.Entities;
 using RecruitPro.Domain.Enums;
+using RecruitPro.Domain.Workflows;
 
 namespace RecruitPro.Application.Services;
 
@@ -68,9 +69,9 @@ public class OfferService : IOfferService
             return ApiResponse<ApplicationOfferEditorDto>.NotFound("Application not found.");
         }
 
-        if (application.Status != ApplicationStatus.ManagerReview && application.Status != ApplicationStatus.Accepted)
+        if (!ApplicationStatusWorkflow.CanPrepareOffer(application.Status))
         {
-            return ApiResponse<ApplicationOfferEditorDto>.BadRequest("Only final-review applications can have an offer prepared.");
+            return ApiResponse<ApplicationOfferEditorDto>.BadRequest("Only offer-stage applications can have an offer prepared.");
         }
 
         ApplicationOffer? offer = await _offerRepository.GetTrackedByApplicationIdAsync(application.Id);
@@ -140,6 +141,11 @@ public class OfferService : IOfferService
         offer.SentAt = targetStatus == OfferStatus.Sent ? DbDateTime.Now : offer.SentAt;
         offer.UpdatedAt = DbDateTime.Now;
 
+        if (application.Status != ApplicationStatus.Offer)
+        {
+            application.Status = ApplicationStatus.Offer;
+        }
+
         SynchronizeBenefits(offer, benefitIds);
 
         await _unitOfWork.BeginTransactionAsync();
@@ -153,6 +159,7 @@ public class OfferService : IOfferService
             await _offerRepository.UpdateAsync(offer);
         }
 
+        await _applicationRepository.UpdateAsync(application);
         await _unitOfWork.SaveChangesAsync();
         await _unitOfWork.CommitAsync();
 
@@ -226,7 +233,7 @@ public class OfferService : IOfferService
         IReadOnlyList<OfferCurrency> currencies = await _offerRepository.GetCurrenciesAsync();
         IReadOnlyList<User> reportingManagers = await _userRepository.GetUsersInRolesAsync(ReportingManagerRoles);
 
-        string defaultCurrencyCode = currencies.FirstOrDefault()?.Code ?? "USD";
+        string defaultCurrencyCode = currencies.FirstOrDefault()?.Code ?? "VND";
         OfferTemplate? defaultTemplate = templates.FirstOrDefault();
         User? defaultManager = reportingManagers.FirstOrDefault();
 
@@ -236,7 +243,18 @@ public class OfferService : IOfferService
             {
                 ApplicationId = application.Id.ToString(),
                 ReferenceCode = $"APP-{application.Id.ToString("N")[..8].ToUpperInvariant()}",
-                StageLabel = application.Status == ApplicationStatus.Accepted ? "Hired" : "Final Offer",
+                StageLabel = application.Status switch
+                {
+                    ApplicationStatus.Applied => "Applied",
+                    ApplicationStatus.Screening => "Screening",
+                    ApplicationStatus.ManagerReview => "Manager Review",
+                    ApplicationStatus.Interview => "Interview",
+                    ApplicationStatus.Offer => "Offer",
+                    ApplicationStatus.Hired => "Hired",
+                    ApplicationStatus.Rejected => "Rejected",
+                    ApplicationStatus.OfferDeclined => "Offer Declined",
+                    _ => application.Status.ToString()
+                },
                 CandidateName = application.User.FullName,
                 CandidateEmail = application.User.Email,
                 CandidateAvatarUrl = application.User.AvatarUrl,

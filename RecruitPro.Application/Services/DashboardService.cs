@@ -126,11 +126,14 @@ public class DashboardService : IDashboardService
         int pendingApprovalCount = await _jobRepository.CountPendingApprovalJobsAsync();
 
         int activeApplications = statusCounts
-            .Where(pair => pair.Key != ApplicationStatus.Accepted && pair.Key != ApplicationStatus.Rejected)
+            .Where(pair =>
+                pair.Key != ApplicationStatus.Hired &&
+                pair.Key != ApplicationStatus.Rejected &&
+                pair.Key != ApplicationStatus.OfferDeclined)
             .Sum(pair => pair.Value);
 
-        int offeredCount = statusCounts.GetValueOrDefault(ApplicationStatus.ManagerReview);
-        int acceptedCount = statusCounts.GetValueOrDefault(ApplicationStatus.Accepted);
+        int offeredCount = statusCounts.GetValueOrDefault(ApplicationStatus.Offer);
+        int acceptedCount = statusCounts.GetValueOrDefault(ApplicationStatus.Hired);
         decimal acceptanceRate = offeredCount + acceptedCount == 0
             ? 0
             : Math.Round((decimal)acceptedCount * 100 / (offeredCount + acceptedCount), 0, MidpointRounding.AwayFromZero);
@@ -171,7 +174,7 @@ public class DashboardService : IDashboardService
                         .Where(interview => !string.IsNullOrWhiteSpace(interview.Notes))
                         .OrderByDescending(interview => interview.InterviewDate)
                         .Select(interview => interview.Notes!)
-                        .FirstOrDefault() ?? "Completed interviews are ready for manager review.",
+                        .FirstOrDefault() ?? "Applications are waiting for manager review.",
                     Status = application.Status.ToString(),
                     AvatarUrl = application.User.AvatarUrl
                 })
@@ -219,18 +222,23 @@ public class DashboardService : IDashboardService
             },
             new FunnelCountDto
             {
-                Label = "Screened",
-                Count = statusCounts.GetValueOrDefault(ApplicationStatus.Pending) + statusCounts.GetValueOrDefault(ApplicationStatus.Reviewing)
+                Label = "Screening",
+                Count = statusCounts.GetValueOrDefault(ApplicationStatus.Applied) + statusCounts.GetValueOrDefault(ApplicationStatus.Screening)
             },
             new FunnelCountDto
             {
-                Label = "Interviewed",
-                Count = statusCounts.GetValueOrDefault(ApplicationStatus.Interviewing)
-            },
-            new FunnelCountDto
-            {
-                Label = "Offered",
+                Label = "Manager Review",
                 Count = statusCounts.GetValueOrDefault(ApplicationStatus.ManagerReview)
+            },
+            new FunnelCountDto
+            {
+                Label = "Interview",
+                Count = statusCounts.GetValueOrDefault(ApplicationStatus.Interview)
+            },
+            new FunnelCountDto
+            {
+                Label = "Offer",
+                Count = statusCounts.GetValueOrDefault(ApplicationStatus.Offer)
             }
         ];
     }

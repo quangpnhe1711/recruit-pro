@@ -151,9 +151,10 @@ public class JobService : IJobService
                 Funnel =
                 [
                     new FunnelCountDto { Label = "Applications", Count = applications.Count },
-                    new FunnelCountDto { Label = "Screening", Count = applications.Count(application => application.Status == ApplicationStatus.Reviewing) },
-                    new FunnelCountDto { Label = "Interviews", Count = applications.Count(application => application.Status == ApplicationStatus.Interviewing) },
-                    new FunnelCountDto { Label = "Finalist", Count = applications.Count(application => application.Status == ApplicationStatus.ManagerReview || application.Status == ApplicationStatus.Accepted) }
+                    new FunnelCountDto { Label = "Screening", Count = applications.Count(application => application.Status == ApplicationStatus.Screening) },
+                    new FunnelCountDto { Label = "Manager Review", Count = applications.Count(application => application.Status == ApplicationStatus.ManagerReview) },
+                    new FunnelCountDto { Label = "Interview", Count = applications.Count(application => application.Status == ApplicationStatus.Interview) },
+                    new FunnelCountDto { Label = "Offer", Count = applications.Count(application => application.Status == ApplicationStatus.Offer || application.Status == ApplicationStatus.Hired) }
                 ]
             }
         });
@@ -167,10 +168,10 @@ public class JobService : IJobService
         return ApiResponse<HiringFunnelStatisticsDto>.Ok(new HiringFunnelStatisticsDto
         {
             Applied = applications.Count,
-            Screening = applications.Count(application => application.Status == ApplicationStatus.Reviewing),
-            Interview = applications.Count(application => application.Status == ApplicationStatus.Interviewing),
-            Offer = applications.Count(application => application.Status == ApplicationStatus.ManagerReview),
-            Hired = applications.Count(application => application.Status == ApplicationStatus.Accepted)
+            Screening = applications.Count(application => application.Status == ApplicationStatus.Screening),
+            Interview = applications.Count(application => application.Status == ApplicationStatus.Interview),
+            Offer = applications.Count(application => application.Status == ApplicationStatus.Offer),
+            Hired = applications.Count(application => application.Status == ApplicationStatus.Hired)
         });
     }
 
@@ -289,7 +290,8 @@ public class JobService : IJobService
         int applicationsCount = job.Applications.Count;
         int activePipelineCount = job.Applications.Count(application =>
             application.Status != ApplicationStatus.Rejected &&
-            application.Status != ApplicationStatus.Accepted);
+            application.Status != ApplicationStatus.Hired &&
+            application.Status != ApplicationStatus.OfferDeclined);
 
         return ApiResponse<ManagerJobApprovalDetailDto>.Ok(new ManagerJobApprovalDetailDto
         {

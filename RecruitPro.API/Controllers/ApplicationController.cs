@@ -66,6 +66,13 @@ public class ApplicationController : ControllerBase
         return StatusCode(result.StatusCode, result);
     }
 
+    [HttpPost("api/candidate/applications/{applicationId}/decline-offer")]
+    public async Task<IActionResult> DeclineOffer(string applicationId)
+    {
+        var result = await _applicationService.DeclineOfferAsync(User.GetCurrentUserId(), applicationId);
+        return StatusCode(result.StatusCode, result);
+    }
+
     [HttpGet("api/hr/applications")]
     public async Task<IActionResult> GetHrApplications([FromQuery] HrApplicationQueryRequest request)
     {

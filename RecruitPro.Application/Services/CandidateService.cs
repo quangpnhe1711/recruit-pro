@@ -177,7 +177,7 @@ public class CandidateService : ICandidateService
                 AvatarUrl = candidate.User.AvatarUrl,
                 Source = ResolveCandidateSource(candidate, source),
                 AppliedDate = latestApplication?.AppliedAt?.ToString("yyyy-MM-dd") ?? string.Empty,
-                Status = latestApplication?.Status.ToString() ?? "New"
+                Status = latestApplication?.Status.ToString() ?? "Applied"
             };
         });
 

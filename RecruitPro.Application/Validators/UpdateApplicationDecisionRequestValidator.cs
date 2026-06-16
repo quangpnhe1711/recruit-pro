@@ -5,13 +5,20 @@ namespace RecruitPro.Application.Validators;
 
 public class UpdateApplicationDecisionRequestValidator : AbstractValidator<UpdateApplicationDecisionRequest>
 {
-    private static readonly string[] AllowedDecisions = ["hire", "hold", "reject"];
+    private static readonly string[] AllowedStatuses =
+    [
+        "screening",
+        "managerreview",
+        "interview",
+        "offer",
+        "rejected",
+    ];
 
     public UpdateApplicationDecisionRequestValidator()
     {
-        RuleFor(request => request.Decision)
+        RuleFor(request => request.TargetStatus)
             .NotEmpty()
-            .Must(decision => AllowedDecisions.Contains(decision.Trim().ToLowerInvariant()))
-            .WithMessage("Decision must be one of: hire, hold, reject.");
+            .Must(status => AllowedStatuses.Contains(status.Trim().ToLowerInvariant()))
+            .WithMessage("TargetStatus must be one of: Screening, ManagerReview, Interview, Offer, Rejected.");
     }
 }

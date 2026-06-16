@@ -6,6 +6,7 @@ using RecruitPro.Application.Interfaces.IRepositories;
 using RecruitPro.Application.Interfaces.IServices;
 using RecruitPro.Domain.Entities;
 using RecruitPro.Domain.Enums;
+using RecruitPro.Domain.Workflows;
 
 namespace RecruitPro.Application.Services;
 
@@ -117,10 +118,17 @@ public class InterviewService : IInterviewService
             return ApiResponse<InterviewCreatedResponseDto>.BadRequest("Invalid application id.");
         }
 
-        Domain.Entities.Application? application = await _applicationRepository.GetByIdAsync(applicationGuid);
+        Domain.Entities.Application? application = await _applicationRepository.GetTrackedByIdAsync(applicationGuid);
         if (application == null)
         {
             return ApiResponse<InterviewCreatedResponseDto>.NotFound("Application not found.");
+        }
+
+        if (application.Status != ApplicationStatus.ManagerReview &&
+            application.Status != ApplicationStatus.Interview)
+        {
+            return ApiResponse<InterviewCreatedResponseDto>.BadRequest(
+                "Interviews can only be scheduled from manager review or while an interview sequence is already active.");
         }
 
         if (!string.IsNullOrWhiteSpace(request.CandidateId)
@@ -161,8 +169,16 @@ public class InterviewService : IInterviewService
             Status = ParseInterviewStatus(request.Status) ?? InterviewStatus.Scheduled
         };
 
+        if (ApplicationStatusWorkflow.CanTransition(application.Status, ApplicationStatus.Interview))
+        {
+            application.Status = ApplicationStatus.Interview;
+            await _applicationRepository.UpdateAsync(application);
+        }
+
+        await _unitOfWork.BeginTransactionAsync();
         await _interviewRepository.AddAsync(interview);
         await _unitOfWork.SaveChangesAsync();
+        await _unitOfWork.CommitAsync();
 
         return ApiResponse<InterviewCreatedResponseDto>.Created(new InterviewCreatedResponseDto
         {
