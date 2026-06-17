@@ -17,6 +17,13 @@ public class InterviewService : IInterviewService
     private readonly IUserRepository _userRepository;
     private readonly IUnitOfWork _unitOfWork;
 
+    /// <summary>
+    /// Initializes a new instance of the InterviewService class.
+    /// </summary>
+    /// <param name="interviewRepository">The <paramref name="interviewRepository"/> value.</param>
+    /// <param name="applicationRepository">The <paramref name="applicationRepository"/> value.</param>
+    /// <param name="userRepository">The <paramref name="userRepository"/> value.</param>
+    /// <param name="unitOfWork">The <paramref name="unitOfWork"/> value.</param>
     public InterviewService(
         IInterviewRepository interviewRepository,
         IApplicationRepository applicationRepository,
@@ -29,6 +36,16 @@ public class InterviewService : IInterviewService
         _unitOfWork = unitOfWork;
     }
 
+    /// <summary>
+    /// Retrieves interviews.
+    /// </summary>
+    /// <param name="page">The <paramref name="page"/> value.</param>
+    /// <param name="pageSize">The <paramref name="pageSize"/> value.</param>
+    /// <param name="keyword">The <paramref name="keyword"/> value.</param>
+    /// <param name="status">The <paramref name="status"/> value.</param>
+    /// <param name="startDate">The <paramref name="startDate"/> value.</param>
+    /// <param name="endDate">The <paramref name="endDate"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<InterviewListResponseDto>> GetInterviewsAsync(int page, int pageSize, string? keyword, string? status, DateTime? startDate, DateTime? endDate)
     {
         InterviewStatus? parsedStatus = ParseInterviewStatus(status);
@@ -41,6 +58,11 @@ public class InterviewService : IInterviewService
         });
     }
 
+    /// <summary>
+    /// Retrieves candidate interviews.
+    /// </summary>
+    /// <param name="userId">The <paramref name="userId"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<InterviewListResponseDto>> GetCandidateInterviewsAsync(Guid userId)
     {
         IReadOnlyList<Domain.Entities.Application> applications = await _applicationRepository.GetByUserIdAsync(userId);
@@ -57,6 +79,11 @@ public class InterviewService : IInterviewService
         });
     }
 
+    /// <summary>
+    /// Retrieves schedule data.
+    /// </summary>
+    /// <param name="applicationId">The <paramref name="applicationId"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<ScheduleDataResponseDto>> GetScheduleDataAsync(string? applicationId = null)
     {
         Domain.Entities.Application? application;
@@ -111,6 +138,11 @@ public class InterviewService : IInterviewService
         });
     }
 
+    /// <summary>
+    /// Creates interview.
+    /// </summary>
+    /// <param name="request">The <paramref name="request"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<InterviewCreatedResponseDto>> CreateInterviewAsync(CreateInterviewRequest request)
     {
         if (!Guid.TryParse(request.ApplicationId, out Guid applicationGuid))
@@ -186,6 +218,10 @@ public class InterviewService : IInterviewService
         }, "Interview scheduled successfully");
     }
 
+    /// <summary>
+    /// Builds busy slots by date.
+    /// </summary>
+    /// <returns>The operation result.</returns>
     private async Task<Dictionary<string, List<int>>> BuildBusySlotsByDateAsync()
     {
         (IReadOnlyList<Interview> interviews, _) = await _interviewRepository.GetPagedAsync(
@@ -207,6 +243,11 @@ public class InterviewService : IInterviewService
                     .ToList());
     }
 
+    /// <summary>
+    /// Clones busy slots.
+    /// </summary>
+    /// <param name="source">The <paramref name="source"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static Dictionary<string, List<int>> CloneBusySlots(Dictionary<string, List<int>> source)
     {
         return source.ToDictionary(
@@ -214,6 +255,12 @@ public class InterviewService : IInterviewService
             pair => pair.Value.ToList());
     }
 
+    /// <summary>
+    /// Updates interview status.
+    /// </summary>
+    /// <param name="interviewId">The <paramref name="interviewId"/> value.</param>
+    /// <param name="request">The <paramref name="request"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<string>> UpdateInterviewStatusAsync(string interviewId, UpdateInterviewStatusRequest request)
     {
         if (!Guid.TryParse(interviewId, out Guid interviewGuid))
@@ -238,6 +285,11 @@ public class InterviewService : IInterviewService
         return ApiResponse<string>.Ok("Interview status updated successfully");
     }
 
+    /// <summary>
+    /// Deletes interview.
+    /// </summary>
+    /// <param name="interviewId">The <paramref name="interviewId"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<string>> DeleteInterviewAsync(string interviewId)
     {
         if (!Guid.TryParse(interviewId, out Guid interviewGuid))
@@ -256,6 +308,13 @@ public class InterviewService : IInterviewService
         return ApiResponse<string>.Ok("Interview cancelled successfully", "Interview cancelled successfully");
     }
 
+    /// <summary>
+    /// Builds meta.
+    /// </summary>
+    /// <param name="page">The <paramref name="page"/> value.</param>
+    /// <param name="pageSize">The <paramref name="pageSize"/> value.</param>
+    /// <param name="totalItems">The <paramref name="totalItems"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static ApiEnvelopeMeta BuildMeta(int page, int pageSize, int totalItems)
     {
         return new ApiEnvelopeMeta
@@ -267,6 +326,11 @@ public class InterviewService : IInterviewService
         };
     }
 
+    /// <summary>
+    /// Parses interview status.
+    /// </summary>
+    /// <param name="value">The <paramref name="value"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static InterviewStatus? ParseInterviewStatus(string? value)
     {
         return value?.Trim().ToLowerInvariant() switch
@@ -278,6 +342,11 @@ public class InterviewService : IInterviewService
         };
     }
 
+    /// <summary>
+    /// Maps interview list item.
+    /// </summary>
+    /// <param name="interview">The <paramref name="interview"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static InterviewListItemDto MapInterviewListItem(Interview interview)
     {
         return new InterviewListItemDto

@@ -21,6 +21,14 @@ public class JobService : IJobService
     private readonly IUnitOfWork _unitOfWork;
     private readonly IMapper _mapper;
 
+    /// <summary>
+    /// Initializes a new instance of the JobService class.
+    /// </summary>
+    /// <param name="jobRepository">The <paramref name="jobRepository"/> value.</param>
+    /// <param name="applicationRepository">The <paramref name="applicationRepository"/> value.</param>
+    /// <param name="skillRepository">The <paramref name="skillRepository"/> value.</param>
+    /// <param name="unitOfWork">The <paramref name="unitOfWork"/> value.</param>
+    /// <param name="mapper">The <paramref name="mapper"/> value.</param>
     public JobService(
         IJobRepository jobRepository,
         IApplicationRepository applicationRepository,
@@ -35,6 +43,12 @@ public class JobService : IJobService
         _mapper = mapper;
     }
 
+    /// <summary>
+    /// Retrieves jobs.
+    /// </summary>
+    /// <param name="currentPage">The <paramref name="currentPage"/> value.</param>
+    /// <param name="pageSize">The <paramref name="pageSize"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<JobsListingResponseDto>> GetJobsAsync(int currentPage = 1, int pageSize = 10)
     {
         (IReadOnlyList<Job> jobs, int total) = await _jobRepository.GetApprovedPagedAsync(currentPage, pageSize);
@@ -49,6 +63,11 @@ public class JobService : IJobService
         });
     }
 
+    /// <summary>
+    /// Executes the search jobs operation.
+    /// </summary>
+    /// <param name="request">The <paramref name="request"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<JobSearchResponseDto>> SearchJobsAsync(JobQueryRequest request)
     {
         (IReadOnlyList<Job> jobs, int total) = await _jobRepository.SearchApprovedAsync(
@@ -66,6 +85,10 @@ public class JobService : IJobService
         });
     }
 
+    /// <summary>
+    /// Retrieves filters.
+    /// </summary>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<JobFiltersResponseDto>> GetFiltersAsync()
     {
         IReadOnlyList<string> skills = await _jobRepository.GetAllSkillNamesAsync();
@@ -83,6 +106,10 @@ public class JobService : IJobService
         });
     }
 
+    /// <summary>
+    /// Retrieves departments.
+    /// </summary>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<IReadOnlyList<DepartmentDto>>> GetDepartmentsAsync()
     {
         IReadOnlyList<Department> departments = await _jobRepository.GetDepartmentsAsync();
@@ -95,6 +122,10 @@ public class JobService : IJobService
             }).ToList());
     }
 
+    /// <summary>
+    /// Retrieves skills.
+    /// </summary>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<IReadOnlyList<SkillLookupDto>>> GetSkillsAsync()
     {
         IReadOnlyList<Skill> skills = await _jobRepository.GetSkillsAsync();
@@ -106,12 +137,22 @@ public class JobService : IJobService
             }).ToList());
     }
 
+    /// <summary>
+    /// Retrieves job detail.
+    /// </summary>
+    /// <param name="jobId">The <paramref name="jobId"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<JobDetailResponseDto>> GetJobDetailAsync(string jobId)
     {
         Job job = await GetJobAsync(jobId);
         return ApiResponse<JobDetailResponseDto>.Ok(MapLegacyJobDetail(job));
     }
 
+    /// <summary>
+    /// Retrieves job screen detail.
+    /// </summary>
+    /// <param name="jobId">The <paramref name="jobId"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<JobDetailScreenDto>> GetJobScreenDetailAsync(string jobId)
     {
         Job job = await GetJobAsync(jobId);
@@ -160,6 +201,11 @@ public class JobService : IJobService
         });
     }
 
+    /// <summary>
+    /// Retrieves job statistics.
+    /// </summary>
+    /// <param name="jobId">The <paramref name="jobId"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<HiringFunnelStatisticsDto>> GetJobStatisticsAsync(string jobId)
     {
         Job job = await GetJobAsync(jobId);
@@ -175,6 +221,13 @@ public class JobService : IJobService
         });
     }
 
+    /// <summary>
+    /// Updates job status.
+    /// </summary>
+    /// <param name="jobId">The <paramref name="jobId"/> value.</param>
+    /// <param name="request">The <paramref name="request"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
+    /// <exception cref="ArgumentException">Thrown when the operation fails validation or encounters an invalid state.</exception>
     public async Task<ApiResponse<JobDetailResponseDto>> UpdateJobStatusAsync(string jobId, UpdateJobStatusRequest request)
     {
         Job job = await GetTrackedJobAsync(jobId);
@@ -190,6 +243,12 @@ public class JobService : IJobService
         return ApiResponse<JobDetailResponseDto>.Ok(MapLegacyJobDetail(job));
     }
 
+    /// <summary>
+    /// Retrieves hr jobs.
+    /// </summary>
+    /// <param name="request">The <paramref name="request"/> value.</param>
+    /// <param name="currentUserId">The <paramref name="currentUserId"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<HrJobsResponseDto>> GetHrJobsAsync(HrJobQueryRequest request, Guid currentUserId)
     {
         string? normalizedDepartment = string.IsNullOrWhiteSpace(request.Department) ? null : request.Department;
@@ -239,6 +298,11 @@ public class JobService : IJobService
         });
     }
 
+    /// <summary>
+    /// Retrieves manager approval queue.
+    /// </summary>
+    /// <param name="request">The <paramref name="request"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<ManagerJobApprovalQueueResponseDto>> GetManagerApprovalQueueAsync(ManagerJobApprovalQueryRequest request)
     {
         string? normalizedKeyword = string.IsNullOrWhiteSpace(request.Keyword) ? null : request.Keyword.Trim();
@@ -284,6 +348,11 @@ public class JobService : IJobService
         });
     }
 
+    /// <summary>
+    /// Retrieves manager approval detail.
+    /// </summary>
+    /// <param name="jobId">The <paramref name="jobId"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<ManagerJobApprovalDetailDto>> GetManagerApprovalDetailAsync(string jobId)
     {
         Job job = await GetJobAsync(jobId);
@@ -389,6 +458,12 @@ public class JobService : IJobService
         });
     }
 
+    /// <summary>
+    /// Creates job.
+    /// </summary>
+    /// <param name="request">The <paramref name="request"/> value.</param>
+    /// <param name="currentUserId">The <paramref name="currentUserId"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<HrCreateJobResponseDto>> CreateJobAsync(CreateJobRequest request, Guid currentUserId)
     {
         Department? department = await ResolveDepartmentAsync(request.DepartmentId, request.Department);
@@ -432,6 +507,12 @@ public class JobService : IJobService
         }, "Job submitted for approval");
     }
 
+    /// <summary>
+    /// Executes the patch job operation.
+    /// </summary>
+    /// <param name="jobId">The <paramref name="jobId"/> value.</param>
+    /// <param name="request">The <paramref name="request"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<HrJobStatusResponseDto>> PatchJobAsync(string jobId, PatchJobRequest request)
     {
         if (!Guid.TryParse(jobId, out Guid jobGuid))
@@ -543,6 +624,11 @@ public class JobService : IJobService
         });
     }
 
+    /// <summary>
+    /// Deletes job.
+    /// </summary>
+    /// <param name="jobId">The <paramref name="jobId"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<string>> DeleteJobAsync(string jobId)
     {
         if (!Guid.TryParse(jobId, out Guid jobGuid))
@@ -561,6 +647,12 @@ public class JobService : IJobService
         return ApiResponse<string>.Ok("Job deleted successfully", "Job deleted successfully");
     }
 
+    /// <summary>
+    /// Retrieves job.
+    /// </summary>
+    /// <param name="jobId">The <paramref name="jobId"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
+    /// <exception cref="NotFoundException">Thrown when the operation fails validation or encounters an invalid state.</exception>
     private async Task<Job> GetJobAsync(string jobId)
     {
         if (!Guid.TryParse(jobId, out Guid jobGuid))
@@ -577,6 +669,12 @@ public class JobService : IJobService
         return job;
     }
 
+    /// <summary>
+    /// Retrieves tracked job.
+    /// </summary>
+    /// <param name="jobId">The <paramref name="jobId"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
+    /// <exception cref="NotFoundException">Thrown when the operation fails validation or encounters an invalid state.</exception>
     private async Task<Job> GetTrackedJobAsync(string jobId)
     {
         if (!Guid.TryParse(jobId, out Guid jobGuid))
@@ -593,6 +691,11 @@ public class JobService : IJobService
         return job;
     }
 
+    /// <summary>
+    /// Maps job list item.
+    /// </summary>
+    /// <param name="job">The <paramref name="job"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static JobListItemDto MapJobListItem(Job job)
     {
         return new JobListItemDto
@@ -612,6 +715,11 @@ public class JobService : IJobService
         };
     }
 
+    /// <summary>
+    /// Maps legacy job detail.
+    /// </summary>
+    /// <param name="job">The <paramref name="job"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static JobDetailResponseDto MapLegacyJobDetail(Job job)
     {
         return new JobDetailResponseDto
@@ -638,6 +746,11 @@ public class JobService : IJobService
         };
     }
 
+    /// <summary>
+    /// Parses json array.
+    /// </summary>
+    /// <param name="jsonString">The <paramref name="jsonString"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static List<string> ParseJsonArray(string? jsonString)
     {
         if (string.IsNullOrWhiteSpace(jsonString))
@@ -663,6 +776,13 @@ public class JobService : IJobService
         return [jsonString];
     }
 
+    /// <summary>
+    /// Builds meta.
+    /// </summary>
+    /// <param name="page">The <paramref name="page"/> value.</param>
+    /// <param name="pageSize">The <paramref name="pageSize"/> value.</param>
+    /// <param name="total">The <paramref name="total"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static ApiEnvelopeMeta BuildMeta(int page, int pageSize, int total)
     {
         return new ApiEnvelopeMeta
@@ -674,16 +794,31 @@ public class JobService : IJobService
         };
     }
 
+    /// <summary>
+    /// Serializes list.
+    /// </summary>
+    /// <param name="values">The <paramref name="values"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static string? SerializeList(List<string> values)
     {
         return values.Count == 0 ? null : JsonSerializer.Serialize(values);
     }
 
+    /// <summary>
+    /// Builds job reference code.
+    /// </summary>
+    /// <param name="job">The <paramref name="job"/> value.</param>
+    /// <returns>The resulting string value.</returns>
     private static string BuildJobReferenceCode(Job job)
     {
         return $"JOB-{job.CreatedAt?.Year ?? DbDateTime.Now.Year}-{job.Id.ToString()[..8].ToUpperInvariant()}";
     }
 
+    /// <summary>
+    /// Builds hiring team label.
+    /// </summary>
+    /// <param name="job">The <paramref name="job"/> value.</param>
+    /// <returns>The resulting string value.</returns>
     private static string BuildHiringTeamLabel(Job job)
     {
         string departmentName = job.Department?.Name ?? "General";
@@ -692,6 +827,11 @@ public class JobService : IJobService
             : $"{departmentName} / {job.Location}";
     }
 
+    /// <summary>
+    /// Executes the is approval overdue operation.
+    /// </summary>
+    /// <param name="job">The <paramref name="job"/> value.</param>
+    /// <returns>A value indicating whether the operation succeeded.</returns>
     private static bool IsApprovalOverdue(Job job)
     {
         if (!job.CreatedAt.HasValue)
@@ -702,6 +842,11 @@ public class JobService : IJobService
         return job.CreatedAt.Value <= DbDateTime.Now.AddDays(-3);
     }
 
+    /// <summary>
+    /// Maps approval status label.
+    /// </summary>
+    /// <param name="status">The <paramref name="status"/> value.</param>
+    /// <returns>The resulting string value.</returns>
     private static string MapApprovalStatusLabel(JobStatus status)
     {
         return status switch
@@ -715,6 +860,11 @@ public class JobService : IJobService
         };
     }
 
+    /// <summary>
+    /// Builds submitted ago label.
+    /// </summary>
+    /// <param name="createdAt">The <paramref name="createdAt"/> value.</param>
+    /// <returns>The resulting string value.</returns>
     private static string BuildSubmittedAgoLabel(DateTime? createdAt)
     {
         if (!createdAt.HasValue)
@@ -739,6 +889,12 @@ public class JobService : IJobService
         return $"Submitted {days} day{(days == 1 ? string.Empty : "s")} ago";
     }
 
+    /// <summary>
+    /// Resolves department.
+    /// </summary>
+    /// <param name="departmentId">The <paramref name="departmentId"/> value.</param>
+    /// <param name="departmentName">The <paramref name="departmentName"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     private async Task<Department?> ResolveDepartmentAsync(string? departmentId, string? departmentName)
     {
         if (!string.IsNullOrWhiteSpace(departmentId) && Guid.TryParse(departmentId, out Guid parsedDepartmentId))
@@ -754,6 +910,13 @@ public class JobService : IJobService
         return null;
     }
 
+    /// <summary>
+    /// Builds job skills.
+    /// </summary>
+    /// <param name="skillRequirements">The <paramref name="skillRequirements"/> value.</param>
+    /// <param name="skillIds">The <paramref name="skillIds"/> value.</param>
+    /// <param name="skillNames">The <paramref name="skillNames"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     private async Task<List<JobSkill>> BuildJobSkillsAsync(
         IReadOnlyCollection<JobSkillRequirementRequest>? skillRequirements,
         IReadOnlyCollection<string> skillIds,
@@ -816,6 +979,11 @@ public class JobService : IJobService
             .ToList();
     }
 
+    /// <summary>
+    /// Maps job skill.
+    /// </summary>
+    /// <param name="jobSkill">The <paramref name="jobSkill"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static JobSkillDto MapJobSkill(JobSkill jobSkill)
     {
         return new JobSkillDto
@@ -829,6 +997,11 @@ public class JobService : IJobService
         };
     }
 
+    /// <summary>
+    /// Parses employment type.
+    /// </summary>
+    /// <param name="value">The <paramref name="value"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static EmploymentType ParseEmploymentType(string? value)
     {
         return value?.Trim().ToLowerInvariant() switch
@@ -840,6 +1013,11 @@ public class JobService : IJobService
         };
     }
 
+    /// <summary>
+    /// Parses work mode.
+    /// </summary>
+    /// <param name="value">The <paramref name="value"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static WorkMode ParseWorkMode(string? value)
     {
         return value?.Trim().ToLowerInvariant() switch
@@ -850,6 +1028,11 @@ public class JobService : IJobService
         };
     }
 
+    /// <summary>
+    /// Parses job status.
+    /// </summary>
+    /// <param name="value">The <paramref name="value"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static JobStatus? ParseJobStatus(string? value)
     {
         return value?.Trim().ToLowerInvariant() switch
@@ -863,6 +1046,11 @@ public class JobService : IJobService
         };
     }
 
+    /// <summary>
+    /// Maps employment type.
+    /// </summary>
+    /// <param name="type">The <paramref name="type"/> value.</param>
+    /// <returns>The resulting string value.</returns>
     private static string MapEmploymentType(EmploymentType type)
     {
         return type switch
@@ -875,6 +1063,12 @@ public class JobService : IJobService
         };
     }
 
+    /// <summary>
+    /// Builds salary label.
+    /// </summary>
+    /// <param name="salaryMin">The <paramref name="salaryMin"/> value.</param>
+    /// <param name="salaryMax">The <paramref name="salaryMax"/> value.</param>
+    /// <returns>The resulting string value.</returns>
     private static string BuildSalaryLabel(decimal? salaryMin, decimal? salaryMax)
     {
         if (!salaryMin.HasValue && !salaryMax.HasValue)

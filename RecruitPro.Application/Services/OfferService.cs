@@ -19,6 +19,13 @@ public class OfferService : IOfferService
     private readonly IUserRepository _userRepository;
     private readonly IUnitOfWork _unitOfWork;
 
+    /// <summary>
+    /// Initializes a new instance of the OfferService class.
+    /// </summary>
+    /// <param name="applicationRepository">The <paramref name="applicationRepository"/> value.</param>
+    /// <param name="offerRepository">The <paramref name="offerRepository"/> value.</param>
+    /// <param name="userRepository">The <paramref name="userRepository"/> value.</param>
+    /// <param name="unitOfWork">The <paramref name="unitOfWork"/> value.</param>
     public OfferService(
         IApplicationRepository applicationRepository,
         IOfferRepository offerRepository,
@@ -31,6 +38,11 @@ public class OfferService : IOfferService
         _unitOfWork = unitOfWork;
     }
 
+    /// <summary>
+    /// Retrieves offer editor.
+    /// </summary>
+    /// <param name="applicationId">The <paramref name="applicationId"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<ApplicationOfferEditorDto>> GetOfferEditorAsync(string applicationId)
     {
         Domain.Entities.Application? application = await GetApplicationAsync(applicationId);
@@ -43,18 +55,41 @@ public class OfferService : IOfferService
         return ApiResponse<ApplicationOfferEditorDto>.Ok(await BuildEditorDtoAsync(application, offer));
     }
 
+    /// <summary>
+    /// Saves draft.
+    /// </summary>
+    /// <param name="applicationId">The <paramref name="applicationId"/> value.</param>
+    /// <param name="actorId">The <paramref name="actorId"/> value.</param>
+    /// <param name="request">The <paramref name="request"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<ApplicationOfferEditorDto>> SaveDraftAsync(string applicationId, Guid? actorId, UpsertApplicationOfferRequest request)
     {
         _ = actorId;
         return await UpsertOfferAsync(applicationId, actorId, request, OfferStatus.Draft, "Offer draft saved successfully.");
     }
 
+    /// <summary>
+    /// Sends offer.
+    /// </summary>
+    /// <param name="applicationId">The <paramref name="applicationId"/> value.</param>
+    /// <param name="actorId">The <paramref name="actorId"/> value.</param>
+    /// <param name="request">The <paramref name="request"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<ApplicationOfferEditorDto>> SendOfferAsync(string applicationId, Guid? actorId, UpsertApplicationOfferRequest request)
     {
         _ = actorId;
         return await UpsertOfferAsync(applicationId, actorId, request, OfferStatus.Sent, "Offer sent successfully.");
     }
 
+    /// <summary>
+    /// Executes the upsert offer operation.
+    /// </summary>
+    /// <param name="applicationId">The <paramref name="applicationId"/> value.</param>
+    /// <param name="actorId">The <paramref name="actorId"/> value.</param>
+    /// <param name="request">The <paramref name="request"/> value.</param>
+    /// <param name="targetStatus">The <paramref name="targetStatus"/> value.</param>
+    /// <param name="successMessage">The <paramref name="successMessage"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     private async Task<ApiResponse<ApplicationOfferEditorDto>> UpsertOfferAsync(
         string applicationId,
         Guid? actorId,
@@ -176,6 +211,12 @@ public class OfferService : IOfferService
             successMessage);
     }
 
+    /// <summary>
+    /// Retrieves application.
+    /// </summary>
+    /// <param name="applicationId">The <paramref name="applicationId"/> value.</param>
+    /// <param name="tracked">The <paramref name="tracked"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     private async Task<Domain.Entities.Application?> GetApplicationAsync(string applicationId, bool tracked = false)
     {
         if (!Guid.TryParse(applicationId, out Guid applicationGuid))
@@ -188,6 +229,11 @@ public class OfferService : IOfferService
             : await _applicationRepository.GetByIdAsync(applicationGuid);
     }
 
+    /// <summary>
+    /// Executes the currency exists operation.
+    /// </summary>
+    /// <param name="currencyCode">The <paramref name="currencyCode"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     private async Task<bool> CurrencyExistsAsync(string currencyCode)
     {
         string normalizedCode = currencyCode.Trim().ToUpperInvariant();
@@ -195,6 +241,11 @@ public class OfferService : IOfferService
         return currencies.Any(currency => currency.Code.Equals(normalizedCode, StringComparison.OrdinalIgnoreCase));
     }
 
+    /// <summary>
+    /// Executes the synchronize benefits operation.
+    /// </summary>
+    /// <param name="offer">The <paramref name="offer"/> value.</param>
+    /// <param name="benefitIds">The <paramref name="benefitIds"/> value.</param>
     private static void SynchronizeBenefits(ApplicationOffer offer, IEnumerable<Guid> benefitIds)
     {
         HashSet<Guid> targetIds = benefitIds.ToHashSet();
@@ -226,6 +277,12 @@ public class OfferService : IOfferService
         }
     }
 
+    /// <summary>
+    /// Builds editor dto.
+    /// </summary>
+    /// <param name="application">The <paramref name="application"/> value.</param>
+    /// <param name="offer">The <paramref name="offer"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     private async Task<ApplicationOfferEditorDto> BuildEditorDtoAsync(Domain.Entities.Application application, ApplicationOffer? offer)
     {
         IReadOnlyList<OfferTemplate> templates = await _offerRepository.GetTemplatesAsync();
@@ -320,6 +377,11 @@ public class OfferService : IOfferService
         };
     }
 
+    /// <summary>
+    /// Normalizes optional text.
+    /// </summary>
+    /// <param name="value">The <paramref name="value"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static string? NormalizeOptionalText(string? value)
     {
         return string.IsNullOrWhiteSpace(value) ? null : value.Trim();

@@ -40,6 +40,19 @@ public class CandidateService : ICandidateService
     private static readonly Regex UrlPattern = new(@"https?://[^\s)]+", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex YearPattern = new(@"\b(19|20)\d{2}\b", RegexOptions.Compiled);
 
+    /// <summary>
+    /// Initializes a new instance of the CandidateService class.
+    /// </summary>
+    /// <param name="candidateRepository">The <paramref name="candidateRepository"/> value.</param>
+    /// <param name="userRepository">The <paramref name="userRepository"/> value.</param>
+    /// <param name="skillRepository">The <paramref name="skillRepository"/> value.</param>
+    /// <param name="unitOfWork">The <paramref name="unitOfWork"/> value.</param>
+    /// <param name="fileStorage">The <paramref name="fileStorage"/> value.</param>
+    /// <param name="emailService">The <paramref name="emailService"/> value.</param>
+    /// <param name="resumeTextExtractor">The <paramref name="resumeTextExtractor"/> value.</param>
+    /// <param name="resumeParsingAiProvider">The <paramref name="resumeParsingAiProvider"/> value.</param>
+    /// <param name="mapper">The <paramref name="mapper"/> value.</param>
+    /// <param name="logger">The <paramref name="logger"/> value.</param>
     public CandidateService(
         ICandidateProfileRepository candidateRepository,
         IUserRepository userRepository,
@@ -64,6 +77,14 @@ public class CandidateService : ICandidateService
         _logger = logger;
     }
 
+    /// <summary>
+    /// Registers the requested data.
+    /// </summary>
+    /// <param name="request">The <paramref name="request"/> value.</param>
+    /// <param name="resumeStream">The <paramref name="resumeStream"/> value.</param>
+    /// <param name="resumeFileName">The <paramref name="resumeFileName"/> value.</param>
+    /// <param name="resumeContentType">The <paramref name="resumeContentType"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<CandidateRegisterResponseDto>> RegisterAsync(CandidateRegisterRequest request, Stream? resumeStream, string? resumeFileName, string? resumeContentType = null)
     {
         string? uploadedObjectName = null;
@@ -156,6 +177,15 @@ public class CandidateService : ICandidateService
         }
     }
 
+    /// <summary>
+    /// Retrieves candidates.
+    /// </summary>
+    /// <param name="page">The <paramref name="page"/> value.</param>
+    /// <param name="pageSize">The <paramref name="pageSize"/> value.</param>
+    /// <param name="keyword">The <paramref name="keyword"/> value.</param>
+    /// <param name="status">The <paramref name="status"/> value.</param>
+    /// <param name="source">The <paramref name="source"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<HrCandidatesResponseDto>> GetCandidatesAsync(int page, int pageSize, string? keyword, string? status, string? source)
     {
         (IReadOnlyList<CandidateProfile> candidates, int total) = await _candidateRepository.GetPagedAsync(page, pageSize, keyword);
@@ -193,6 +223,11 @@ public class CandidateService : ICandidateService
         });
     }
 
+    /// <summary>
+    /// Retrieves candidate detail.
+    /// </summary>
+    /// <param name="candidateId">The <paramref name="candidateId"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<HrCandidateDetailDto>> GetCandidateDetailAsync(string candidateId)
     {
         if (!Guid.TryParse(candidateId, out Guid candidateGuid))
@@ -255,6 +290,10 @@ public class CandidateService : ICandidateService
         });
     }
 
+    /// <summary>
+    /// Generates import template.
+    /// </summary>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public Task<CandidateImportTemplateDto> GenerateImportTemplateAsync()
     {
         using XLWorkbook workbook = new();
@@ -285,12 +324,23 @@ public class CandidateService : ICandidateService
         });
     }
 
+    /// <summary>
+    /// Previews import.
+    /// </summary>
+    /// <param name="fileStream">The <paramref name="fileStream"/> value.</param>
+    /// <param name="fileName">The <paramref name="fileName"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<CandidateImportPreviewResponseDto>> PreviewImportAsync(Stream fileStream, string fileName)
     {
         List<CandidateImportPreviewDto> rows = await ParseAndValidateImportRowsAsync(fileStream, fileName);
         return ApiResponse<CandidateImportPreviewResponseDto>.Ok(BuildPreviewResponse(rows));
     }
 
+    /// <summary>
+    /// Imports candidates.
+    /// </summary>
+    /// <param name="request">The <paramref name="request"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<CandidateImportResultDto>> ImportCandidatesAsync(CandidateImportRequest request)
     {
         List<CandidateImportPreviewDto> rows = await ValidateRequestRowsAsync(request.Rows);
@@ -369,12 +419,24 @@ public class CandidateService : ICandidateService
         }, "Candidates imported successfully.");
     }
 
+    /// <summary>
+    /// Retrieves profile.
+    /// </summary>
+    /// <param name="userId">The <paramref name="userId"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<CandidateProfileResponseDto>> GetProfileAsync(Guid userId)
     {
         CandidateProfile profile = await GetProfileEntityAsync(userId);
         return ApiResponse<CandidateProfileResponseDto>.Ok(await MapProfileAsync(profile));
     }
 
+    /// <summary>
+    /// Updates profile.
+    /// </summary>
+    /// <param name="userId">The <paramref name="userId"/> value.</param>
+    /// <param name="request">The <paramref name="request"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
+    /// <exception cref="InvalidOperationException">Thrown when the operation fails validation or encounters an invalid state.</exception>
     public async Task<ApiResponse<CandidateProfileResponseDto>> UpdateProfileAsync(Guid userId, UpdateCandidateProfileRequest request)
     {
         for (int attempt = 0; attempt < 2; attempt += 1)
@@ -403,6 +465,12 @@ public class CandidateService : ICandidateService
         throw new InvalidOperationException("Candidate profile update failed after retry.");
     }
 
+    /// <summary>
+    /// Updates skills.
+    /// </summary>
+    /// <param name="userId">The <paramref name="userId"/> value.</param>
+    /// <param name="request">The <paramref name="request"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<CandidateProfileResponseDto>> UpdateSkillsAsync(Guid userId, UpdateCandidateSkillsRequest request)
     {
         CandidateProfile profile = await GetProfileEntityAsync(userId);
@@ -422,6 +490,12 @@ public class CandidateService : ICandidateService
         return ApiResponse<CandidateProfileResponseDto>.Ok(await MapProfileAsync(refreshedProfile));
     }
 
+    /// <summary>
+    /// Creates experience.
+    /// </summary>
+    /// <param name="userId">The <paramref name="userId"/> value.</param>
+    /// <param name="request">The <paramref name="request"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<CandidateProfileResponseDto>> CreateExperienceAsync(Guid userId, UpsertCandidateExperienceRequest request)
     {
         CandidateProfile profile = await GetProfileEntityAsync(userId);
@@ -433,6 +507,14 @@ public class CandidateService : ICandidateService
         return ApiResponse<CandidateProfileResponseDto>.Ok(await MapProfileAsync(profile));
     }
 
+    /// <summary>
+    /// Updates experience.
+    /// </summary>
+    /// <param name="userId">The <paramref name="userId"/> value.</param>
+    /// <param name="experienceId">The <paramref name="experienceId"/> value.</param>
+    /// <param name="request">The <paramref name="request"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
+    /// <exception cref="NotFoundException">Thrown when the operation fails validation or encounters an invalid state.</exception>
     public async Task<ApiResponse<CandidateProfileResponseDto>> UpdateExperienceAsync(Guid userId, string experienceId, UpsertCandidateExperienceRequest request)
     {
         CandidateProfile profile = await GetProfileEntityAsync(userId);
@@ -451,6 +533,13 @@ public class CandidateService : ICandidateService
         return ApiResponse<CandidateProfileResponseDto>.Ok(await MapProfileAsync(profile));
     }
 
+    /// <summary>
+    /// Deletes experience.
+    /// </summary>
+    /// <param name="userId">The <paramref name="userId"/> value.</param>
+    /// <param name="experienceId">The <paramref name="experienceId"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
+    /// <exception cref="NotFoundException">Thrown when the operation fails validation or encounters an invalid state.</exception>
     public async Task<ApiResponse<CandidateProfileResponseDto>> DeleteExperienceAsync(Guid userId, string experienceId)
     {
         CandidateProfile profile = await GetProfileEntityAsync(userId);
@@ -467,6 +556,14 @@ public class CandidateService : ICandidateService
         return ApiResponse<CandidateProfileResponseDto>.Ok(await MapProfileAsync(profile));
     }
 
+    /// <summary>
+    /// Parses resume.
+    /// </summary>
+    /// <param name="userId">The <paramref name="userId"/> value.</param>
+    /// <param name="resumeStream">The <paramref name="resumeStream"/> value.</param>
+    /// <param name="fileName">The <paramref name="fileName"/> value.</param>
+    /// <param name="contentType">The <paramref name="contentType"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<CandidateResumeParseResponseDto>> ParseResumeAsync(Guid userId, Stream resumeStream, string fileName, string? contentType = null)
     {
         if (resumeStream == null || string.IsNullOrWhiteSpace(fileName))
@@ -510,6 +607,14 @@ public class CandidateService : ICandidateService
                 : "Resume parsed with fallback parsing. Please review and confirm the extracted information.");
     }
 
+    /// <summary>
+    /// Uploads resume.
+    /// </summary>
+    /// <param name="userId">The <paramref name="userId"/> value.</param>
+    /// <param name="resumeStream">The <paramref name="resumeStream"/> value.</param>
+    /// <param name="fileName">The <paramref name="fileName"/> value.</param>
+    /// <param name="contentType">The <paramref name="contentType"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<ResumeUploadResponseDto>> UploadResumeAsync(Guid userId, Stream resumeStream, string fileName, string contentType)
     {
         CandidateProfile profile = await GetProfileEntityAsync(userId);
@@ -563,6 +668,11 @@ public class CandidateService : ICandidateService
         });
     }
 
+    /// <summary>
+    /// Retrieves resume download url.
+    /// </summary>
+    /// <param name="resumeId">The <paramref name="resumeId"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<ResumeFileResponseDto>> GetResumeDownloadUrlAsync(string resumeId)
     {
         if (!Guid.TryParse(resumeId, out Guid resumeGuid))
@@ -586,6 +696,12 @@ public class CandidateService : ICandidateService
         });
     }
 
+    /// <summary>
+    /// Retrieves profile entity.
+    /// </summary>
+    /// <param name="userId">The <paramref name="userId"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
+    /// <exception cref="NotFoundException">Thrown when the operation fails validation or encounters an invalid state.</exception>
     private async Task<CandidateProfile> GetProfileEntityAsync(Guid userId)
     {
         CandidateProfile? profile = await _candidateRepository.GetByUserIdAsync(userId);
@@ -597,6 +713,12 @@ public class CandidateService : ICandidateService
         return profile;
     }
 
+    /// <summary>
+    /// Retrieves profile entity for update.
+    /// </summary>
+    /// <param name="userId">The <paramref name="userId"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
+    /// <exception cref="NotFoundException">Thrown when the operation fails validation or encounters an invalid state.</exception>
     private async Task<CandidateProfile> GetProfileEntityForUpdateAsync(Guid userId)
     {
         CandidateProfile? profile = await _candidateRepository.GetByUserIdForUpdateAsync(userId);
@@ -608,6 +730,11 @@ public class CandidateService : ICandidateService
         return profile;
     }
 
+    /// <summary>
+    /// Maps profile.
+    /// </summary>
+    /// <param name="profile">The <paramref name="profile"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     private async Task<CandidateProfileResponseDto> MapProfileAsync(CandidateProfile profile)
     {
         List<CandidateExperienceDocument> experiences = LoadExperiences(profile);
@@ -736,6 +863,11 @@ public class CandidateService : ICandidateService
         };
     }
 
+    /// <summary>
+    /// Saves profile.
+    /// </summary>
+    /// <param name="profile">The <paramref name="profile"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
     private async Task SaveProfileAsync(CandidateProfile profile)
     {
         await _unitOfWork.BeginTransactionAsync();
@@ -743,6 +875,12 @@ public class CandidateService : ICandidateService
         await _unitOfWork.CommitAsync();
     }
 
+    /// <summary>
+    /// Applies profile update.
+    /// </summary>
+    /// <param name="profile">The <paramref name="profile"/> value.</param>
+    /// <param name="request">The <paramref name="request"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
     private async Task ApplyProfileUpdateAsync(CandidateProfile profile, UpdateCandidateProfileRequest request)
     {
         profile.User.FullName = request.Name ?? profile.User.FullName;
@@ -786,6 +924,12 @@ public class CandidateService : ICandidateService
         }
     }
 
+    /// <summary>
+    /// Replaces candidate projects.
+    /// </summary>
+    /// <param name="candidateProfileId">The <paramref name="candidateProfileId"/> value.</param>
+    /// <param name="requestedProjects">The <paramref name="requestedProjects"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
     private async Task ReplaceCandidateProjectsAsync(
         Guid candidateProfileId,
         IEnumerable<CandidateProjectUpsertRequest> requestedProjects)
@@ -797,6 +941,11 @@ public class CandidateService : ICandidateService
         await _candidateRepository.ReplaceProjectsAsync(candidateProfileId, projects);
     }
 
+    /// <summary>
+    /// Loads experiences.
+    /// </summary>
+    /// <param name="profile">The <paramref name="profile"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static List<CandidateExperienceDocument> LoadExperiences(CandidateProfile profile)
     {
         if (!string.IsNullOrWhiteSpace(profile.ExperienceEntriesJson))
@@ -825,6 +974,12 @@ public class CandidateService : ICandidateService
         return documents.Count == 0 ? null : JsonSerializer.Serialize(documents);
     }
 
+    /// <summary>
+    /// Maps experience request.
+    /// </summary>
+    /// <param name="request">The <paramref name="request"/> value.</param>
+    /// <param name="existingId">The <paramref name="existingId"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static CandidateExperienceDocument MapExperienceRequest(UpsertCandidateExperienceRequest request, string? existingId)
     {
         return new CandidateExperienceDocument
@@ -847,6 +1002,11 @@ public class CandidateService : ICandidateService
         };
     }
 
+    /// <summary>
+    /// Maps experience request.
+    /// </summary>
+    /// <param name="request">The <paramref name="request"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static CandidateExperienceDocument MapExperienceRequest(CandidateExperienceUpsertItemRequest request)
     {
         return new CandidateExperienceDocument
@@ -869,6 +1029,11 @@ public class CandidateService : ICandidateService
         };
     }
 
+    /// <summary>
+    /// Maps project request.
+    /// </summary>
+    /// <param name="request">The <paramref name="request"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static CandidateProject MapProjectRequest(CandidateProjectUpsertRequest request)
     {
         return new CandidateProject
@@ -890,6 +1055,11 @@ public class CandidateService : ICandidateService
         };
     }
 
+    /// <summary>
+    /// Maps education request.
+    /// </summary>
+    /// <param name="request">The <paramref name="request"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static CandidateEducationDocument MapEducationRequest(CandidateEducationUpsertRequest request)
     {
         return new CandidateEducationDocument
@@ -904,6 +1074,11 @@ public class CandidateService : ICandidateService
         };
     }
 
+    /// <summary>
+    /// Maps certification request.
+    /// </summary>
+    /// <param name="request">The <paramref name="request"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static CandidateCertificationDocument MapCertificationRequest(CandidateCertificationUpsertRequest request)
     {
         return new CandidateCertificationDocument
@@ -918,6 +1093,11 @@ public class CandidateService : ICandidateService
         };
     }
 
+    /// <summary>
+    /// Maps language request.
+    /// </summary>
+    /// <param name="request">The <paramref name="request"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static CandidateLanguageDocument MapLanguageRequest(CandidateLanguageUpsertRequest request)
     {
         return new CandidateLanguageDocument
@@ -928,6 +1108,12 @@ public class CandidateService : ICandidateService
         };
     }
 
+    /// <summary>
+    /// Replaces candidate skills.
+    /// </summary>
+    /// <param name="candidateProfileId">The <paramref name="candidateProfileId"/> value.</param>
+    /// <param name="requestedSkills">The <paramref name="requestedSkills"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
     private async Task ReplaceCandidateSkillsAsync(Guid candidateProfileId, List<CandidateSkillUpsertRequest> requestedSkills)
     {
         List<Guid> skillIds = requestedSkills
@@ -972,6 +1158,11 @@ public class CandidateService : ICandidateService
         }
     }
 
+    /// <summary>
+    /// Loads string list.
+    /// </summary>
+    /// <param name="jsonString">The <paramref name="jsonString"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static List<string> LoadStringList(string? jsonString)
     {
         return LoadDocuments<string>(jsonString)
@@ -979,6 +1170,11 @@ public class CandidateService : ICandidateService
             .ToList();
     }
 
+    /// <summary>
+    /// Maps resume.
+    /// </summary>
+    /// <param name="candidateResume">The <paramref name="candidateResume"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     private async Task<CandidateResumeDto> MapResumeAsync(CandidateResume candidateResume)
     {
         return new CandidateResumeDto
@@ -992,6 +1188,16 @@ public class CandidateService : ICandidateService
         };
     }
 
+    /// <summary>
+    /// Calculates profile completion score.
+    /// </summary>
+    /// <param name="profile">The <paramref name="profile"/> value.</param>
+    /// <param name="experiences">The <paramref name="experiences"/> value.</param>
+    /// <param name="educations">The <paramref name="educations"/> value.</param>
+    /// <param name="certifications">The <paramref name="certifications"/> value.</param>
+    /// <param name="languages">The <paramref name="languages"/> value.</param>
+    /// <param name="currentResume">The <paramref name="currentResume"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static decimal CalculateProfileCompletionScore(
         CandidateProfile profile,
         IReadOnlyCollection<CandidateExperienceDocument> experiences,
@@ -1047,6 +1253,11 @@ public class CandidateService : ICandidateService
         return Math.Min(score, 100);
     }
 
+    /// <summary>
+    /// Executes the is profile complete operation.
+    /// </summary>
+    /// <param name="profile">The <paramref name="profile"/> value.</param>
+    /// <returns>A value indicating whether the operation succeeded.</returns>
     private static bool IsProfileComplete(CandidateProfile profile)
     {
         List<CandidateExperienceDocument> experiences = LoadExperiences(profile);
@@ -1060,6 +1271,13 @@ public class CandidateService : ICandidateService
         return CalculateProfileCompletionScore(profile, experiences, educations, certifications, languages, currentResume) >= 70;
     }
 
+    /// <summary>
+    /// Extracts resume text.
+    /// </summary>
+    /// <param name="resumeStream">The <paramref name="resumeStream"/> value.</param>
+    /// <param name="fileName">The <paramref name="fileName"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
+    /// <exception cref="NotSupportedException">Thrown when the operation fails validation or encounters an invalid state.</exception>
     private async Task<string> ExtractResumeTextAsync(Stream resumeStream, string fileName)
     {
         string extension = Path.GetExtension(fileName).Trim().ToLowerInvariant();
@@ -1078,6 +1296,11 @@ public class CandidateService : ICandidateService
         };
     }
 
+    /// <summary>
+    /// Executes the read plain text operation.
+    /// </summary>
+    /// <param name="stream">The <paramref name="stream"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     private static async Task<string> ReadPlainTextAsync(Stream stream)
     {
         if (stream.CanSeek)
@@ -1090,6 +1313,11 @@ public class CandidateService : ICandidateService
         return NormalizeResumeText(content);
     }
 
+    /// <summary>
+    /// Extracts docx text.
+    /// </summary>
+    /// <param name="stream">The <paramref name="stream"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     private static async Task<string> ExtractDocxTextAsync(Stream stream)
     {
         if (stream.CanSeek)
@@ -1114,6 +1342,13 @@ public class CandidateService : ICandidateService
         return NormalizeResumeText(text);
     }
 
+    /// <summary>
+    /// Builds resume parse preview.
+    /// </summary>
+    /// <param name="extractedText">The <paramref name="extractedText"/> value.</param>
+    /// <param name="allSkills">The <paramref name="allSkills"/> value.</param>
+    /// <param name="profile">The <paramref name="profile"/> value.</param>
+    /// <returns>The operation result.</returns>
     private CandidateResumeParseResponseDto BuildResumeParsePreview(string extractedText, IReadOnlyList<Skill> allSkills, CandidateProfile profile)
     {
         string normalizedText = NormalizeResumeText(extractedText);
@@ -1207,6 +1442,15 @@ public class CandidateService : ICandidateService
         };
     }
 
+    /// <summary>
+    /// Builds resume parse preview from ai.
+    /// </summary>
+    /// <param name="aiPreview">The <paramref name="aiPreview"/> value.</param>
+    /// <param name="extractedText">The <paramref name="extractedText"/> value.</param>
+    /// <param name="allSkills">The <paramref name="allSkills"/> value.</param>
+    /// <param name="profile">The <paramref name="profile"/> value.</param>
+    /// <param name="modelName">The <paramref name="modelName"/> value.</param>
+    /// <returns>The operation result.</returns>
     private CandidateResumeParseResponseDto BuildResumeParsePreviewFromAi(
         CandidateResumeAiParseDto aiPreview,
         string extractedText,
@@ -1343,6 +1587,11 @@ public class CandidateService : ICandidateService
         };
     }
 
+    /// <summary>
+    /// Normalizes resume text.
+    /// </summary>
+    /// <param name="text">The <paramref name="text"/> value.</param>
+    /// <returns>The resulting string value.</returns>
     private static string NormalizeResumeText(string text)
     {
         string normalized = text.Replace("\r\n", "\n").Replace('\r', '\n');
@@ -1351,6 +1600,11 @@ public class CandidateService : ICandidateService
         return normalized.Trim();
     }
 
+    /// <summary>
+    /// Extracts resume sections.
+    /// </summary>
+    /// <param name="lines">The <paramref name="lines"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static Dictionary<string, List<string>> ExtractResumeSections(List<string> lines)
     {
         Dictionary<string, List<string>> sections = new(StringComparer.OrdinalIgnoreCase);
@@ -1377,6 +1631,11 @@ public class CandidateService : ICandidateService
         return sections;
     }
 
+    /// <summary>
+    /// Executes the detect section key operation.
+    /// </summary>
+    /// <param name="line">The <paramref name="line"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static string? DetectSectionKey(string line)
     {
         string normalized = line.Trim().Trim(':').ToLowerInvariant();
@@ -1418,12 +1677,22 @@ public class CandidateService : ICandidateService
         return null;
     }
 
+    /// <summary>
+    /// Extracts email.
+    /// </summary>
+    /// <param name="text">The <paramref name="text"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static string? ExtractEmail(string text)
     {
         Match match = EmailExtractorPattern.Match(text);
         return match.Success ? match.Groups["email"].Value.Trim() : null;
     }
 
+    /// <summary>
+    /// Extracts phone.
+    /// </summary>
+    /// <param name="text">The <paramref name="text"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static string? ExtractPhone(string text)
     {
         Match match = PhoneExtractorPattern.Match(text);
@@ -1436,6 +1705,12 @@ public class CandidateService : ICandidateService
         return digits.StartsWith("+84", StringComparison.Ordinal) ? "0" + digits[3..] : digits;
     }
 
+    /// <summary>
+    /// Extracts url.
+    /// </summary>
+    /// <param name="text">The <paramref name="text"/> value.</param>
+    /// <param name="hostKeyword">The <paramref name="hostKeyword"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static string? ExtractUrl(string text, string hostKeyword)
     {
         Match match = UrlPattern.Matches(text)
@@ -1443,6 +1718,11 @@ public class CandidateService : ICandidateService
         return match?.Value.Trim();
     }
 
+    /// <summary>
+    /// Extracts candidate name.
+    /// </summary>
+    /// <param name="lines">The <paramref name="lines"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static string? ExtractCandidateName(List<string> lines)
     {
         return lines
@@ -1457,6 +1737,12 @@ public class CandidateService : ICandidateService
                 && !line.Any(char.IsDigit));
     }
 
+    /// <summary>
+    /// Extracts headline.
+    /// </summary>
+    /// <param name="lines">The <paramref name="lines"/> value.</param>
+    /// <param name="name">The <paramref name="name"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static string? ExtractHeadline(List<string> lines, string? name)
     {
         return lines
@@ -1469,6 +1755,11 @@ public class CandidateService : ICandidateService
                 && !YearPattern.IsMatch(line));
     }
 
+    /// <summary>
+    /// Extracts location.
+    /// </summary>
+    /// <param name="lines">The <paramref name="lines"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static string? ExtractLocation(List<string> lines)
     {
         return lines.FirstOrDefault(line =>
@@ -1480,6 +1771,11 @@ public class CandidateService : ICandidateService
             || line.Contains("vietnam", StringComparison.OrdinalIgnoreCase));
     }
 
+    /// <summary>
+    /// Extracts summary.
+    /// </summary>
+    /// <param name="sections">The <paramref name="sections"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static string? ExtractSummary(Dictionary<string, List<string>> sections)
     {
         if (!sections.TryGetValue("summary", out List<string>? summaryLines) || summaryLines.Count == 0)
@@ -1490,6 +1786,12 @@ public class CandidateService : ICandidateService
         return string.Join(" ", summaryLines.Take(4));
     }
 
+    /// <summary>
+    /// Executes the match skills operation.
+    /// </summary>
+    /// <param name="text">The <paramref name="text"/> value.</param>
+    /// <param name="allSkills">The <paramref name="allSkills"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static List<Skill> MatchSkills(string text, IReadOnlyList<Skill> allSkills)
     {
         List<Skill> matches = [];
@@ -1508,6 +1810,12 @@ public class CandidateService : ICandidateService
             .ToList();
     }
 
+    /// <summary>
+    /// Extracts years of experience for skill.
+    /// </summary>
+    /// <param name="text">The <paramref name="text"/> value.</param>
+    /// <param name="skillName">The <paramref name="skillName"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static decimal? ExtractYearsOfExperienceForSkill(string text, string skillName)
     {
         string escapedSkillName = Regex.Escape(skillName);
@@ -1530,6 +1838,11 @@ public class CandidateService : ICandidateService
         return null;
     }
 
+    /// <summary>
+    /// Executes the split into chunks operation.
+    /// </summary>
+    /// <param name="lines">The <paramref name="lines"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static List<List<string>> SplitIntoChunks(List<string> lines)
     {
         List<List<string>> chunks = [];
@@ -1565,12 +1878,22 @@ public class CandidateService : ICandidateService
         return chunks;
     }
 
+    /// <summary>
+    /// Executes the contains date range operation.
+    /// </summary>
+    /// <param name="line">The <paramref name="line"/> value.</param>
+    /// <returns>A value indicating whether the operation succeeded.</returns>
     private static bool ContainsDateRange(string line)
     {
         return Regex.IsMatch(line, @"(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+)?(?:19|20)\d{2}\s*[-–]\s*(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+)?(?:(?:19|20)\d{2}|present|current)", RegexOptions.IgnoreCase)
             || Regex.IsMatch(line, @"\b(19|20)\d{2}\b");
     }
 
+    /// <summary>
+    /// Parses period from chunk.
+    /// </summary>
+    /// <param name="lines">The <paramref name="lines"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static CandidateExperiencePeriodDto ParsePeriodFromChunk(IEnumerable<string> lines)
     {
         string combined = string.Join(" ", lines);
@@ -1594,6 +1917,12 @@ public class CandidateService : ICandidateService
         };
     }
 
+    /// <summary>
+    /// Extracts month number.
+    /// </summary>
+    /// <param name="value">The <paramref name="value"/> value.</param>
+    /// <param name="last">The <paramref name="last"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static int? ExtractMonthNumber(string value, bool last = false)
     {
         string[] monthTokens = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "sept", "oct", "nov", "dec"];
@@ -1614,6 +1943,13 @@ public class CandidateService : ICandidateService
         return last ? monthIndexes.Last() : monthIndexes.First();
     }
 
+    /// <summary>
+    /// Parses experience entries.
+    /// </summary>
+    /// <param name="lines">The <paramref name="lines"/> value.</param>
+    /// <param name="fallbackTitle">The <paramref name="fallbackTitle"/> value.</param>
+    /// <param name="defaultCompany">The <paramref name="defaultCompany"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static List<CandidateExperienceDto> ParseExperienceEntries(List<string> lines, string fallbackTitle, string defaultCompany)
     {
         return SplitIntoChunks(lines)
@@ -1649,6 +1985,11 @@ public class CandidateService : ICandidateService
             .ToList();
     }
 
+    /// <summary>
+    /// Parses projects.
+    /// </summary>
+    /// <param name="lines">The <paramref name="lines"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static List<CandidateProjectDto> ParseProjects(List<string> lines)
     {
         return SplitIntoChunks(lines)
@@ -1681,6 +2022,11 @@ public class CandidateService : ICandidateService
             .ToList();
     }
 
+    /// <summary>
+    /// Parses educations.
+    /// </summary>
+    /// <param name="lines">The <paramref name="lines"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static List<CandidateEducationDto> ParseEducations(List<string> lines)
     {
         return SplitIntoChunks(lines)
@@ -1709,6 +2055,11 @@ public class CandidateService : ICandidateService
             .ToList();
     }
 
+    /// <summary>
+    /// Parses certifications.
+    /// </summary>
+    /// <param name="lines">The <paramref name="lines"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static List<CandidateCertificationDto> ParseCertifications(List<string> lines)
     {
         return SplitIntoChunks(lines)
@@ -1727,6 +2078,11 @@ public class CandidateService : ICandidateService
             .ToList();
     }
 
+    /// <summary>
+    /// Parses languages.
+    /// </summary>
+    /// <param name="lines">The <paramref name="lines"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static List<CandidateLanguageDto> ParseLanguages(List<string> lines)
     {
         List<string> proficiencyKeywords = ["native", "fluent", "advanced", "intermediate", "basic", "professional", "business"];
@@ -1800,6 +2156,13 @@ public class CandidateService : ICandidateService
         public string Proficiency { get; set; } = string.Empty;
     }
 
+    /// <summary>
+    /// Builds meta.
+    /// </summary>
+    /// <param name="page">The <paramref name="page"/> value.</param>
+    /// <param name="pageSize">The <paramref name="pageSize"/> value.</param>
+    /// <param name="total">The <paramref name="total"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static ApiEnvelopeMeta BuildMeta(int page, int pageSize, int total)
     {
         return new ApiEnvelopeMeta
@@ -1811,6 +2174,11 @@ public class CandidateService : ICandidateService
         };
     }
 
+    /// <summary>
+    /// Extracts file name.
+    /// </summary>
+    /// <param name="resumeValue">The <paramref name="resumeValue"/> value.</param>
+    /// <returns>The resulting string value.</returns>
     private static string ExtractFileName(string resumeValue)
     {
         if (string.IsNullOrWhiteSpace(resumeValue))
@@ -1829,6 +2197,12 @@ public class CandidateService : ICandidateService
             : fileName;
     }
 
+    /// <summary>
+    /// Assigns candidate role.
+    /// </summary>
+    /// <param name="userId">The <paramref name="userId"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
+    /// <exception cref="NotFoundException">Thrown when the operation fails validation or encounters an invalid state.</exception>
     private async Task AssignCandidateRoleAsync(Guid userId)
     {
         Role? candidateRole = await _userRepository.GetRoleByNameAsync(CandidateRoleName);
@@ -1845,6 +2219,13 @@ public class CandidateService : ICandidateService
         });
     }
 
+    /// <summary>
+    /// Parses and validate import rows.
+    /// </summary>
+    /// <param name="fileStream">The <paramref name="fileStream"/> value.</param>
+    /// <param name="fileName">The <paramref name="fileName"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
+    /// <exception cref="ArgumentException">Thrown when the operation fails validation or encounters an invalid state.</exception>
     private async Task<List<CandidateImportPreviewDto>> ParseAndValidateImportRowsAsync(Stream fileStream, string fileName)
     {
         if (!fileName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
@@ -1883,6 +2264,11 @@ public class CandidateService : ICandidateService
         return rows;
     }
 
+    /// <summary>
+    /// Validates request rows.
+    /// </summary>
+    /// <param name="requestRows">The <paramref name="requestRows"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     private async Task<List<CandidateImportPreviewDto>> ValidateRequestRowsAsync(IEnumerable<CandidateImportRowRequestDto> requestRows)
     {
         List<CandidateImportPreviewDto> rows = requestRows.Select(row => new CandidateImportPreviewDto
@@ -1900,6 +2286,11 @@ public class CandidateService : ICandidateService
         return rows;
     }
 
+    /// <summary>
+    /// Applies import validation.
+    /// </summary>
+    /// <param name="rows">The <paramref name="rows"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
     private async Task ApplyImportValidationAsync(List<CandidateImportPreviewDto> rows)
     {
         IReadOnlySet<string> existingEmails = await _userRepository.GetExistingEmailsAsync(rows.Select(row => row.Email));
@@ -1945,6 +2336,11 @@ public class CandidateService : ICandidateService
         }
     }
 
+    /// <summary>
+    /// Builds preview response.
+    /// </summary>
+    /// <param name="rows">The <paramref name="rows"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static CandidateImportPreviewResponseDto BuildPreviewResponse(List<CandidateImportPreviewDto> rows)
     {
         return new CandidateImportPreviewResponseDto
@@ -1956,6 +2352,11 @@ public class CandidateService : ICandidateService
         };
     }
 
+    /// <summary>
+    /// Executes the is valid email operation.
+    /// </summary>
+    /// <param name="email">The <paramref name="email"/> value.</param>
+    /// <returns>A value indicating whether the operation succeeded.</returns>
     private static bool IsValidEmail(string email)
     {
         try
@@ -1969,16 +2370,31 @@ public class CandidateService : ICandidateService
         }
     }
 
+    /// <summary>
+    /// Generates temporary password.
+    /// </summary>
+    /// <returns>The resulting string value.</returns>
     private static string GenerateTemporaryPassword()
     {
         return $"Rp!{Guid.NewGuid():N}"[..12];
     }
 
+    /// <summary>
+    /// Normalizes optional text.
+    /// </summary>
+    /// <param name="value">The <paramref name="value"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static string? NormalizeOptionalText(string? value)
     {
         return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     }
 
+    /// <summary>
+    /// Builds imported bio.
+    /// </summary>
+    /// <param name="source">The <paramref name="source"/> value.</param>
+    /// <param name="notes">The <paramref name="notes"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static string? BuildImportedBio(string source, string notes)
     {
         List<string> parts = [];
@@ -1996,6 +2412,12 @@ public class CandidateService : ICandidateService
         return parts.Count == 0 ? null : string.Join(Environment.NewLine, parts);
     }
 
+    /// <summary>
+    /// Resolves candidate source.
+    /// </summary>
+    /// <param name="candidate">The <paramref name="candidate"/> value.</param>
+    /// <param name="requestedSource">The <paramref name="requestedSource"/> value.</param>
+    /// <returns>The resulting string value.</returns>
     private static string ResolveCandidateSource(CandidateProfile candidate, string? requestedSource)
     {
         if (!string.IsNullOrWhiteSpace(requestedSource))

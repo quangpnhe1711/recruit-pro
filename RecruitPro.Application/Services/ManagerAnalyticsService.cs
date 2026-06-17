@@ -12,6 +12,12 @@ public class ManagerAnalyticsService : IManagerAnalyticsService
     private readonly IInterviewRepository _interviewRepository;
     private readonly IJobRepository _jobRepository;
 
+    /// <summary>
+    /// Initializes a new instance of the ManagerAnalyticsService class.
+    /// </summary>
+    /// <param name="applicationRepository">The <paramref name="applicationRepository"/> value.</param>
+    /// <param name="interviewRepository">The <paramref name="interviewRepository"/> value.</param>
+    /// <param name="jobRepository">The <paramref name="jobRepository"/> value.</param>
     public ManagerAnalyticsService(
         IApplicationRepository applicationRepository,
         IInterviewRepository interviewRepository,
@@ -22,6 +28,10 @@ public class ManagerAnalyticsService : IManagerAnalyticsService
         _jobRepository = jobRepository;
     }
 
+    /// <summary>
+    /// Retrieves recruitment analytics.
+    /// </summary>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<ManagerRecruitmentAnalyticsDto>> GetRecruitmentAnalyticsAsync()
     {
         DateTime currentMonth = new DateTime(DbDateTime.Now.Year, DbDateTime.Now.Month, 1);
@@ -149,6 +159,13 @@ public class ManagerAnalyticsService : IManagerAnalyticsService
         });
     }
 
+    /// <summary>
+    /// Builds funnel item.
+    /// </summary>
+    /// <param name="label">The <paramref name="label"/> value.</param>
+    /// <param name="count">The <paramref name="count"/> value.</param>
+    /// <param name="appliedCount">The <paramref name="appliedCount"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static ManagerRecruitmentFunnelItemDto BuildFunnelItem(string label, int count, int appliedCount)
     {
         return new ManagerRecruitmentFunnelItemDto
@@ -161,6 +178,14 @@ public class ManagerAnalyticsService : IManagerAnalyticsService
         };
     }
 
+    /// <summary>
+    /// Builds distribution item.
+    /// </summary>
+    /// <param name="label">The <paramref name="label"/> value.</param>
+    /// <param name="count">The <paramref name="count"/> value.</param>
+    /// <param name="total">The <paramref name="total"/> value.</param>
+    /// <param name="colorToken">The <paramref name="colorToken"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static ManagerRecruitmentDistributionItemDto BuildDistributionItem(string label, int count, int total, string colorToken)
     {
         return new ManagerRecruitmentDistributionItemDto
@@ -172,6 +197,12 @@ public class ManagerAnalyticsService : IManagerAnalyticsService
         };
     }
 
+    /// <summary>
+    /// Calculates percent delta.
+    /// </summary>
+    /// <param name="previous">The <paramref name="previous"/> value.</param>
+    /// <param name="current">The <paramref name="current"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static int CalculatePercentDelta(int previous, int current)
     {
         if (previous <= 0)

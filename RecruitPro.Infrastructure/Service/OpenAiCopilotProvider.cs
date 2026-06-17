@@ -19,6 +19,12 @@ public class OpenAiCopilotProvider : IAiCopilotProvider
     private readonly ILogger<OpenAiCopilotProvider> _logger;
     private readonly OpenAiSettings _settings;
 
+    /// <summary>
+    /// Initializes a new instance of the OpenAiCopilotProvider class.
+    /// </summary>
+    /// <param name="httpClient">The <paramref name="httpClient"/> value.</param>
+    /// <param name="options">The <paramref name="options"/> value.</param>
+    /// <param name="logger">The <paramref name="logger"/> value.</param>
     public OpenAiCopilotProvider(
         HttpClient httpClient,
         IOptions<OpenAiSettings> options,
@@ -29,6 +35,16 @@ public class OpenAiCopilotProvider : IAiCopilotProvider
         _settings = options.Value;
     }
 
+    /// <summary>
+    /// Attempts to create ranking.
+    /// </summary>
+    /// <param name="pool">The <paramref name="pool"/> value.</param>
+    /// <param name="rules">The <paramref name="rules"/> value.</param>
+    /// <param name="deterministicResults">The <paramref name="deterministicResults"/> value.</param>
+    /// <param name="userPrompt">The <paramref name="userPrompt"/> value.</param>
+    /// <param name="conversationId">The <paramref name="conversationId"/> value.</param>
+    /// <param name="cancellationToken">The <paramref name="cancellationToken"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<CopilotPromptResponseDto?> TryCreateRankingAsync(
         CopilotCandidatePoolDto pool,
         CopilotNormalizedRulesDto rules,
@@ -109,6 +125,14 @@ public class OpenAiCopilotProvider : IAiCopilotProvider
         }
     }
 
+    /// <summary>
+    /// Attempts to create chat reply.
+    /// </summary>
+    /// <param name="pool">The <paramref name="pool"/> value.</param>
+    /// <param name="userPrompt">The <paramref name="userPrompt"/> value.</param>
+    /// <param name="conversationId">The <paramref name="conversationId"/> value.</param>
+    /// <param name="cancellationToken">The <paramref name="cancellationToken"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<string?> TryCreateChatReplyAsync(
         CopilotCandidatePoolDto pool,
         string userPrompt,
@@ -187,6 +211,11 @@ public class OpenAiCopilotProvider : IAiCopilotProvider
         }
     }
 
+    /// <summary>
+    /// Builds prompt.
+    /// </summary>
+    /// <param name="payload">The <paramref name="payload"/> value.</param>
+    /// <returns>The resulting string value.</returns>
     private static string BuildPrompt(object payload)
     {
         return $$"""
@@ -228,6 +257,11 @@ public class OpenAiCopilotProvider : IAiCopilotProvider
         """;
     }
 
+    /// <summary>
+    /// Builds request.
+    /// </summary>
+    /// <param name="requestBody">The <paramref name="requestBody"/> value.</param>
+    /// <returns>The operation result.</returns>
     private HttpRequestMessage BuildRequest(object requestBody)
     {
         string endpoint = BuildEndpoint();
@@ -239,6 +273,13 @@ public class OpenAiCopilotProvider : IAiCopilotProvider
         return request;
     }
 
+    /// <summary>
+    /// Builds request body.
+    /// </summary>
+    /// <param name="systemPrompt">The <paramref name="systemPrompt"/> value.</param>
+    /// <param name="userPrompt">The <paramref name="userPrompt"/> value.</param>
+    /// <param name="requireJson">The <paramref name="requireJson"/> value.</param>
+    /// <returns>The operation result.</returns>
     private object BuildRequestBody(string systemPrompt, string userPrompt, bool requireJson)
     {
         if (UsesChatCompletions())
@@ -285,6 +326,10 @@ public class OpenAiCopilotProvider : IAiCopilotProvider
         };
     }
 
+    /// <summary>
+    /// Builds endpoint.
+    /// </summary>
+    /// <returns>The resulting string value.</returns>
     private string BuildEndpoint()
     {
         string baseUrl = _settings.BaseUrl.TrimEnd('/');
@@ -293,12 +338,21 @@ public class OpenAiCopilotProvider : IAiCopilotProvider
             : $"{baseUrl}{OpenAiResponsesSuffix}";
     }
 
+    /// <summary>
+    /// Executes the uses chat completions operation.
+    /// </summary>
+    /// <returns>A value indicating whether the operation succeeded.</returns>
     private bool UsesChatCompletions()
     {
         return _settings.BaseUrl.Contains("generativelanguage.googleapis.com", StringComparison.OrdinalIgnoreCase)
             || _settings.BaseUrl.EndsWith("/openai", StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// Extracts output text.
+    /// </summary>
+    /// <param name="rawResponse">The <paramref name="rawResponse"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static string? ExtractOutputText(string rawResponse)
     {
         using JsonDocument document = JsonDocument.Parse(rawResponse);
@@ -365,6 +419,11 @@ public class OpenAiCopilotProvider : IAiCopilotProvider
         return null;
     }
 
+    /// <summary>
+    /// Normalizes json payload.
+    /// </summary>
+    /// <param name="payload">The <paramref name="payload"/> value.</param>
+    /// <returns>The resulting string value.</returns>
     private static string NormalizeJsonPayload(string payload)
     {
         string trimmed = payload.Trim();
@@ -389,6 +448,12 @@ public class OpenAiCopilotProvider : IAiCopilotProvider
         return withoutHeader.Trim();
     }
 
+    /// <summary>
+    /// Builds chat error message.
+    /// </summary>
+    /// <param name="summary">The <paramref name="summary"/> value.</param>
+    /// <param name="rawResponse">The <paramref name="rawResponse"/> value.</param>
+    /// <returns>The resulting string value.</returns>
     private static string BuildChatErrorMessage(string summary, string rawResponse)
     {
         if (string.IsNullOrWhiteSpace(rawResponse))

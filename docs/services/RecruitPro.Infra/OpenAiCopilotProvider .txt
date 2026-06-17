@@ -1,0 +1,276 @@
+==========================================================
+OpenAiCopilotProvider - Detailed Analysis
+==========================================================
+
+1. OVERVIEW
+----------------------------------------------------------
+
+OpenAiCopilotProvider là implementation của IAiCopilotProvider.
+
+Mục đích của service này là đóng vai trò cầu nối giữa ATS System và AI Provider (OpenAI, Gemini, Azure OpenAI, OpenRouter hoặc bất kỳ OpenAI-compatible API nào).
+
+Service hỗ trợ 2 chức năng chính:
+
+1. Candidate Ranking
+   - Nhận JD, Rules, Candidate Pool
+   - Gửi dữ liệu sang AI
+   - AI đánh giá và xếp hạng ứng viên
+
+2. Recruiter Copilot Chat
+   - Recruiter đặt câu hỏi bằng ngôn ngữ tự nhiên
+   - AI trả lời dựa trên dữ liệu JD và Candidate Pool
+
+Toàn bộ giao tiếp với AI đều đi qua service này.
+
+----------------------------------------------------------
+2. CLASS MEMBERS
+----------------------------------------------------------
+
+private static readonly JsonSerializerOptions JsonOptions
+
+Mục đích:
+Chuẩn hóa quá trình Serialize và Deserialize JSON.
+
+Được sử dụng ở nhiều nơi:
+- Serialize payload gửi lên AI
+- Deserialize kết quả AI trả về
+
+----------------------------------------------------------
+
+private const string OpenAiResponsesSuffix = "/responses";
+
+Mục đích:
+Endpoint mặc định của OpenAI Responses API.
+
+Ví dụ:
+
+https://api.openai.com/v1/responses
+
+----------------------------------------------------------
+
+private const string OpenAiChatCompletionsSuffix = "/chat/completions";
+
+Mục đích:
+Endpoint của OpenAI Compatible API.
+
+Ví dụ:
+
+https://openrouter.ai/api/v1/chat/completions
+
+https://generativelanguage.googleapis.com/.../chat/completions
+
+----------------------------------------------------------
+
+private readonly HttpClient _httpClient
+
+Dùng để gửi HTTP request tới AI Provider.
+
+----------------------------------------------------------
+
+private readonly ILogger<OpenAiCopilotProvider> _logger
+
+Dùng để ghi log:
+
+- Request started
+- Request completed
+- Request failed
+- Exception
+
+----------------------------------------------------------
+
+private readonly OpenAiSettings _settings
+
+Chứa toàn bộ cấu hình AI.
+
+Ví dụ:
+
+Enabled
+ApiKey
+Model
+BaseUrl
+MaxCandidatesForAi
+
+----------------------------------------------------------
+3. CONSTRUCTOR
+----------------------------------------------------------
+
+public OpenAiCopilotProvider(...)
+
+Inject:
+
+- HttpClient
+- OpenAiSettings
+- Logger
+
+Không chứa business logic.
+
+Chỉ khởi tạo dependency.
+
+----------------------------------------------------------
+4. TryCreateRankingAsync
+----------------------------------------------------------
+
+Mục đích:
+
+Thực hiện AI Ranking.
+
+Input:
+
+- Candidate Pool
+- Normalized Rules
+- Deterministic Ranking
+- User Prompt
+- Conversation Id
+
+Output:
+
+CopilotPromptResponseDto
+
+Flow tổng quát:
+
+Job + Rules + Candidates
+            ↓
+      Build Prompt
+            ↓
+       AI Provider
+            ↓
+      Parse Result
+            ↓
+CopilotPromptResponseDto
+
+----------------------------------------------------------
+Bước 1: Validate AI Configuration
+----------------------------------------------------------
+
+if (!_settings.Enabled || string.IsNullOrWhiteSpace(_settings.ApiKey))
+
+Kiểm tra:
+
+- AI có được bật hay không
+- API Key có tồn tại hay không
+
+Nếu không:
+
+return null
+
+Lý do:
+
+Cho phép ATS fallback về deterministic ranking.
+
+----------------------------------------------------------
+Bước 2: Candidate Limitation
+----------------------------------------------------------
+
+int candidateLimit = ...
+
+Giới hạn số lượng ứng viên gửi sang AI.
+
+Ví dụ:
+
+MaxCandidatesForAi = 20
+
+=> Chỉ gửi 20 ứng viên đầu tiên.
+
+Mục đích:
+
+- Tiết kiệm token
+- Giảm chi phí
+- Tránh context overflow
+
+----------------------------------------------------------
+Bước 3: Build Payload
+----------------------------------------------------------
+
+Tạo object payload:
+
+{
+    job,
+    userPrompt,
+    normalizedRules,
+    candidates,
+    deterministicRanking
+}
+
+Đây là toàn bộ dữ liệu AI được phép nhìn thấy.
+
+----------------------------------------------------------
+Bước 4: Build Prompt
+----------------------------------------------------------
+
+BuildPrompt(payload)
+
+Sinh prompt ranking.
+
+Prompt yêu cầu:
+
+- Trả đúng schema
+- Không bỏ sót ứng viên
+- Mỗi candidate phải có summary
+- Auto reject phải nằm cuối
+- Trả JSON hợp lệ
+
+----------------------------------------------------------
+Bước 5: Build Request Body
+----------------------------------------------------------
+
+BuildRequestBody(...)
+
+Chuyển prompt thành request model phù hợp với provider.
+
+----------------------------------------------------------
+Bước 6: Build HTTP Request
+----------------------------------------------------------
+
+BuildRequest(...)
+
+Tạo:
+
+HttpRequestMessage
+
+Bao gồm:
+
+- URL
+- Authorization Header
+- Request Body
+
+----------------------------------------------------------
+Bước 7: Send Request
+----------------------------------------------------------
+
+_httpClient.SendAsync(...)
+
+Gửi request đến AI Provider.
+
+----------------------------------------------------------
+Bước 8: Read Response
+----------------------------------------------------------
+
+response.Content.ReadAsStringAsync()
+
+Lấy raw JSON response.
+
+----------------------------------------------------------
+Bước 9: Extract Output
+----------------------------------------------------------
+
+ExtractOutputText(raw)
+
+Mục đích:
+
+Lấy phần text thực sự từ response.
+
+Do mỗi provider có format khác nhau.
+
+----------------------------------------------------------
+Bước 10: Normalize JSON
+----------------------------------------------------------
+
+NormalizeJsonPayload(...)
+
+Loại bỏ markdown fence.
+
+Ví dụ:
+
+```json
+{
+}

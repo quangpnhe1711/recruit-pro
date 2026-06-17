@@ -16,6 +16,14 @@ public class DashboardService : IDashboardService
     private readonly IInterviewRepository _interviewRepository;
     private readonly INotificationRepository _notificationRepository;
 
+    /// <summary>
+    /// Initializes a new instance of the DashboardService class.
+    /// </summary>
+    /// <param name="candidateProfileRepository">The <paramref name="candidateProfileRepository"/> value.</param>
+    /// <param name="applicationRepository">The <paramref name="applicationRepository"/> value.</param>
+    /// <param name="jobRepository">The <paramref name="jobRepository"/> value.</param>
+    /// <param name="interviewRepository">The <paramref name="interviewRepository"/> value.</param>
+    /// <param name="notificationRepository">The <paramref name="notificationRepository"/> value.</param>
     public DashboardService(
         ICandidateProfileRepository candidateProfileRepository,
         IApplicationRepository applicationRepository,
@@ -30,6 +38,11 @@ public class DashboardService : IDashboardService
         _notificationRepository = notificationRepository;
     }
 
+    /// <summary>
+    /// Retrieves candidate dashboard.
+    /// </summary>
+    /// <param name="userId">The <paramref name="userId"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<CandidateDashboardDto>> GetCandidateDashboardAsync(Guid userId)
     {
         CandidateProfile profile = await GetProfileEntityAsync(userId);
@@ -72,6 +85,10 @@ public class DashboardService : IDashboardService
         });
     }
 
+    /// <summary>
+    /// Retrieves hr dashboard.
+    /// </summary>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<HrDashboardDto>> GetHrDashboardAsync()
     {
         DateTime today = DbDateTime.Today;
@@ -116,6 +133,10 @@ public class DashboardService : IDashboardService
         });
     }
 
+    /// <summary>
+    /// Retrieves manager dashboard.
+    /// </summary>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<ManagerDashboardDto>> GetManagerDashboardAsync()
     {
         IReadOnlyList<Job> pendingApprovalJobs = await _jobRepository.GetPendingApprovalJobsAsync(5);
@@ -191,6 +212,12 @@ public class DashboardService : IDashboardService
         });
     }
 
+    /// <summary>
+    /// Retrieves profile entity.
+    /// </summary>
+    /// <param name="userId">The <paramref name="userId"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
+    /// <exception cref="NotFoundException">Thrown when the operation fails validation or encounters an invalid state.</exception>
     private async Task<CandidateProfile> GetProfileEntityAsync(Guid userId)
     {
         CandidateProfile? profile = await _candidateProfileRepository.GetByUserIdAsync(userId);
@@ -202,6 +229,11 @@ public class DashboardService : IDashboardService
         return profile;
     }
 
+    /// <summary>
+    /// Builds pending approval meta.
+    /// </summary>
+    /// <param name="job">The <paramref name="job"/> value.</param>
+    /// <returns>The resulting string value.</returns>
     private static string BuildPendingApprovalMeta(Job job)
     {
         string salaryLabel = job.SalaryMin.HasValue || job.SalaryMax.HasValue
@@ -211,6 +243,11 @@ public class DashboardService : IDashboardService
         return $"{job.Department?.Name ?? "General"} • {salaryLabel}";
     }
 
+    /// <summary>
+    /// Builds manager funnel.
+    /// </summary>
+    /// <param name="statusCounts">The <paramref name="statusCounts"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static List<FunnelCountDto> BuildManagerFunnel(Dictionary<ApplicationStatus, int> statusCounts)
     {
         return

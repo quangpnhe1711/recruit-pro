@@ -8,15 +8,18 @@ using RecruitPro.Application.Interfaces;
 
 namespace RecruitPro.Infrastructure.Service;
 
-/// <summary>
-/// Provides private-file storage operations backed by MinIO.
-/// </summary>
 public class MinioFileStorageService : IFileStorageService
 {
     private readonly IMinioClient _client;
     private readonly ILogger<MinioFileStorageService> _logger;
     private readonly MinioSettings _settings;
 
+    /// <summary>
+    /// Initializes a new instance of the MinioFileStorageService class.
+    /// </summary>
+    /// <param name="client">The <paramref name="client"/> value.</param>
+    /// <param name="options">The <paramref name="options"/> value.</param>
+    /// <param name="logger">The <paramref name="logger"/> value.</param>
     public MinioFileStorageService(
         IMinioClient client,
         IOptions<MinioSettings> options,
@@ -27,6 +30,14 @@ public class MinioFileStorageService : IFileStorageService
         _settings = options.Value;
     }
 
+    /// <summary>
+    /// Uploads file.
+    /// </summary>
+    /// <param name="stream">The <paramref name="stream"/> value.</param>
+    /// <param name="objectName">The <paramref name="objectName"/> value.</param>
+    /// <param name="contentType">The <paramref name="contentType"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when a required argument is <see langword="null"/>.</exception>
     public async Task<string> UploadFileAsync(Stream stream, string objectName, string contentType)
     {
         ArgumentNullException.ThrowIfNull(stream);
@@ -66,6 +77,11 @@ public class MinioFileStorageService : IFileStorageService
         }
     }
 
+    /// <summary>
+    /// Retrieves presigned url.
+    /// </summary>
+    /// <param name="objectName">The <paramref name="objectName"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<string> GetPresignedUrlAsync(string objectName)
     {
         string normalizedObjectName = NormalizeObjectName(objectName);
@@ -97,6 +113,11 @@ public class MinioFileStorageService : IFileStorageService
         }
     }
 
+    /// <summary>
+    /// Executes the download file operation.
+    /// </summary>
+    /// <param name="objectName">The <paramref name="objectName"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<Stream> DownloadFileAsync(string objectName)
     {
         string normalizedObjectName = NormalizeObjectName(objectName);
@@ -126,6 +147,11 @@ public class MinioFileStorageService : IFileStorageService
         }
     }
 
+    /// <summary>
+    /// Deletes file.
+    /// </summary>
+    /// <param name="objectName">The <paramref name="objectName"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
     public async Task DeleteFileAsync(string objectName)
     {
         if (string.IsNullOrWhiteSpace(objectName))
@@ -157,6 +183,10 @@ public class MinioFileStorageService : IFileStorageService
         }
     }
 
+    /// <summary>
+    /// Ensures bucket exists.
+    /// </summary>
+    /// <returns>A task that represents the asynchronous operation.</returns>
     private async Task EnsureBucketExistsAsync()
     {
         bool bucketExists = await _client.BucketExistsAsync(
@@ -171,6 +201,10 @@ public class MinioFileStorageService : IFileStorageService
         _logger.LogInformation("Created MinIO bucket {BucketName}.", _settings.BucketName);
     }
 
+    /// <summary>
+    /// Retrieves presigned url expiry in seconds.
+    /// </summary>
+    /// <returns>The operation result.</returns>
     private int GetPresignedUrlExpiryInSeconds()
     {
         return _settings.PresignedUrlExpiryInSeconds > 0
@@ -178,6 +212,12 @@ public class MinioFileStorageService : IFileStorageService
             : 3600;
     }
 
+    /// <summary>
+    /// Normalizes object name.
+    /// </summary>
+    /// <param name="objectName">The <paramref name="objectName"/> value.</param>
+    /// <returns>The resulting string value.</returns>
+    /// <exception cref="ArgumentException">Thrown when the operation fails validation or encounters an invalid state.</exception>
     private string NormalizeObjectName(string objectName)
     {
         if (string.IsNullOrWhiteSpace(objectName))

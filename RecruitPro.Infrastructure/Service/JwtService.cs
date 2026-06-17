@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Options;
 using RecruitPro.Application.Configurations;
 using RecruitPro.Application.Interfaces.IServices;
 using RecruitPro.Domain.Entities;
@@ -13,11 +13,21 @@ namespace RecruitPro.Infrastructure.Service
     {
         private readonly JwtSettings _jwtSettings;
 
+        /// <summary>
+        /// Initializes a new instance of the JwtService class.
+        /// </summary>
+        /// <param name="options">The <paramref name="options"/> value.</param>
         public JwtService(IOptions<JwtSettings> options)
         {
             _jwtSettings = options.Value;
         }
 
+        /// <summary>
+        /// Generates token.
+        /// </summary>
+        /// <param name="user">The <paramref name="user"/> value.</param>
+        /// <param name="type">The <paramref name="type"/> value.</param>
+        /// <returns>The resulting string value.</returns>
         public string GenerateToken(User user, string type)
         {
             var claims = new List<Claim>

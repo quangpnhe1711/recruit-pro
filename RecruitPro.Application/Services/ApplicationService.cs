@@ -25,6 +25,16 @@ public class ApplicationService : IApplicationService
     private readonly IFileStorageService _fileStorage;
     private readonly ILogger<ApplicationService> _logger;
 
+    /// <summary>
+    /// Initializes a new instance of the ApplicationService class.
+    /// </summary>
+    /// <param name="applicationRepository">The <paramref name="applicationRepository"/> value.</param>
+    /// <param name="candidateProfileRepository">The <paramref name="candidateProfileRepository"/> value.</param>
+    /// <param name="jobRepository">The <paramref name="jobRepository"/> value.</param>
+    /// <param name="offerRepository">The <paramref name="offerRepository"/> value.</param>
+    /// <param name="unitOfWork">The <paramref name="unitOfWork"/> value.</param>
+    /// <param name="fileStorage">The <paramref name="fileStorage"/> value.</param>
+    /// <param name="logger">The <paramref name="logger"/> value.</param>
     public ApplicationService(
         IApplicationRepository applicationRepository,
         ICandidateProfileRepository candidateProfileRepository,
@@ -43,6 +53,12 @@ public class ApplicationService : IApplicationService
         _logger = logger;
     }
 
+    /// <summary>
+    /// Retrieves apply screen.
+    /// </summary>
+    /// <param name="userId">The <paramref name="userId"/> value.</param>
+    /// <param name="jobId">The <paramref name="jobId"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<ApplyJobScreenDto>> GetApplyScreenAsync(Guid userId, string jobId)
     {
         Job job = await GetJobAsync(jobId);
@@ -95,6 +111,13 @@ public class ApplicationService : IApplicationService
         });
     }
 
+    /// <summary>
+    /// Applies the requested data.
+    /// </summary>
+    /// <param name="userId">The <paramref name="userId"/> value.</param>
+    /// <param name="jobId">The <paramref name="jobId"/> value.</param>
+    /// <param name="request">The <paramref name="request"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<ApplyJobResponseDto>> ApplyAsync(Guid userId, string jobId, ApplyJobRequest request)
     {
         Job job = await GetJobAsync(jobId);
@@ -133,6 +156,13 @@ public class ApplicationService : IApplicationService
         }, "Application submitted successfully");
     }
 
+    /// <summary>
+    /// Retrieves job applications.
+    /// </summary>
+    /// <param name="jobId">The <paramref name="jobId"/> value.</param>
+    /// <param name="page">The <paramref name="page"/> value.</param>
+    /// <param name="pageSize">The <paramref name="pageSize"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<PaginatedResponseDto<ApplicationListItemDto>>> GetJobApplicationsAsync(string jobId, int page = 1, int pageSize = 10)
     {
         Job job = await GetJobAsync(jobId);
@@ -148,6 +178,11 @@ public class ApplicationService : IApplicationService
         });
     }
 
+    /// <summary>
+    /// Retrieves recent applications.
+    /// </summary>
+    /// <param name="jobId">The <paramref name="jobId"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<IReadOnlyList<RecentJobApplicationDto>>> GetRecentApplicationsAsync(string jobId)
     {
         Job job = await GetJobAsync(jobId);
@@ -167,6 +202,15 @@ public class ApplicationService : IApplicationService
         return ApiResponse<IReadOnlyList<RecentJobApplicationDto>>.Ok(items);
     }
 
+    /// <summary>
+    /// Retrieves candidate applications.
+    /// </summary>
+    /// <param name="userId">The <paramref name="userId"/> value.</param>
+    /// <param name="page">The <paramref name="page"/> value.</param>
+    /// <param name="pageSize">The <paramref name="pageSize"/> value.</param>
+    /// <param name="status">The <paramref name="status"/> value.</param>
+    /// <param name="keyword">The <paramref name="keyword"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<CandidateApplicationsResponseDto>> GetCandidateApplicationsAsync(Guid userId, int page, int pageSize, string? status, string? keyword)
     {
         CandidateProfile profile = await GetProfileEntityAsync(userId);
@@ -212,6 +256,12 @@ public class ApplicationService : IApplicationService
         });
     }
 
+    /// <summary>
+    /// Withdraws application.
+    /// </summary>
+    /// <param name="userId">The <paramref name="userId"/> value.</param>
+    /// <param name="applicationId">The <paramref name="applicationId"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<string>> WithdrawApplicationAsync(Guid userId, string applicationId)
     {
         Domain.Entities.Application application = await GetTrackedApplicationForCandidateAsync(userId, applicationId);
@@ -229,6 +279,12 @@ public class ApplicationService : IApplicationService
         return ApiResponse<string>.Ok("Application withdrawn successfully", "Application withdrawn successfully");
     }
 
+    /// <summary>
+    /// Accepts offer.
+    /// </summary>
+    /// <param name="userId">The <paramref name="userId"/> value.</param>
+    /// <param name="applicationId">The <paramref name="applicationId"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<string>> AcceptOfferAsync(Guid userId, string applicationId)
     {
         Domain.Entities.Application application = await GetTrackedApplicationForCandidateAsync(userId, applicationId);
@@ -261,6 +317,12 @@ public class ApplicationService : IApplicationService
         return ApiResponse<string>.Ok("Offer accepted successfully", "Offer accepted successfully");
     }
 
+    /// <summary>
+    /// Declines offer.
+    /// </summary>
+    /// <param name="userId">The <paramref name="userId"/> value.</param>
+    /// <param name="applicationId">The <paramref name="applicationId"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<string>> DeclineOfferAsync(Guid userId, string applicationId)
     {
         Domain.Entities.Application application = await GetTrackedApplicationForCandidateAsync(userId, applicationId);
@@ -288,6 +350,16 @@ public class ApplicationService : IApplicationService
         return ApiResponse<string>.Ok("Offer declined successfully", "Offer declined successfully");
     }
 
+    /// <summary>
+    /// Retrieves hr applications.
+    /// </summary>
+    /// <param name="page">The <paramref name="page"/> value.</param>
+    /// <param name="pageSize">The <paramref name="pageSize"/> value.</param>
+    /// <param name="keyword">The <paramref name="keyword"/> value.</param>
+    /// <param name="department">The <paramref name="department"/> value.</param>
+    /// <param name="status">The <paramref name="status"/> value.</param>
+    /// <param name="jobId">The <paramref name="jobId"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<PaginatedResponseDto<ApplicationListItemDto>>> GetHrApplicationsAsync(int page, int pageSize, string? keyword, string? department, string? status, string? jobId)
     {
         ApplicationStatus? parsedStatus = ParseApplicationStatus(status);
@@ -303,6 +375,13 @@ public class ApplicationService : IApplicationService
         });
     }
 
+    /// <summary>
+    /// Retrieves manager review queue.
+    /// </summary>
+    /// <param name="page">The <paramref name="page"/> value.</param>
+    /// <param name="pageSize">The <paramref name="pageSize"/> value.</param>
+    /// <param name="keyword">The <paramref name="keyword"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<ManagerReviewQueueResponseDto>> GetManagerReviewQueueAsync(int page, int pageSize, string? keyword)
     {
         IReadOnlyList<Domain.Entities.Application> queueApplications = await _applicationRepository.GetManagerReviewQueueAsync(keyword);
@@ -336,6 +415,11 @@ public class ApplicationService : IApplicationService
         });
     }
 
+    /// <summary>
+    /// Retrieves application review detail.
+    /// </summary>
+    /// <param name="applicationId">The <paramref name="applicationId"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<ApplicationReviewDetailDto>> GetApplicationReviewDetailAsync(string applicationId)
     {
         if (!Guid.TryParse(applicationId, out Guid applicationGuid))
@@ -352,6 +436,13 @@ public class ApplicationService : IApplicationService
         return ApiResponse<ApplicationReviewDetailDto>.Ok(MapApplicationToReviewDetailDto(application));
     }
 
+    /// <summary>
+    /// Updates application decision.
+    /// </summary>
+    /// <param name="applicationId">The <paramref name="applicationId"/> value.</param>
+    /// <param name="reviewerId">The <paramref name="reviewerId"/> value.</param>
+    /// <param name="request">The <paramref name="request"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<ApplicationReviewDetailDto>> UpdateApplicationDecisionAsync(
         string applicationId,
         Guid? reviewerId,
@@ -403,6 +494,11 @@ public class ApplicationService : IApplicationService
         return ApiResponse<ApplicationReviewDetailDto>.Ok(MapApplicationToReviewDetailDto(refreshedApplication), message);
     }
 
+    /// <summary>
+    /// Retrieves application cv.
+    /// </summary>
+    /// <param name="applicationId">The <paramref name="applicationId"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<ResumeFileResponseDto>> GetApplicationCvAsync(string applicationId)
     {
         if (!Guid.TryParse(applicationId, out Guid applicationGuid))
@@ -438,6 +534,12 @@ public class ApplicationService : IApplicationService
         });
     }
 
+    /// <summary>
+    /// Sends application email.
+    /// </summary>
+    /// <param name="applicationId">The <paramref name="applicationId"/> value.</param>
+    /// <param name="request">The <paramref name="request"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<string>> SendApplicationEmailAsync(string applicationId, SendApplicationEmailRequest request)
     {
         if (!Guid.TryParse(applicationId, out Guid applicationGuid))
@@ -461,12 +563,25 @@ public class ApplicationService : IApplicationService
         return ApiResponse<string>.Ok($"{effectiveSubject}: {effectiveBody}", $"Email prepared for {recipient}");
     }
 
+    /// <summary>
+    /// Retrieves existing application.
+    /// </summary>
+    /// <param name="userId">The <paramref name="userId"/> value.</param>
+    /// <param name="jobId">The <paramref name="jobId"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     private async Task<Domain.Entities.Application?> GetExistingApplicationAsync(Guid userId, Guid jobId)
     {
         IReadOnlyList<Domain.Entities.Application> existingApplications = await _applicationRepository.GetByUserIdAsync(userId);
         return existingApplications.FirstOrDefault(application => application.JobId == jobId);
     }
 
+    /// <summary>
+    /// Builds apply eligibility.
+    /// </summary>
+    /// <param name="job">The <paramref name="job"/> value.</param>
+    /// <param name="profile">The <paramref name="profile"/> value.</param>
+    /// <param name="existingApplication">The <paramref name="existingApplication"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static ApplyJobEligibilityDto BuildApplyEligibility(
         Job job,
         CandidateProfile profile,
@@ -514,6 +629,12 @@ public class ApplicationService : IApplicationService
         };
     }
 
+    /// <summary>
+    /// Retrieves job.
+    /// </summary>
+    /// <param name="jobId">The <paramref name="jobId"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
+    /// <exception cref="NotFoundException">Thrown when the operation fails validation or encounters an invalid state.</exception>
     private async Task<Job> GetJobAsync(string jobId)
     {
         if (!Guid.TryParse(jobId, out Guid jobGuid))
@@ -530,6 +651,12 @@ public class ApplicationService : IApplicationService
         return job;
     }
 
+    /// <summary>
+    /// Retrieves profile entity.
+    /// </summary>
+    /// <param name="userId">The <paramref name="userId"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
+    /// <exception cref="NotFoundException">Thrown when the operation fails validation or encounters an invalid state.</exception>
     private async Task<CandidateProfile> GetProfileEntityAsync(Guid userId)
     {
         CandidateProfile? profile = await _candidateProfileRepository.GetByUserIdAsync(userId);
@@ -541,6 +668,13 @@ public class ApplicationService : IApplicationService
         return profile;
     }
 
+    /// <summary>
+    /// Retrieves tracked application for candidate.
+    /// </summary>
+    /// <param name="userId">The <paramref name="userId"/> value.</param>
+    /// <param name="applicationId">The <paramref name="applicationId"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
+    /// <exception cref="NotFoundException">Thrown when the operation fails validation or encounters an invalid state.</exception>
     private async Task<Domain.Entities.Application> GetTrackedApplicationForCandidateAsync(Guid userId, string applicationId)
     {
         CandidateProfile profile = await GetProfileEntityAsync(userId);
@@ -558,6 +692,11 @@ public class ApplicationService : IApplicationService
         return application;
     }
 
+    /// <summary>
+    /// Maps application to dto.
+    /// </summary>
+    /// <param name="application">The <paramref name="application"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static ApplicationListItemDto MapApplicationToDto(Domain.Entities.Application application)
     {
         (double score, _) = BuildReviewScore(application);
@@ -600,6 +739,11 @@ public class ApplicationService : IApplicationService
         };
     }
 
+    /// <summary>
+    /// Maps application to review detail dto.
+    /// </summary>
+    /// <param name="application">The <paramref name="application"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static ApplicationReviewDetailDto MapApplicationToReviewDetailDto(Domain.Entities.Application application)
     {
         List<string> candidateSkills = application.User.CandidateProfile?.Skills
@@ -699,6 +843,11 @@ public class ApplicationService : IApplicationService
         };
     }
 
+    /// <summary>
+    /// Maps manager review queue item.
+    /// </summary>
+    /// <param name="application">The <paramref name="application"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static ManagerReviewQueueItemDto MapManagerReviewQueueItem(Domain.Entities.Application application)
     {
         (double score, string recommendation) = BuildReviewScore(application);
@@ -722,6 +871,11 @@ public class ApplicationService : IApplicationService
         };
     }
 
+    /// <summary>
+    /// Executes the static operation.
+    /// </summary>
+    /// <param name="Score">The <paramref name="Score"/> value.</param>
+    /// <param name="application">The <paramref name="application"/> value.</param>
     private static (double Score, string Recommendation) BuildReviewScore(Domain.Entities.Application application)
     {
         CandidateProfile? profile = application.User.CandidateProfile;
@@ -845,6 +999,11 @@ public class ApplicationService : IApplicationService
         return (score, recommendation);
     }
 
+    /// <summary>
+    /// Loads document count.
+    /// </summary>
+    /// <param name="jsonString">The <paramref name="jsonString"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static int LoadDocumentCount(string? jsonString)
     {
         if (string.IsNullOrWhiteSpace(jsonString))
@@ -863,6 +1022,11 @@ public class ApplicationService : IApplicationService
         }
     }
 
+    /// <summary>
+    /// Calculates profile completion score.
+    /// </summary>
+    /// <param name="profile">The <paramref name="profile"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static decimal CalculateProfileCompletionScore(CandidateProfile profile)
     {
         decimal score = 0;
@@ -912,6 +1076,13 @@ public class ApplicationService : IApplicationService
         return Math.Min(score, 100);
     }
 
+    /// <summary>
+    /// Builds meta.
+    /// </summary>
+    /// <param name="page">The <paramref name="page"/> value.</param>
+    /// <param name="pageSize">The <paramref name="pageSize"/> value.</param>
+    /// <param name="total">The <paramref name="total"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static ApiEnvelopeMeta BuildMeta(int page, int pageSize, int total)
     {
         return new ApiEnvelopeMeta
@@ -923,6 +1094,12 @@ public class ApplicationService : IApplicationService
         };
     }
 
+    /// <summary>
+    /// Builds salary label.
+    /// </summary>
+    /// <param name="salaryMin">The <paramref name="salaryMin"/> value.</param>
+    /// <param name="salaryMax">The <paramref name="salaryMax"/> value.</param>
+    /// <returns>The resulting string value.</returns>
     private static string BuildSalaryLabel(decimal? salaryMin, decimal? salaryMax)
     {
         if (!salaryMin.HasValue && !salaryMax.HasValue)
@@ -943,6 +1120,11 @@ public class ApplicationService : IApplicationService
         return $"Up to {salaryMax!.Value:N0} VNĐ";
     }
 
+    /// <summary>
+    /// Parses application status.
+    /// </summary>
+    /// <param name="value">The <paramref name="value"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static ApplicationStatus? ParseApplicationStatus(string? value)
     {
         return value?.Trim().ToLowerInvariant() switch
@@ -959,6 +1141,11 @@ public class ApplicationService : IApplicationService
         };
     }
 
+    /// <summary>
+    /// Extracts file name.
+    /// </summary>
+    /// <param name="resumeValue">The <paramref name="resumeValue"/> value.</param>
+    /// <returns>The resulting string value.</returns>
     private static string ExtractFileName(string resumeValue)
     {
         string fileName = Path.GetFileName(
@@ -972,12 +1159,22 @@ public class ApplicationService : IApplicationService
             : fileName;
     }
 
+    /// <summary>
+    /// Builds reference code.
+    /// </summary>
+    /// <param name="applicationId">The <paramref name="applicationId"/> value.</param>
+    /// <returns>The resulting string value.</returns>
     private static string BuildReferenceCode(Guid applicationId)
     {
         string compactId = applicationId.ToString("N")[..8].ToUpperInvariant();
         return $"APP-{compactId}";
     }
 
+    /// <summary>
+    /// Retrieves current resume.
+    /// </summary>
+    /// <param name="profile">The <paramref name="profile"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static CandidateResume? GetCurrentResume(CandidateProfile profile)
     {
         CandidateResume? currentResume = profile.Resumes
@@ -1006,6 +1203,11 @@ public class ApplicationService : IApplicationService
         };
     }
 
+    /// <summary>
+    /// Builds stage label.
+    /// </summary>
+    /// <param name="application">The <paramref name="application"/> value.</param>
+    /// <returns>The resulting string value.</returns>
     private static string BuildStageLabel(Domain.Entities.Application application)
     {
         return application.Status switch
@@ -1022,6 +1224,11 @@ public class ApplicationService : IApplicationService
         };
     }
 
+    /// <summary>
+    /// Maps candidate application status.
+    /// </summary>
+    /// <param name="application">The <paramref name="application"/> value.</param>
+    /// <returns>The resulting string value.</returns>
     private static string MapCandidateApplicationStatus(Domain.Entities.Application application)
     {
         return application.Status switch
@@ -1038,6 +1245,11 @@ public class ApplicationService : IApplicationService
         };
     }
 
+    /// <summary>
+    /// Builds candidate next step.
+    /// </summary>
+    /// <param name="application">The <paramref name="application"/> value.</param>
+    /// <returns>The resulting string value.</returns>
     private static string BuildCandidateNextStep(Domain.Entities.Application application)
     {
         return application.Status switch
@@ -1054,6 +1266,11 @@ public class ApplicationService : IApplicationService
         };
     }
 
+    /// <summary>
+    /// Builds review next step.
+    /// </summary>
+    /// <param name="application">The <paramref name="application"/> value.</param>
+    /// <returns>The resulting string value.</returns>
     private static string BuildReviewNextStep(Domain.Entities.Application application)
     {
         return application.Status switch
@@ -1070,6 +1287,11 @@ public class ApplicationService : IApplicationService
         };
     }
 
+    /// <summary>
+    /// Builds candidate available actions.
+    /// </summary>
+    /// <param name="application">The <paramref name="application"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static List<string> BuildCandidateAvailableActions(Domain.Entities.Application application)
     {
         List<string> actions = ["viewDetail"];
@@ -1088,6 +1310,11 @@ public class ApplicationService : IApplicationService
         return actions;
     }
 
+    /// <summary>
+    /// Builds initials.
+    /// </summary>
+    /// <param name="fullName">The <paramref name="fullName"/> value.</param>
+    /// <returns>The resulting string value.</returns>
     private static string BuildInitials(string fullName)
     {
         return string.Concat(

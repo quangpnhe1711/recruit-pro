@@ -22,6 +22,15 @@ public class CopilotService : ICopilotService
     private readonly IUnitOfWork _unitOfWork;
     private readonly OpenAiSettings _openAiSettings;
 
+    /// <summary>
+    /// Initializes a new instance of the CopilotService class.
+    /// </summary>
+    /// <param name="copilotRepository">The <paramref name="copilotRepository"/> value.</param>
+    /// <param name="fileStorageService">The <paramref name="fileStorageService"/> value.</param>
+    /// <param name="resumeTextExtractor">The <paramref name="resumeTextExtractor"/> value.</param>
+    /// <param name="aiCopilotProvider">The <paramref name="aiCopilotProvider"/> value.</param>
+    /// <param name="unitOfWork">The <paramref name="unitOfWork"/> value.</param>
+    /// <param name="openAiOptions">The <paramref name="openAiOptions"/> value.</param>
     public CopilotService(
         ICopilotRepository copilotRepository,
         IFileStorageService fileStorageService,
@@ -38,12 +47,22 @@ public class CopilotService : ICopilotService
         _openAiSettings = openAiOptions.Value;
     }
 
+    /// <summary>
+    /// Retrieves jobs.
+    /// </summary>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<IReadOnlyList<CopilotJobOptionDto>>> GetJobsAsync()
     {
         IReadOnlyList<CopilotJobOptionDto> jobs = await _copilotRepository.GetJobOptionsAsync();
         return ApiResponse<IReadOnlyList<CopilotJobOptionDto>>.Ok(jobs);
     }
 
+    /// <summary>
+    /// Creates conversation.
+    /// </summary>
+    /// <param name="request">The <paramref name="request"/> value.</param>
+    /// <param name="userId">The <paramref name="userId"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<CopilotConversationDto>> CreateConversationAsync(CreateCopilotConversationRequest request, Guid userId)
     {
         CopilotConversation? existing = await _copilotRepository.GetLatestConversationAsync(request.JobId, userId);
@@ -66,6 +85,12 @@ public class CopilotService : ICopilotService
         return ApiResponse<CopilotConversationDto>.Created(MapConversation(conversation));
     }
 
+    /// <summary>
+    /// Retrieves conversation.
+    /// </summary>
+    /// <param name="conversationId">The <paramref name="conversationId"/> value.</param>
+    /// <param name="userId">The <paramref name="userId"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<CopilotConversationDetailDto>> GetConversationAsync(Guid conversationId, Guid userId)
     {
         CopilotConversation? conversation = await _copilotRepository.GetConversationWithDetailsAsync(conversationId);
@@ -77,6 +102,11 @@ public class CopilotService : ICopilotService
         return ApiResponse<CopilotConversationDetailDto>.Ok(MapConversationDetail(conversation));
     }
 
+    /// <summary>
+    /// Retrieves candidate pool.
+    /// </summary>
+    /// <param name="jobId">The <paramref name="jobId"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<CopilotCandidatePoolDto>> GetCandidatePoolAsync(Guid jobId)
     {
         CopilotCandidatePoolDto? pool = await _copilotRepository.GetCandidatePoolAsync(jobId);
@@ -85,6 +115,13 @@ public class CopilotService : ICopilotService
             : ApiResponse<CopilotCandidatePoolDto>.Ok(pool);
     }
 
+    /// <summary>
+    /// Creates ranking.
+    /// </summary>
+    /// <param name="conversationId">The <paramref name="conversationId"/> value.</param>
+    /// <param name="request">The <paramref name="request"/> value.</param>
+    /// <param name="userId">The <paramref name="userId"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<CopilotPromptResponseDto>> CreateRankingAsync(Guid conversationId, CopilotPromptRequest request, Guid userId)
     {
         CopilotConversation? conversation = await _copilotRepository.GetConversationAsync(conversationId);
@@ -250,6 +287,12 @@ public class CopilotService : ICopilotService
         });
     }
 
+    /// <summary>
+    /// Retrieves ranking session.
+    /// </summary>
+    /// <param name="rankingSessionId">The <paramref name="rankingSessionId"/> value.</param>
+    /// <param name="userId">The <paramref name="userId"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<CopilotRankingSessionDetailDto>> GetRankingSessionAsync(Guid rankingSessionId, Guid userId)
     {
         CopilotRankingSession? session = await _copilotRepository.GetRankingSessionAsync(rankingSessionId);
@@ -261,12 +304,24 @@ public class CopilotService : ICopilotService
         return ApiResponse<CopilotRankingSessionDetailDto>.Ok(MapRankingSession(session));
     }
 
+    /// <summary>
+    /// Retrieves saved rules.
+    /// </summary>
+    /// <param name="jobId">The <paramref name="jobId"/> value.</param>
+    /// <param name="userId">The <paramref name="userId"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<IReadOnlyList<CopilotSavedRuleDto>>> GetSavedRulesAsync(Guid jobId, Guid userId)
     {
         IReadOnlyList<CopilotSavedRule> savedRules = await _copilotRepository.GetSavedRulesAsync(jobId, userId);
         return ApiResponse<IReadOnlyList<CopilotSavedRuleDto>>.Ok(savedRules.Select(MapSavedRule).ToList());
     }
 
+    /// <summary>
+    /// Creates saved rule.
+    /// </summary>
+    /// <param name="request">The <paramref name="request"/> value.</param>
+    /// <param name="userId">The <paramref name="userId"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<CopilotSavedRuleDto>> CreateSavedRuleAsync(CreateCopilotSavedRuleRequest request, Guid userId)
     {
         CopilotNormalizedRulesDto normalizedRule = BuildRules(
@@ -292,6 +347,13 @@ public class CopilotService : ICopilotService
         return ApiResponse<CopilotSavedRuleDto>.Created(MapSavedRule(rule));
     }
 
+    /// <summary>
+    /// Updates saved rule status.
+    /// </summary>
+    /// <param name="ruleId">The <paramref name="ruleId"/> value.</param>
+    /// <param name="request">The <paramref name="request"/> value.</param>
+    /// <param name="userId">The <paramref name="userId"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<CopilotSavedRuleDto>> UpdateSavedRuleStatusAsync(Guid ruleId, UpdateCopilotSavedRuleStatusRequest request, Guid userId)
     {
         CopilotSavedRule? rule = await _copilotRepository.GetSavedRuleAsync(ruleId, userId);
@@ -307,6 +369,12 @@ public class CopilotService : ICopilotService
         return ApiResponse<CopilotSavedRuleDto>.Ok(MapSavedRule(rule));
     }
 
+    /// <summary>
+    /// Deletes saved rule.
+    /// </summary>
+    /// <param name="ruleId">The <paramref name="ruleId"/> value.</param>
+    /// <param name="userId">The <paramref name="userId"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<object>> DeleteSavedRuleAsync(Guid ruleId, Guid userId)
     {
         CopilotSavedRule? rule = await _copilotRepository.GetSavedRuleAsync(ruleId, userId);
@@ -324,6 +392,11 @@ public class CopilotService : ICopilotService
         return ApiResponse<object>.Ok(new { ruleId });
     }
 
+    /// <summary>
+    /// Executes the enrich pool with resume text operation.
+    /// </summary>
+    /// <param name="pool">The <paramref name="pool"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     private async Task<CopilotCandidatePoolDto> EnrichPoolWithResumeTextAsync(CopilotCandidatePoolDto pool)
     {
         int maxChars = _openAiSettings.MaxResumeCharsPerCandidate > 0
@@ -377,6 +450,11 @@ public class CopilotService : ICopilotService
         };
     }
 
+    /// <summary>
+    /// Maps conversation.
+    /// </summary>
+    /// <param name="conversation">The <paramref name="conversation"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static CopilotConversationDto MapConversation(CopilotConversation conversation)
     {
         return new CopilotConversationDto
@@ -388,6 +466,11 @@ public class CopilotService : ICopilotService
         };
     }
 
+    /// <summary>
+    /// Maps conversation detail.
+    /// </summary>
+    /// <param name="conversation">The <paramref name="conversation"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static CopilotConversationDetailDto MapConversationDetail(CopilotConversation conversation)
     {
         return new CopilotConversationDetailDto
@@ -411,6 +494,11 @@ public class CopilotService : ICopilotService
         };
     }
 
+    /// <summary>
+    /// Maps ranking session.
+    /// </summary>
+    /// <param name="session">The <paramref name="session"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static CopilotRankingSessionDetailDto MapRankingSession(CopilotRankingSession session)
     {
         return new CopilotRankingSessionDetailDto
@@ -450,6 +538,11 @@ public class CopilotService : ICopilotService
         };
     }
 
+    /// <summary>
+    /// Maps saved rule.
+    /// </summary>
+    /// <param name="rule">The <paramref name="rule"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static CopilotSavedRuleDto MapSavedRule(CopilotSavedRule rule)
     {
         return new CopilotSavedRuleDto
@@ -464,6 +557,12 @@ public class CopilotService : ICopilotService
         };
     }
 
+    /// <summary>
+    /// Resolves saved rule name.
+    /// </summary>
+    /// <param name="requestedName">The <paramref name="requestedName"/> value.</param>
+    /// <param name="rule">The <paramref name="rule"/> value.</param>
+    /// <returns>The resulting string value.</returns>
     private static string ResolveSavedRuleName(string? requestedName, CopilotNormalizedRulesDto rule)
     {
         if (!string.IsNullOrWhiteSpace(requestedName))
@@ -488,6 +587,15 @@ public class CopilotService : ICopilotService
             : $"{firstLabel} +{labels.Count - 1}";
     }
 
+    /// <summary>
+    /// Builds rules.
+    /// </summary>
+    /// <param name="prompt">The <paramref name="prompt"/> value.</param>
+    /// <param name="jobRequiredSkills">The <paramref name="jobRequiredSkills"/> value.</param>
+    /// <param name="priorityCriteria">The <paramref name="priorityCriteria"/> value.</param>
+    /// <param name="negativeCriteria">The <paramref name="negativeCriteria"/> value.</param>
+    /// <param name="savedRules">The <paramref name="savedRules"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static CopilotNormalizedRulesDto BuildRules(
         string prompt,
         IReadOnlyList<string> jobRequiredSkills,
@@ -598,6 +706,12 @@ public class CopilotService : ICopilotService
         };
     }
 
+    /// <summary>
+    /// Ranks candidates.
+    /// </summary>
+    /// <param name="candidates">The <paramref name="candidates"/> value.</param>
+    /// <param name="rules">The <paramref name="rules"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static List<CopilotRankingResultDto> RankCandidates(IReadOnlyList<CopilotCandidateDto> candidates, CopilotNormalizedRulesDto rules)
     {
         List<CopilotRankingResultDto> results = candidates.Select(candidate =>
@@ -704,6 +818,11 @@ public class CopilotService : ICopilotService
         return results;
     }
 
+    /// <summary>
+    /// Retrieves penalty score.
+    /// </summary>
+    /// <param name="criterion">The <paramref name="criterion"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static decimal GetPenaltyScore(CopilotRuleCriterionDto criterion)
     {
         return criterion.Weight.ToLowerInvariant() switch
@@ -714,6 +833,13 @@ public class CopilotService : ICopilotService
         };
     }
 
+    /// <summary>
+    /// Executes the should run ranking operation.
+    /// </summary>
+    /// <param name="prompt">The <paramref name="prompt"/> value.</param>
+    /// <param name="priorityCriteria">The <paramref name="priorityCriteria"/> value.</param>
+    /// <param name="negativeCriteria">The <paramref name="negativeCriteria"/> value.</param>
+    /// <returns>A value indicating whether the operation succeeded.</returns>
     private static bool ShouldRunRanking(
         string prompt,
         IReadOnlyList<CopilotRuleCriterionRequestDto> priorityCriteria,
@@ -778,6 +904,11 @@ public class CopilotService : ICopilotService
             && candidateTargetKeywords.Any(target => lowered.Contains(target));
     }
 
+    /// <summary>
+    /// Builds ranking assistant message.
+    /// </summary>
+    /// <param name="results">The <paramref name="results"/> value.</param>
+    /// <returns>The resulting string value.</returns>
     private static string BuildRankingAssistantMessage(IReadOnlyList<CopilotRankingResultDto> results)
     {
         List<string> lines = results
@@ -800,6 +931,12 @@ public class CopilotService : ICopilotService
             : "Ranking completed.";
     }
 
+    /// <summary>
+    /// Normalizes ranking results.
+    /// </summary>
+    /// <param name="results">The <paramref name="results"/> value.</param>
+    /// <param name="candidates">The <paramref name="candidates"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static List<CopilotRankingResultDto> NormalizeRankingResults(
         IReadOnlyList<CopilotRankingResultDto> results,
         IReadOnlyList<CopilotCandidateDto> candidates)
@@ -842,6 +979,12 @@ public class CopilotService : ICopilotService
         return normalized;
     }
 
+    /// <summary>
+    /// Merges rules.
+    /// </summary>
+    /// <param name="previousRules">The <paramref name="previousRules"/> value.</param>
+    /// <param name="currentRules">The <paramref name="currentRules"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static CopilotNormalizedRulesDto MergeRules(CopilotNormalizedRulesDto previousRules, CopilotNormalizedRulesDto currentRules)
     {
         return new CopilotNormalizedRulesDto
@@ -866,6 +1009,11 @@ public class CopilotService : ICopilotService
         };
     }
 
+    /// <summary>
+    /// Deserializes rules.
+    /// </summary>
+    /// <param name="json">The <paramref name="json"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static CopilotNormalizedRulesDto DeserializeRules(string? json)
     {
         if (string.IsNullOrWhiteSpace(json))
@@ -876,6 +1024,11 @@ public class CopilotService : ICopilotService
         return JsonSerializer.Deserialize<CopilotNormalizedRulesDto>(json) ?? new CopilotNormalizedRulesDto();
     }
 
+    /// <summary>
+    /// Deserializes string list.
+    /// </summary>
+    /// <param name="json">The <paramref name="json"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static IReadOnlyList<string> DeserializeStringList(string? json)
     {
         if (string.IsNullOrWhiteSpace(json))
@@ -886,6 +1039,11 @@ public class CopilotService : ICopilotService
         return JsonSerializer.Deserialize<List<string>>(json) ?? [];
     }
 
+    /// <summary>
+    /// Deserializes summary.
+    /// </summary>
+    /// <param name="json">The <paramref name="json"/> value.</param>
+    /// <returns>The resulting string value.</returns>
     private static string DeserializeSummary(string? json)
     {
         if (string.IsNullOrWhiteSpace(json))
@@ -901,6 +1059,11 @@ public class CopilotService : ICopilotService
                 : string.Empty;
     }
 
+    /// <summary>
+    /// Deserializes is ai generated.
+    /// </summary>
+    /// <param name="json">The <paramref name="json"/> value.</param>
+    /// <returns>A value indicating whether the operation succeeded.</returns>
     private static bool DeserializeIsAiGenerated(string? json)
     {
         if (string.IsNullOrWhiteSpace(json))
@@ -915,6 +1078,11 @@ public class CopilotService : ICopilotService
                 && valueLower.GetBoolean();
     }
 
+    /// <summary>
+    /// Maps criterion.
+    /// </summary>
+    /// <param name="criterion">The <paramref name="criterion"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static CopilotRuleCriterionDto MapCriterion(CopilotRuleCriterionRequestDto criterion)
     {
         return new CopilotRuleCriterionDto
@@ -928,6 +1096,11 @@ public class CopilotService : ICopilotService
         };
     }
 
+    /// <summary>
+    /// Deduplicates criteria.
+    /// </summary>
+    /// <param name="criteria">The <paramref name="criteria"/> value.</param>
+    /// <returns>The operation result.</returns>
     private static IReadOnlyList<CopilotRuleCriterionDto> DeduplicateCriteria(IReadOnlyList<CopilotRuleCriterionDto> criteria)
     {
         return criteria
@@ -936,6 +1109,12 @@ public class CopilotService : ICopilotService
             .ToList();
     }
 
+    /// <summary>
+    /// Executes the matches auto reject operation.
+    /// </summary>
+    /// <param name="candidate">The <paramref name="candidate"/> value.</param>
+    /// <param name="rule">The <paramref name="rule"/> value.</param>
+    /// <returns>A value indicating whether the operation succeeded.</returns>
     private static bool MatchesAutoReject(CopilotCandidateDto candidate, CopilotAutoRejectRuleDto rule)
     {
         string? value = rule.Field.ToLowerInvariant() switch
@@ -950,6 +1129,12 @@ public class CopilotService : ICopilotService
             && value.Contains(rule.Value, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// Executes the is negative hit operation.
+    /// </summary>
+    /// <param name="candidate">The <paramref name="candidate"/> value.</param>
+    /// <param name="criterion">The <paramref name="criterion"/> value.</param>
+    /// <returns>A value indicating whether the operation succeeded.</returns>
     private static bool IsNegativeHit(CopilotCandidateDto candidate, CopilotRuleCriterionDto criterion)
     {
         return criterion.Field.ToLowerInvariant() switch
