@@ -1,6 +1,7 @@
 using RecruitPro.Application.DTOs.Request.Interviews;
 using RecruitPro.Application.DTOs.Response;
 using RecruitPro.Application.Common;
+using AutoMapper;
 using RecruitPro.Application.Interfaces;
 using RecruitPro.Application.Interfaces.IRepositories;
 using RecruitPro.Application.Interfaces.IServices;
@@ -16,6 +17,7 @@ public class InterviewService : IInterviewService
     private readonly IApplicationRepository _applicationRepository;
     private readonly IUserRepository _userRepository;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IMapper _mapper;
 
     /// <summary>
     /// Initializes a new instance of the InterviewService class.
@@ -28,12 +30,14 @@ public class InterviewService : IInterviewService
         IInterviewRepository interviewRepository,
         IApplicationRepository applicationRepository,
         IUserRepository userRepository,
-        IUnitOfWork unitOfWork)
+        IUnitOfWork unitOfWork,
+        IMapper mapper)
     {
         _interviewRepository = interviewRepository;
         _applicationRepository = applicationRepository;
         _userRepository = userRepository;
         _unitOfWork = unitOfWork;
+        _mapper = mapper;
     }
 
     /// <summary>
@@ -53,7 +57,7 @@ public class InterviewService : IInterviewService
 
         return ApiResponse<InterviewListResponseDto>.Ok(new InterviewListResponseDto
         {
-            Items = interviews.Select(MapInterviewListItem).ToList(),
+            Items = _mapper.Map<List<InterviewListItemDto>>(interviews),
             Meta = PaginationMetaBuilder.Build(page, pageSize, total)
         });
     }
@@ -69,7 +73,7 @@ public class InterviewService : IInterviewService
         List<InterviewListItemDto> items = applications
             .SelectMany(application => application.Interviews.Select(interview => interview))
             .OrderBy(interview => interview.InterviewDate)
-            .Select(MapInterviewListItem)
+            .Select(interview => _mapper.Map<InterviewListItemDto>(interview))
             .ToList();
 
         return ApiResponse<InterviewListResponseDto>.Ok(new InterviewListResponseDto
@@ -212,10 +216,12 @@ public class InterviewService : IInterviewService
         await _unitOfWork.SaveChangesAsync();
         await _unitOfWork.CommitAsync();
 
-        return ApiResponse<InterviewCreatedResponseDto>.Created(new InterviewCreatedResponseDto
-        {
-            InterviewId = interview.Id.ToString()
-        }, "Interview scheduled successfully");
+        return ApiResponse<InterviewCreatedResponseDto>.Created(
+            new InterviewCreatedResponseDto
+            {
+                InterviewId = interview.Id.ToString()
+            },
+            "Interview scheduled successfully");
     }
 
     /// <summary>
@@ -331,25 +337,4 @@ public class InterviewService : IInterviewService
         };
     }
 
-    /// <summary>
-    /// Maps interview list item.
-    /// </summary>
-    /// <param name="interview">The <paramref name="interview"/> value.</param>
-    /// <returns>The operation result.</returns>
-    private static InterviewListItemDto MapInterviewListItem(Interview interview)
-    {
-        return new InterviewListItemDto
-        {
-            Id = interview.Id.ToString(),
-            CandidateName = interview.Application.User.FullName,
-            CandidateEmail = interview.Application.User.Email,
-            JobTitle = interview.Application.Job.Title,
-            Interviewer = "RecruitPro HR",
-            DateLabel = interview.InterviewDate.ToString("MMM dd, yyyy"),
-            TimeLabel = $"{interview.InterviewDate:HH:mm} - {interview.InterviewDate.AddHours(1):HH:mm}",
-            StartAt = interview.InterviewDate,
-            EndAt = interview.InterviewDate.AddHours(1),
-            Status = (interview.Status ?? InterviewStatus.Scheduled).ToString()
-        };
-    }
 }

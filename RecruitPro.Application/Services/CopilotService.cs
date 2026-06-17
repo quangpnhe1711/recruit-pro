@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using AutoMapper;
 using Microsoft.Extensions.Options;
 using RecruitPro.Application.Common;
 using RecruitPro.Application.Configurations;
@@ -21,6 +22,7 @@ public class CopilotService : ICopilotService
     private readonly IAiCopilotProvider _aiCopilotProvider;
     private readonly IUnitOfWork _unitOfWork;
     private readonly OpenAiSettings _openAiSettings;
+    private readonly IMapper _mapper;
 
     /// <summary>
     /// Initializes a new instance of the CopilotService class.
@@ -37,7 +39,8 @@ public class CopilotService : ICopilotService
         IResumeTextExtractor resumeTextExtractor,
         IAiCopilotProvider aiCopilotProvider,
         IUnitOfWork unitOfWork,
-        IOptions<OpenAiSettings> openAiOptions)
+        IOptions<OpenAiSettings> openAiOptions,
+        IMapper mapper)
     {
         _copilotRepository = copilotRepository;
         _fileStorageService = fileStorageService;
@@ -45,6 +48,7 @@ public class CopilotService : ICopilotService
         _aiCopilotProvider = aiCopilotProvider;
         _unitOfWork = unitOfWork;
         _openAiSettings = openAiOptions.Value;
+        _mapper = mapper;
     }
 
     /// <summary>
@@ -68,7 +72,7 @@ public class CopilotService : ICopilotService
         CopilotConversation? existing = await _copilotRepository.GetLatestConversationAsync(request.JobId, userId);
         if (existing is not null)
         {
-            return ApiResponse<CopilotConversationDto>.Ok(MapConversation(existing));
+            return ApiResponse<CopilotConversationDto>.Ok(_mapper.Map<CopilotConversationDto>(existing));
         }
 
         CopilotConversation conversation = new()
@@ -82,7 +86,7 @@ public class CopilotService : ICopilotService
         await _copilotRepository.AddConversationAsync(conversation);
         await _unitOfWork.SaveChangesAsync();
 
-        return ApiResponse<CopilotConversationDto>.Created(MapConversation(conversation));
+        return ApiResponse<CopilotConversationDto>.Created(_mapper.Map<CopilotConversationDto>(conversation));
     }
 
     /// <summary>
@@ -99,7 +103,7 @@ public class CopilotService : ICopilotService
             return ApiResponse<CopilotConversationDetailDto>.NotFound("Conversation not found");
         }
 
-        return ApiResponse<CopilotConversationDetailDto>.Ok(MapConversationDetail(conversation));
+        return ApiResponse<CopilotConversationDetailDto>.Ok(_mapper.Map<CopilotConversationDetailDto>(conversation));
     }
 
     /// <summary>
@@ -301,7 +305,7 @@ public class CopilotService : ICopilotService
             return ApiResponse<CopilotRankingSessionDetailDto>.NotFound("Ranking session not found");
         }
 
-        return ApiResponse<CopilotRankingSessionDetailDto>.Ok(MapRankingSession(session));
+        return ApiResponse<CopilotRankingSessionDetailDto>.Ok(_mapper.Map<CopilotRankingSessionDetailDto>(session));
     }
 
     /// <summary>
@@ -313,7 +317,7 @@ public class CopilotService : ICopilotService
     public async Task<ApiResponse<IReadOnlyList<CopilotSavedRuleDto>>> GetSavedRulesAsync(Guid jobId, Guid userId)
     {
         IReadOnlyList<CopilotSavedRule> savedRules = await _copilotRepository.GetSavedRulesAsync(jobId, userId);
-        return ApiResponse<IReadOnlyList<CopilotSavedRuleDto>>.Ok(savedRules.Select(MapSavedRule).ToList());
+        return ApiResponse<IReadOnlyList<CopilotSavedRuleDto>>.Ok(_mapper.Map<List<CopilotSavedRuleDto>>(savedRules));
     }
 
     /// <summary>
@@ -344,7 +348,7 @@ public class CopilotService : ICopilotService
         await _copilotRepository.AddSavedRuleAsync(rule);
         await _unitOfWork.SaveChangesAsync();
 
-        return ApiResponse<CopilotSavedRuleDto>.Created(MapSavedRule(rule));
+        return ApiResponse<CopilotSavedRuleDto>.Created(_mapper.Map<CopilotSavedRuleDto>(rule));
     }
 
     /// <summary>
@@ -366,7 +370,7 @@ public class CopilotService : ICopilotService
         rule.UpdatedAt = DbDateTime.Now;
         await _unitOfWork.SaveChangesAsync();
 
-        return ApiResponse<CopilotSavedRuleDto>.Ok(MapSavedRule(rule));
+        return ApiResponse<CopilotSavedRuleDto>.Ok(_mapper.Map<CopilotSavedRuleDto>(rule));
     }
 
     /// <summary>
@@ -451,113 +455,6 @@ public class CopilotService : ICopilotService
     }
 
     /// <summary>
-    /// Maps conversation.
-    /// </summary>
-    /// <param name="conversation">The <paramref name="conversation"/> value.</param>
-    /// <returns>The operation result.</returns>
-    private static CopilotConversationDto MapConversation(CopilotConversation conversation)
-    {
-        return new CopilotConversationDto
-        {
-            ConversationId = conversation.Id,
-            JobId = conversation.JobId,
-            Title = conversation.Title ?? "AI Recruitment Copilot",
-            LatestRankingSessionId = conversation.LatestRankingSessionId
-        };
-    }
-
-    /// <summary>
-    /// Maps conversation detail.
-    /// </summary>
-    /// <param name="conversation">The <paramref name="conversation"/> value.</param>
-    /// <returns>The operation result.</returns>
-    private static CopilotConversationDetailDto MapConversationDetail(CopilotConversation conversation)
-    {
-        return new CopilotConversationDetailDto
-        {
-            ConversationId = conversation.Id,
-            JobId = conversation.JobId,
-            Title = conversation.Title ?? "AI Recruitment Copilot",
-            LatestRankingSessionId = conversation.LatestRankingSessionId,
-            Messages = conversation.Messages
-                .OrderBy(message => message.SequenceNo)
-                .Select(message => new CopilotMessageDto
-                {
-                    MessageId = message.Id,
-                    Role = message.Role,
-                    Content = message.Content,
-                    MetadataJson = message.MetadataJson,
-                    SequenceNo = message.SequenceNo,
-                    CreatedAt = message.CreatedAt
-                })
-                .ToList()
-        };
-    }
-
-    /// <summary>
-    /// Maps ranking session.
-    /// </summary>
-    /// <param name="session">The <paramref name="session"/> value.</param>
-    /// <returns>The operation result.</returns>
-    private static CopilotRankingSessionDetailDto MapRankingSession(CopilotRankingSession session)
-    {
-        return new CopilotRankingSessionDetailDto
-        {
-            RankingSessionId = session.Id,
-            ConversationId = session.ConversationId,
-            JobId = session.JobId,
-            UserPrompt = session.UserPrompt,
-            ModelName = session.ModelName,
-            TotalCandidates = session.TotalCandidates,
-            PromptTokens = session.PromptTokens,
-            CompletionTokens = session.CompletionTokens,
-            CreatedAt = session.CreatedAt,
-            NormalizedRules = DeserializeRules(session.NormalizedRulesJson),
-            Results = session.Results
-                .OrderBy(result => result.RankPosition)
-                .Select(result => new CopilotRankingResultDto
-                {
-                    CandidateUserId = result.CandidateUserId,
-                    ApplicationId = result.ApplicationId,
-                    FullName = result.Application?.User?.FullName ?? string.Empty,
-                    RankPosition = result.RankPosition,
-                    TotalScore = result.TotalScore,
-                    SkillScore = result.SkillScore,
-                    ExperienceScore = result.ExperienceScore,
-                    EducationScore = result.EducationScore,
-                    ProjectScore = result.ProjectScore,
-                    Recommendation = result.Recommendation,
-                    IsAutoRejected = result.IsAutoRejected,
-                    RejectReason = result.RejectReason,
-                    Strengths = DeserializeStringList(result.StrengthsJson),
-                    Weaknesses = DeserializeStringList(result.WeaknessesJson),
-                    Summary = DeserializeSummary(result.ExplanationJson),
-                    IsAiGenerated = DeserializeIsAiGenerated(result.ExplanationJson)
-                })
-                .ToList()
-        };
-    }
-
-    /// <summary>
-    /// Maps saved rule.
-    /// </summary>
-    /// <param name="rule">The <paramref name="rule"/> value.</param>
-    /// <returns>The operation result.</returns>
-    private static CopilotSavedRuleDto MapSavedRule(CopilotSavedRule rule)
-    {
-        return new CopilotSavedRuleDto
-        {
-            RuleId = rule.Id,
-            JobId = rule.JobId,
-            Name = rule.Name,
-            IsActive = rule.IsActive,
-            CreatedAt = rule.CreatedAt,
-            UpdatedAt = rule.UpdatedAt,
-            Rule = DeserializeRules(rule.RuleJson)
-        };
-    }
-
-    /// <summary>
     /// Resolves saved rule name.
     /// </summary>
     /// <param name="requestedName">The <paramref name="requestedName"/> value.</param>
@@ -596,7 +493,7 @@ public class CopilotService : ICopilotService
     /// <param name="negativeCriteria">The <paramref name="negativeCriteria"/> value.</param>
     /// <param name="savedRules">The <paramref name="savedRules"/> value.</param>
     /// <returns>The operation result.</returns>
-    private static CopilotNormalizedRulesDto BuildRules(
+    private CopilotNormalizedRulesDto BuildRules(
         string prompt,
         IReadOnlyList<string> jobRequiredSkills,
         IReadOnlyList<CopilotRuleCriterionRequestDto> priorityCriteria,
@@ -635,11 +532,11 @@ public class CopilotService : ICopilotService
 
         List<CopilotRuleCriterionDto> normalizedPriorityCriteria = priorityCriteria
             .Where(criteria => !string.IsNullOrWhiteSpace(criteria.Value))
-            .Select(MapCriterion)
+            .Select(criterion => _mapper.Map<CopilotRuleCriterionDto>(criterion))
             .ToList();
         List<CopilotRuleCriterionDto> normalizedNegativeCriteria = negativeCriteria
             .Where(criteria => !string.IsNullOrWhiteSpace(criteria.Value))
-            .Select(MapCriterion)
+            .Select(criterion => _mapper.Map<CopilotRuleCriterionDto>(criterion))
             .ToList();
 
         foreach (CopilotRuleCriterionDto criterion in normalizedPriorityCriteria)
@@ -1076,24 +973,6 @@ public class CopilotService : ICopilotService
             ? value.GetBoolean()
             : document.RootElement.TryGetProperty("isAiGenerated", out JsonElement valueLower)
                 && valueLower.GetBoolean();
-    }
-
-    /// <summary>
-    /// Maps criterion.
-    /// </summary>
-    /// <param name="criterion">The <paramref name="criterion"/> value.</param>
-    /// <returns>The operation result.</returns>
-    private static CopilotRuleCriterionDto MapCriterion(CopilotRuleCriterionRequestDto criterion)
-    {
-        return new CopilotRuleCriterionDto
-        {
-            Label = criterion.Label,
-            Field = criterion.Field,
-            Operator = string.IsNullOrWhiteSpace(criterion.Operator) ? "contains" : criterion.Operator,
-            Value = criterion.Value,
-            Weight = string.IsNullOrWhiteSpace(criterion.Weight) ? "medium" : criterion.Weight,
-            AutoReject = criterion.AutoReject
-        };
     }
 
     /// <summary>

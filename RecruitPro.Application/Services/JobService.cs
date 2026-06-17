@@ -691,11 +691,6 @@ public class JobService : IJobService
         return job;
     }
 
-    /// <summary>
-    /// Maps job list item.
-    /// </summary>
-    /// <param name="job">The <paramref name="job"/> value.</param>
-    /// <returns>The operation result.</returns>
     private static JobListItemDto MapJobListItem(Job job)
     {
         return new JobListItemDto
@@ -715,11 +710,6 @@ public class JobService : IJobService
         };
     }
 
-    /// <summary>
-    /// Maps legacy job detail.
-    /// </summary>
-    /// <param name="job">The <paramref name="job"/> value.</param>
-    /// <returns>The operation result.</returns>
     private static JobDetailResponseDto MapLegacyJobDetail(Job job)
     {
         return new JobDetailResponseDto
@@ -746,68 +736,11 @@ public class JobService : IJobService
         };
     }
 
-    /// <summary>
-    /// Parses json array.
-    /// </summary>
-    /// <param name="jsonString">The <paramref name="jsonString"/> value.</param>
-    /// <returns>The operation result.</returns>
-    private static List<string> ParseJsonArray(string? jsonString)
-    {
-        if (string.IsNullOrWhiteSpace(jsonString))
-        {
-            return [];
-        }
-
-        try
-        {
-            using JsonDocument doc = JsonDocument.Parse(jsonString);
-            if (doc.RootElement.ValueKind == JsonValueKind.Array)
-            {
-                return doc.RootElement.EnumerateArray()
-                    .Select(element => element.GetString() ?? string.Empty)
-                    .Where(value => !string.IsNullOrWhiteSpace(value))
-                    .ToList();
-            }
-        }
-        catch
-        {
-        }
-
-        return [jsonString];
-    }
-
-    /// <summary>
-    /// Builds meta.
-    /// </summary>
-    /// <param name="page">The <paramref name="page"/> value.</param>
-    /// <param name="pageSize">The <paramref name="pageSize"/> value.</param>
-    /// <param name="total">The <paramref name="total"/> value.</param>
-    /// <returns>The operation result.</returns>
-    /// <summary>
-    /// Serializes list.
-    /// </summary>
-    /// <param name="values">The <paramref name="values"/> value.</param>
-    /// <returns>The operation result.</returns>
-    private static string? SerializeList(List<string> values)
-    {
-        return values.Count == 0 ? null : JsonSerializer.Serialize(values);
-    }
-
-    /// <summary>
-    /// Builds job reference code.
-    /// </summary>
-    /// <param name="job">The <paramref name="job"/> value.</param>
-    /// <returns>The resulting string value.</returns>
     private static string BuildJobReferenceCode(Job job)
     {
         return $"JOB-{job.CreatedAt?.Year ?? DbDateTime.Now.Year}-{job.Id.ToString()[..8].ToUpperInvariant()}";
     }
 
-    /// <summary>
-    /// Builds hiring team label.
-    /// </summary>
-    /// <param name="job">The <paramref name="job"/> value.</param>
-    /// <returns>The resulting string value.</returns>
     private static string BuildHiringTeamLabel(Job job)
     {
         string departmentName = job.Department?.Name ?? "General";
@@ -816,26 +749,6 @@ public class JobService : IJobService
             : $"{departmentName} / {job.Location}";
     }
 
-    /// <summary>
-    /// Executes the is approval overdue operation.
-    /// </summary>
-    /// <param name="job">The <paramref name="job"/> value.</param>
-    /// <returns>A value indicating whether the operation succeeded.</returns>
-    private static bool IsApprovalOverdue(Job job)
-    {
-        if (!job.CreatedAt.HasValue)
-        {
-            return false;
-        }
-
-        return job.CreatedAt.Value <= DbDateTime.Now.AddDays(-3);
-    }
-
-    /// <summary>
-    /// Maps approval status label.
-    /// </summary>
-    /// <param name="status">The <paramref name="status"/> value.</param>
-    /// <returns>The resulting string value.</returns>
     private static string MapApprovalStatusLabel(JobStatus status)
     {
         return status switch
@@ -849,11 +762,6 @@ public class JobService : IJobService
         };
     }
 
-    /// <summary>
-    /// Builds submitted ago label.
-    /// </summary>
-    /// <param name="createdAt">The <paramref name="createdAt"/> value.</param>
-    /// <returns>The resulting string value.</returns>
     private static string BuildSubmittedAgoLabel(DateTime? createdAt)
     {
         if (!createdAt.HasValue)
@@ -878,6 +786,28 @@ public class JobService : IJobService
         return $"Submitted {days} day{(days == 1 ? string.Empty : "s")} ago";
     }
 
+    /// <summary>
+    /// Builds meta.
+    /// </summary>
+    /// <param name="page">The <paramref name="page"/> value.</param>
+    /// <param name="pageSize">The <paramref name="pageSize"/> value.</param>
+    /// <param name="total">The <paramref name="total"/> value.</param>
+    /// <returns>The operation result.</returns>
+    /// <summary>
+    /// Serializes list.
+    /// </summary>
+    /// <param name="values">The <paramref name="values"/> value.</param>
+    /// <returns>The operation result.</returns>
+    private static string? SerializeList(List<string> values)
+    {
+        return values.Count == 0 ? null : JsonSerializer.Serialize(values);
+    }
+
+    /// <summary>
+    /// Builds job reference code.
+    /// </summary>
+    /// <param name="job">The <paramref name="job"/> value.</param>
+    /// <returns>The resulting string value.</returns>
     /// <summary>
     /// Resolves department.
     /// </summary>
@@ -968,11 +898,36 @@ public class JobService : IJobService
             .ToList();
     }
 
-    /// <summary>
-    /// Maps job skill.
-    /// </summary>
-    /// <param name="jobSkill">The <paramref name="jobSkill"/> value.</param>
-    /// <returns>The operation result.</returns>
+    private static bool IsApprovalOverdue(Job job)
+    {
+        return job.CreatedAt.HasValue && job.CreatedAt.Value <= DbDateTime.Now.AddDays(-3);
+    }
+
+    private static List<string> ParseJsonArray(string? jsonString)
+    {
+        if (string.IsNullOrWhiteSpace(jsonString))
+        {
+            return [];
+        }
+
+        try
+        {
+            using JsonDocument doc = JsonDocument.Parse(jsonString);
+            if (doc.RootElement.ValueKind == JsonValueKind.Array)
+            {
+                return doc.RootElement.EnumerateArray()
+                    .Select(element => element.GetString() ?? string.Empty)
+                    .Where(value => !string.IsNullOrWhiteSpace(value))
+                    .ToList();
+            }
+        }
+        catch
+        {
+        }
+
+        return [jsonString];
+    }
+
     private static JobSkillDto MapJobSkill(JobSkill jobSkill)
     {
         return new JobSkillDto
@@ -986,6 +941,23 @@ public class JobService : IJobService
         };
     }
 
+    private static string MapEmploymentType(EmploymentType type)
+    {
+        return type switch
+        {
+            EmploymentType.FullTime => "Full-time",
+            EmploymentType.PartTime => "Part-time",
+            EmploymentType.Internship => "Internship",
+            EmploymentType.Contract => "Contract",
+            _ => type.ToString()
+        };
+    }
+
+    /// <summary>
+    /// Maps job skill.
+    /// </summary>
+    /// <param name="jobSkill">The <paramref name="jobSkill"/> value.</param>
+    /// <returns>The operation result.</returns>
     /// <summary>
     /// Parses employment type.
     /// </summary>
@@ -1040,16 +1012,4 @@ public class JobService : IJobService
     /// </summary>
     /// <param name="type">The <paramref name="type"/> value.</param>
     /// <returns>The resulting string value.</returns>
-    private static string MapEmploymentType(EmploymentType type)
-    {
-        return type switch
-        {
-            EmploymentType.FullTime => "Full-time",
-            EmploymentType.PartTime => "Part-time",
-            EmploymentType.Internship => "Internship",
-            EmploymentType.Contract => "Contract",
-            _ => type.ToString()
-        };
-    }
-
 }
