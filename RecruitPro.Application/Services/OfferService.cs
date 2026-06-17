@@ -165,13 +165,13 @@ public class OfferService : IOfferService
         offer.OfferTemplateId = Guid.TryParse(request.OfferTemplateId, out Guid templateId) ? templateId : null;
         offer.BaseSalary = request.BaseSalary;
         offer.CurrencyCode = request.CurrencyCode.Trim().ToUpperInvariant();
-        offer.BonusDescription = NormalizeOptionalText(request.BonusDescription);
-        offer.EquityNotes = NormalizeOptionalText(request.EquityNotes);
+        offer.BonusDescription = TextNormalizationHelper.NormalizeOptionalText(request.BonusDescription);
+        offer.EquityNotes = TextNormalizationHelper.NormalizeOptionalText(request.EquityNotes);
         offer.EmploymentType = request.EmploymentType.Trim();
         offer.ProposedStartDate = request.ProposedStartDate;
-        offer.ProbationPeriod = NormalizeOptionalText(request.ProbationPeriod);
+        offer.ProbationPeriod = TextNormalizationHelper.NormalizeOptionalText(request.ProbationPeriod);
         offer.ReportingManagerId = reportingManagerId;
-        offer.PersonalMessage = NormalizeOptionalText(request.PersonalMessage);
+        offer.PersonalMessage = TextNormalizationHelper.NormalizeOptionalText(request.PersonalMessage);
         offer.Status = targetStatus;
         offer.SentAt = targetStatus == OfferStatus.Sent ? DbDateTime.Now : offer.SentAt;
         offer.UpdatedAt = DbDateTime.Now;
@@ -377,13 +377,4 @@ public class OfferService : IOfferService
         };
     }
 
-    /// <summary>
-    /// Normalizes optional text.
-    /// </summary>
-    /// <param name="value">The <paramref name="value"/> value.</param>
-    /// <returns>The operation result.</returns>
-    private static string? NormalizeOptionalText(string? value)
-    {
-        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
-    }
 }

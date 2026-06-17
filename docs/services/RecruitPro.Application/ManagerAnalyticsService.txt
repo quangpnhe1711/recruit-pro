@@ -1,98 +1,96 @@
 ==========================================================
-ManagerAnalyticsService - Detailed Analysis
+ManagerAnalyticsService - Phan Tich Chi Tiet
 ==========================================================
 
-1. OVERVIEW
+1. TONG QUAN
 ----------------------------------------------------------
 
-ManagerAnalyticsService builds a manager-facing recruitment analytics dashboard.
+ManagerAnalyticsService xay dung dashboard phan tich tuyen dung danh cho manager.
 
-It aggregates data across:
+No tong hop du lieu tu:
 - applications
 - interviews
 - jobs
 - departments
 
-The output is a single `ManagerRecruitmentAnalyticsDto` composed of:
+Output la mot `ManagerRecruitmentAnalyticsDto` duy nhat, gom:
 - overview metrics
-- monthly trend series
+- chuoi xu huong theo thang
 - funnel
-- pipeline distribution
-- department performance
-- department breakdown
+- phan bo pipeline
+- hieu suat theo department
+- bang tong hop theo department
 
 ----------------------------------------------------------
-2. DATA SOURCES
+2. NGUON DU LIEU
 ----------------------------------------------------------
 
 - `IApplicationRepository`
 - `IInterviewRepository`
 - `IJobRepository`
 
-This service is read-heavy and orchestration-oriented.
-It does not write data.
+Service nay nang ve doc du lieu va dieu phoi.
+No khong ghi du lieu.
 
 ----------------------------------------------------------
-3. MAIN FLOW
+3. LUONG CHINH
 ----------------------------------------------------------
 
 `GetRecruitmentAnalyticsAsync()`
 
-Major steps:
+Nhung buoc lon:
+1. xac dinh cua so bao cao
+- moc thang hien tai
+- span 6 thang bat dau tu 5 thang truoc
 
-1. Define reporting window
-   - current month anchor
-   - 6-month span starting 5 months back
+2. tai metric thô theo chuoi song song logic
+- status counts
+- average review cycle
+- active candidates
+- pending interviews
+- monthly applications
+- monthly completed interviews
+- department pipeline snapshot
+- review cycles by department
+- department open roles
 
-2. Load raw metrics in parallel sequence
-   - status counts
-   - average review cycle
-   - active candidates
-   - pending interviews
-   - monthly applications
-   - monthly completed interviews
-   - department pipeline snapshot
-   - review cycles by department
-   - department open roles
+3. tinh KPI cap cao hon
+- offer acceptance rate
+- metric chenh lech
+- tong theo stage
+- tong phan bo
 
-3. Compute higher-level KPIs
-   - offer acceptance rate
-   - delta metrics
-   - stage totals
-   - distribution totals
-
-4. Build view-model sections
-   - overview
-   - trend chart
-   - funnel
-   - distribution
-   - department tables
+4. lap rap cac vung view-model
+- overview
+- bieu do trend
+- funnel
+- distribution
+- bang department
 
 ----------------------------------------------------------
-4. IMPORTANT HELPERS
+4. CAC HELPER QUAN TRONG
 ----------------------------------------------------------
 
 `BuildFunnelItem(...)`
-- converts raw count into a funnel row with percent-from-applied
+- doi so luong thô thanh mot dong funnel co ty le tren tong da ung tuyen
 
 `BuildDistributionItem(...)`
-- computes percentage-of-total for stage distribution cards
+- tinh ty le tren tong cho cac card phan bo theo stage
 
 `CalculatePercentDelta(...)`
-- handles edge cases where previous period is zero
+- xu ly ca edge case khi ky truoc bang 0
 
 ----------------------------------------------------------
-5. DESIGN NOTES
+5. GHI CHU THIET KE
 ----------------------------------------------------------
 
-- The service translates repository snapshots into UI-ready values
-- Several percentages are rounded with `MidpointRounding.AwayFromZero`
-- The logic prefers resilient defaults over throwing
+- Service nay bien snapshot tu repository thanh gia tri san sang cho UI
+- Nhieu phep lam tron dung `MidpointRounding.AwayFromZero`
+- Logic uu tien default ben bi thay vi nem loi
 
 ----------------------------------------------------------
-6. IMPROVEMENT IDEAS
+6. Y TUONG CAI TIEN
 ----------------------------------------------------------
 
-- Some generic percentage/delta calculations could move to a shared analytics utility
-- If dashboard latency grows, this service is a good candidate for caching
-
+- Mot so phep tinh ty le/chenh lech tong quat co the dua ve analytics utility dung chung
+- Neu dashboard bat dau cham, day la ung vien tot de them caching

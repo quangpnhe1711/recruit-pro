@@ -91,7 +91,7 @@ public class ApplicationService : IApplicationService
                 EmploymentType = job.EmploymentType.ToString(),
                 SalaryMin = job.SalaryMin,
                 SalaryMax = job.SalaryMax,
-                SalaryLabel = BuildSalaryLabel(job.SalaryMin, job.SalaryMax),
+                SalaryLabel = CompensationLabelHelper.BuildSalaryLabel(job.SalaryMin, job.SalaryMax),
                 VacancyCount = job.VacancyCount ?? 1,
                 Status = job.Status.ToString(),
                 Deadline = job.Deadline
@@ -246,7 +246,7 @@ public class ApplicationService : IApplicationService
         return ApiResponse<CandidateApplicationsResponseDto>.Ok(new CandidateApplicationsResponseDto
         {
             Items = items,
-            Meta = BuildMeta(page, pageSize, total),
+            Meta = PaginationMetaBuilder.Build(page, pageSize, total),
             Summary = new CandidateApplicationSummaryDto
             {
                 Total = total,
@@ -404,7 +404,7 @@ public class ApplicationService : IApplicationService
         return ApiResponse<ManagerReviewQueueResponseDto>.Ok(new ManagerReviewQueueResponseDto
         {
             Items = pagedItems,
-            Meta = BuildMeta(safePage, safePageSize, queueItems.Count),
+            Meta = PaginationMetaBuilder.Build(safePage, safePageSize, queueItems.Count),
             Summary = new ManagerReviewQueueSummaryDto
             {
                 PendingFinalApprovals = queueItems.Count,
@@ -1083,43 +1083,6 @@ public class ApplicationService : IApplicationService
     /// <param name="pageSize">The <paramref name="pageSize"/> value.</param>
     /// <param name="total">The <paramref name="total"/> value.</param>
     /// <returns>The operation result.</returns>
-    private static ApiEnvelopeMeta BuildMeta(int page, int pageSize, int total)
-    {
-        return new ApiEnvelopeMeta
-        {
-            Page = page,
-            PageSize = pageSize,
-            TotalItems = total,
-            TotalPages = (int)Math.Ceiling(total / (double)pageSize)
-        };
-    }
-
-    /// <summary>
-    /// Builds salary label.
-    /// </summary>
-    /// <param name="salaryMin">The <paramref name="salaryMin"/> value.</param>
-    /// <param name="salaryMax">The <paramref name="salaryMax"/> value.</param>
-    /// <returns>The resulting string value.</returns>
-    private static string BuildSalaryLabel(decimal? salaryMin, decimal? salaryMax)
-    {
-        if (!salaryMin.HasValue && !salaryMax.HasValue)
-        {
-            return "Thương lượng";
-        }
-
-        if (salaryMin.HasValue && salaryMax.HasValue)
-        {
-            return $"{salaryMin.Value:N0} - {salaryMax.Value:N0} VNĐ";
-        }
-
-        if (salaryMin.HasValue)
-        {
-            return $"{salaryMin.Value:N0}+ VNĐ";
-        }
-
-        return $"Up to {salaryMax!.Value:N0} VNĐ";
-    }
-
     /// <summary>
     /// Parses application status.
     /// </summary>
@@ -1146,19 +1109,6 @@ public class ApplicationService : IApplicationService
     /// </summary>
     /// <param name="resumeValue">The <paramref name="resumeValue"/> value.</param>
     /// <returns>The resulting string value.</returns>
-    private static string ExtractFileName(string resumeValue)
-    {
-        string fileName = Path.GetFileName(
-            Uri.TryCreate(resumeValue, UriKind.Absolute, out Uri? uri)
-                ? uri.AbsolutePath
-                : resumeValue);
-
-        int separatorIndex = fileName.IndexOf('_');
-        return separatorIndex >= 0 && separatorIndex < fileName.Length - 1
-            ? fileName[(separatorIndex + 1)..]
-            : fileName;
-    }
-
     /// <summary>
     /// Builds reference code.
     /// </summary>
@@ -1195,7 +1145,7 @@ public class ApplicationService : IApplicationService
         {
             Id = profile.Id,
             CandidateProfileId = profile.Id,
-            FileName = ExtractFileName(profile.ResumeUrl),
+            FileName = StoredFileNameHelper.ExtractDisplayFileName(profile.ResumeUrl),
             StorageKey = profile.ResumeUrl,
             UploadDate = profile.User.UpdatedAt ?? profile.User.CreatedAt ?? DbDateTime.Now,
             Version = 1,

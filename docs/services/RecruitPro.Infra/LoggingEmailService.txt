@@ -1,97 +1,95 @@
 ==========================================================
-LoggingEmailService - Detailed Analysis
+LoggingEmailService - Phan Tich Chi Tiet
 ==========================================================
 
-1. OVERVIEW
+1. TONG QUAN
 ----------------------------------------------------------
 
-LoggingEmailService is a lightweight implementation of `IEmailService`.
+LoggingEmailService la implementation nhe cua `IEmailService`.
 
-It does not send real emails.
-Instead, it logs the email intent and payload to the application logger.
+No khong gui email that.
+Thay vao do, no ghi lai y dinh gui email va payload vao logger cua ung dung.
 
-Current use cases:
-- Candidate invitation email after bulk import
-- Password reset email for candidate/internal portals
+Use case hien tai:
+- email moi candidate sau khi import hang loat
+- email reset mat khau cho candidate/internal portal
 
-This is effectively a stub or development-safe adapter.
+Day thuc chat la mot adapter stub an toan cho moi truong phat trien.
 
 ----------------------------------------------------------
-2. DEPENDENCIES
+2. PHU THUOC
 ----------------------------------------------------------
 
 `ILogger<LoggingEmailService>`
 
-Used to record:
-- email type
-- target recipient
-- temporary password
+Duoc dung de ghi:
+- loai email
+- nguoi nhan
+- mat khau tam
 - login URL
 
 ----------------------------------------------------------
-3. SUPPORTED OPERATIONS
+3. CAC THAO TAC HO TRO
 ----------------------------------------------------------
 
 `SendCandidateInvitationAsync(...)`
 
-Purpose:
-- Record that the system wants to send an invitation email to a newly imported candidate
+Muc dich:
+- ghi nhan rang he thong muon gui email moi cho candidate moi duoc import
 
-Logged information:
-- recipient email
-- recipient full name
-- generated temporary password
-- target login URL
+Thong tin duoc log:
+- email nguoi nhan
+- ho ten nguoi nhan
+- mat khau tam da tao
+- URL dang nhap muc tieu
 
 `SendPasswordResetAsync(...)`
 
-Purpose:
-- Record that the system wants to send a password reset email
+Muc dich:
+- ghi nhan rang he thong muon gui email reset mat khau
 
-Logged information:
-- recipient email
-- recipient full name
-- generated temporary password
-- target login URL
-
-----------------------------------------------------------
-4. BEHAVIORAL CHARACTERISTICS
-----------------------------------------------------------
-
-- Both methods are non-blocking from an infrastructure perspective
-- Both methods always return `Task.CompletedTask`
-- No SMTP/API integration is performed
-- No retry logic exists
-- No templating engine exists
+Thong tin duoc log:
+- email nguoi nhan
+- ho ten nguoi nhan
+- mat khau tam da tao
+- URL dang nhap muc tieu
 
 ----------------------------------------------------------
-5. CALLERS
+4. DAC TINH HANH VI
 ----------------------------------------------------------
 
-Known callers:
+- Ca hai method deu khong chan luong nghiep vu o tang ha tang
+- Ca hai method deu luon tra ve `Task.CompletedTask`
+- Khong co tich hop SMTP/API
+- Khong co retry logic
+- Khong co template engine
+
+----------------------------------------------------------
+5. CALLER
+----------------------------------------------------------
+
+Nhung noi dang goi:
 - `CandidateService.ImportCandidatesAsync`
 - `AuthService.ResetPasswordAsync`
 
-Because this service never throws under normal conditions, those flows remain
-simple in development and local testing.
+Vi service nay gan nhu khong nem loi trong dieu kien binh thuong, nhung luong tren duoc giu don gian trong luc dev va test local.
 
 ----------------------------------------------------------
-6. WHEN THIS SERVICE IS SUFFICIENT
+6. KHI NAO SERVICE NAY DA DU
 ----------------------------------------------------------
 
-This implementation is appropriate when:
-- the team is still building backend flows
-- email sending is not production-ready
-- logs are enough to verify business flow correctness
+Implementation nay phu hop khi:
+- team van dang xay cac backend flow
+- chuc nang gui email chua san sang production
+- chi can log de xac minh nghiep vu dung
 
 ----------------------------------------------------------
-7. PRODUCTION GAP
+7. KHOANG TRONG DE LEN PRODUCTION
 ----------------------------------------------------------
 
-To move to production, this service would likely be replaced by:
+De dua vao production, service nay nhieu kha nang se duoc thay boi:
 - SMTP adapter
-- SendGrid/Mailgun/Postmark integration
-- HTML template rendering
-- delivery status tracking
-- secret-based credential management
-
+- tich hop SendGrid/Mailgun/Postmark
+- render HTML template
+- theo doi trang thai delivery
+- quan ly credential bang secret

@@ -1,24 +1,24 @@
 ==========================================================
-AuthService - Detailed Analysis
+AuthService - Phan Tich Chi Tiet
 ==========================================================
 
-1. OVERVIEW
+1. TONG QUAN
 ----------------------------------------------------------
 
-AuthService handles login and password-reset behavior for both candidate
-and internal users.
+AuthService xu ly hanh vi dang nhap va quen mat khau cho ca ung vien
+va nguoi dung noi bo.
 
-Core responsibilities:
-- validate email/password combinations
-- enforce portal-specific role rules
-- generate access and refresh tokens
-- issue temporary passwords for forgot-password flows
+Trach nhiem chinh:
+- xac thuc cap email/password
+- ep dung luat role theo tung portal
+- tao access token va refresh token
+- cap mat khau tam cho luong quen mat khau
 
-It is intentionally thin on persistence complexity and delegates token creation
-to `JwtService`.
+Service nay co logic luu tru khong phuc tap va uy quyen viec tao token
+cho `JwtService`.
 
 ----------------------------------------------------------
-2. DEPENDENCIES
+2. PHU THUOC
 ----------------------------------------------------------
 
 - `IUserRepository`
@@ -27,84 +27,81 @@ to `JwtService`.
 - `IUnitOfWork`
 - `IMapper`
 
-Supporting constants:
-- candidate login URL
-- internal login URL
+Hang so ho tro:
+- URL dang nhap cho candidate
+- URL dang nhap cho internal
 
 ----------------------------------------------------------
-3. PUBLIC ENTRY POINTS
+3. CAC DIEM VAO CONG KHAI
 ----------------------------------------------------------
 
 `LoginAsync(LoginRequest request)`
-- Generic login path using email/password from request
+- duong dang nhap tong quat dung email/password tu request
 
 `CandidateLoginAsync(string email, string password)`
-- Restricts login to users who have the `Candidate` role
+- gioi han dang nhap cho user co role `Candidate`
 
 `InternalLoginAsync(string employeeIdOrEmail, string password)`
-- Restricts login to non-candidate roles
+- gioi han dang nhap cho cac role khac candidate
 
 `ForgotCandidatePasswordAsync(string email)`
-- Issues a temporary password when the account belongs to a candidate
+- cap mat khau tam khi tai khoan thuoc candidate
 
 `ForgotInternalPasswordAsync(string employeeIdOrEmail)`
-- Issues a temporary password when the account belongs to an internal user
+- cap mat khau tam khi tai khoan thuoc internal user
 
 ----------------------------------------------------------
-4. CORE INTERNAL FLOW
+4. LUONG NOI BO COT LOI
 ----------------------------------------------------------
 
 `LoginCoreAsync(...)`
 
-Main behavior:
+Hanh vi chinh:
+1. tai user theo email
+2. xac thuc hash mat khau bang BCrypt
+3. tai danh sach role
+4. ap bo loc role neu co
+5. tao access token
+6. tao refresh token
+7. map user sang `LoginResponseDto`
+8. gan token da tao thong qua AutoMapper context items
 
-1. Load user by email
-2. Verify BCrypt password hash
-3. Load assigned roles
-4. Apply optional role filter
-5. Generate access token
-6. Generate refresh token
-7. Map user into `LoginResponseDto`
-8. Attach generated tokens through AutoMapper context items
-
-This method centralizes the authentication logic so the public login methods only define role boundaries.
+Method nay tap trung hoa logic xac thuc de cac public method chi con dinh nghia ranh gioi role.
 
 ----------------------------------------------------------
-5. PASSWORD RESET FLOW
+5. LUONG QUEN MAT KHAU
 ----------------------------------------------------------
 
 `ResetPasswordAsync(...)`
 
-Important behavior:
+Hanh vi quan trong:
+- identifier rong tra ve bad request
+- khong tim thay user van tra ve response chung giong thanh cong
+- user sai role cung tra ve response chung do
 
-- blank identifiers return bad request
-- missing user still returns success-like generic response
-- wrong-role user also returns the same generic response
+Muc dich la tranh account enumeration.
 
-This prevents account enumeration.
-
-If the account is valid:
-1. Generate temporary password
-2. Hash it with BCrypt
-3. Update `UpdatedAt`
-4. Persist changes
-5. Invoke email service with correct portal URL
-
-----------------------------------------------------------
-6. SECURITY NOTES
-----------------------------------------------------------
-
-- BCrypt is used for verification and reset hashing
-- User existence is intentionally hidden in forgot-password responses
-- Role scoping is done after password verification
-- Temporary password generation is simple but effective for bootstrap/reset workflows
+Neu tai khoan hop le:
+1. tao mat khau tam
+2. bam hash bang BCrypt
+3. cap nhat `UpdatedAt`
+4. persist thay doi
+5. goi email service voi portal URL phu hop
 
 ----------------------------------------------------------
-7. SHARED / REUSABLE PATTERNS
+6. GHI CHU BAO MAT
 ----------------------------------------------------------
 
-Potential common helpers:
-- temporary password generation
-- generic user-role portal validation
-- standardized forgot-password response policy
+- BCrypt duoc dung cho xac thuc va hash khi reset
+- Su ton tai cua user duoc an trong response quen mat khau
+- Ranh gioi role duoc kiem tra sau buoc verify mat khau
+- Viec tao mat khau tam don gian nhung du de dung cho bootstrap/reset
 
+----------------------------------------------------------
+7. MAU PATTERN CO THE TAI SU DUNG
+----------------------------------------------------------
+
+Nhung helper co the tach chung:
+- tao mat khau tam
+- validate portal theo role
+- chinh sach response chuan hoa cho forgot-password

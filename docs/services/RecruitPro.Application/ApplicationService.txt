@@ -1,23 +1,23 @@
 ==========================================================
-ApplicationService - Detailed Analysis
+ApplicationService - Phan Tich Chi Tiet
 ==========================================================
 
-1. OVERVIEW
+1. TONG QUAN
 ----------------------------------------------------------
 
-ApplicationService manages end-to-end application lifecycle behavior.
+ApplicationService dieu phoi toan bo vong doi cua ho so ung tuyen.
 
-It supports:
-- apply-screen preparation
-- application submission
-- candidate self-service actions
-- HR application listings
-- manager review queue/detail
-- application decision transitions
-- resume access tied to application context
+Service nay ho tro:
+- chuan bi man hinh ung tuyen
+- nop ho so
+- cac thao tac tu phuc vu cua ung vien
+- danh sach ho so cho HR
+- hang doi va chi tiet review cho manager
+- chuyen trang thai quyet dinh ho so
+- truy cap CV gan voi ngu canh ho so ung tuyen
 
 ----------------------------------------------------------
-2. DEPENDENCIES
+2. PHU THUOC
 ----------------------------------------------------------
 
 - `IApplicationRepository`
@@ -28,100 +28,100 @@ It supports:
 - `IFileStorageService`
 - `ILogger<ApplicationService>`
 
-It also relies heavily on:
+Service nay cung phu thuoc nhieu vao:
 - `ApplicationStatusWorkflow`
 - `DbDateTime`
 
 ----------------------------------------------------------
-3. CANDIDATE APPLY FLOW
+3. LUONG UNG TUYEN CUA UNG VIEN
 ----------------------------------------------------------
 
 `GetApplyScreenAsync(Guid userId, string jobId)`
 
-Purpose:
-- assemble the pre-application screen
+Muc dich:
+- ghep du lieu cho man hinh truoc khi ung tuyen
 
-Included data:
-- job summary
-- candidate profile summary
-- current resume info with presigned URL
-- eligibility result
+Du lieu bao gom:
+- tom tat job
+- tom tat profile ung vien
+- thong tin CV hien tai kem presigned URL
+- ket qua kiem tra dieu kien ung tuyen
 
 `ApplyAsync(Guid userId, string jobId, ApplyJobRequest request)`
 
-Write flow:
-1. load job
-2. load candidate profile
-3. detect existing application
-4. compute eligibility
-5. short-circuit if blocked
-6. create new application with status `Applied`
-7. save in transaction
+Luong ghi du lieu:
+1. tai job
+2. tai profile ung vien
+3. kiem tra ho so da ton tai
+4. tinh dieu kien ung tuyen
+5. dung som neu bi chan
+6. tao ho so moi voi trang thai `Applied`
+7. luu trong transaction
 
 ----------------------------------------------------------
-4. CANDIDATE APPLICATION MANAGEMENT
+4. QUAN LY HO SO CUA UNG VIEN
 ----------------------------------------------------------
 
 `GetCandidateApplicationsAsync(...)`
-- loads all user applications
-- applies in-memory status/keyword filters
-- builds candidate-facing status, next step, and available actions
+- tai tat ca ho so cua user
+- loc trang thai/tu khoa trong bo nho
+- xay dung trang thai hien thi, buoc tiep theo va action kha dung cho ung vien
 
 `WithdrawApplicationAsync(...)`
-- checks workflow permission
-- changes status to `Rejected`
+- kiem tra quyen chuyen trang thai theo workflow
+- doi trang thai thanh `Rejected`
 
 `AcceptOfferAsync(...)`
-- validates offer-response eligibility
-- requires sent offer when current status is `Offer`
-- transitions application to `Hired`
-- updates offer status to `Accepted`
+- xac thuc dieu kien tra loi offer
+- yeu cau da co offer gui di khi trang thai hien tai la `Offer`
+- chuyen ho so sang `Hired`
+- cap nhat trang thai offer thanh `Accepted`
 
 `DeclineOfferAsync(...)`
-- validates sent offer presence
-- transitions application to `OfferDeclined`
-- updates offer status to `Declined`
+- xac thuc ton tai offer da gui
+- chuyen ho so sang `OfferDeclined`
+- cap nhat offer thanh `Declined`
 
 ----------------------------------------------------------
-5. HR / MANAGER VIEWS
+5. MAN HINH CHO HR / MANAGER
 ----------------------------------------------------------
 
 `GetJobApplicationsAsync(...)`
-- paged applications for one job
+- danh sach phan trang ho so cua mot job
 
 `GetRecentApplicationsAsync(...)`
-- top 5 latest applications for one job
+- lay 5 ho so moi nhat cua mot job
 
 `GetHrApplicationsAsync(...)`
-- HR-wide paged list with department/status/job filters
+- danh sach phan trang cap HR voi bo loc department/status/job
 
 `GetManagerReviewQueueAsync(...)`
-- builds scoring-based manager review rows
-- calculates summary metrics such as recommended count and average score
+- xay dung danh sach review cho manager dua tren scoring
+- tinh cac chi so tong hop nhu so luong recommended va diem trung binh
 
 `GetApplicationReviewDetailAsync(...)`
-- full detail view for one application
+- chi tiet day du cua mot ho so
 
 `UpdateApplicationDecisionAsync(...)`
-- validates target status
-- checks transition through workflow rules
-- applies reviewer id when supplied
-- persists inside transaction
+- xac thuc trang thai dich
+- kiem tra transition bang workflow
+- gan reviewer id neu duoc cung cap
+- persist trong transaction
 
 ----------------------------------------------------------
-6. FILE / EMAIL HELPERS
+6. TRO GIUP FILE / EMAIL
 ----------------------------------------------------------
 
 `GetApplicationCvAsync(...)`
-- finds the candidate's current resume through application context
-- returns presigned URL and file metadata
+- tim CV hien tai cua ung vien dua tren ngu canh ho so
+- tra ve presigned URL va metadata file
 
 `SendApplicationEmailAsync(...)`
-- currently prepares a normalized subject/body result rather than actually sending email
-- acts more like a preview/placeholder than a real messaging integration
+- hien tai chi tao ket qua subject/body da duoc chuan hoa, chua gui email that
+- giong preview/placeholder hon la tich hop gui mail thuc su
 
 ----------------------------------------------------------
-7. IMPORTANT INTERNAL HELPERS
+7. CAC HELPER NOI BO QUAN TRONG
 ----------------------------------------------------------
 
 - `GetExistingApplicationAsync(...)`
@@ -146,15 +146,14 @@ Write flow:
 - `BuildCandidateAvailableActions(...)`
 - `BuildInitials(...)`
 
-Together these helpers show that the service owns both workflow rules and substantial presentation mapping.
+Nhom helper nay cho thay service dang ganh ca luat workflow va phan mapping hien thi.
 
 ----------------------------------------------------------
-8. COMMONIZATION NOTES
+8. GHI CHU VE KHA NANG DUNG CHUNG
 ----------------------------------------------------------
 
-Strong common candidates:
-- pagination metadata builder
-- salary label builder
-- candidate profile lookup helper
-- resume filename extraction
-
+Nhung ung vien manh de tach dung chung:
+- helper tao metadata phan trang
+- helper format salary label
+- helper truy van profile ung vien
+- helper tach ten file CV

@@ -1,5 +1,3 @@
-using System.Net.Http.Headers;
-using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -13,8 +11,6 @@ namespace RecruitPro.Infrastructure.Service;
 public class OpenAiResumeParserProvider : IResumeParsingAiProvider
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
-    private const string OpenAiResponsesSuffix = "/responses";
-    private const string OpenAiChatCompletionsSuffix = "/chat/completions";
     private readonly HttpClient _httpClient;
     private readonly ILogger<OpenAiResumeParserProvider> _logger;
     private readonly OpenAiSettings _settings;
@@ -82,7 +78,7 @@ public class OpenAiResumeParserProvider : IResumeParsingAiProvider
             userPrompt: BuildPrompt(extractedText, skillNames),
             requireJson: true);
 
-        using HttpRequestMessage request = BuildRequest(requestBody);
+        using HttpRequestMessage request = OpenAiCompatibleApiHelper.BuildRequest(_settings, requestBody, JsonOptions);
 
         try
         {
@@ -99,7 +95,7 @@ public class OpenAiResumeParserProvider : IResumeParsingAiProvider
                 };
             }
 
-            string? outputText = ExtractOutputText(raw);
+            string? outputText = OpenAiCompatibleApiHelper.ExtractOutputText(raw);
             if (string.IsNullOrWhiteSpace(outputText))
             {
                 return new ResumeParsingAiResult
@@ -110,7 +106,7 @@ public class OpenAiResumeParserProvider : IResumeParsingAiProvider
                 };
             }
 
-            string normalizedOutput = NormalizeJsonPayload(outputText);
+            string normalizedOutput = OpenAiCompatibleApiHelper.NormalizeJsonPayload(outputText);
             CandidateResumeAiParseDto? parsed = JsonSerializer.Deserialize<CandidateResumeAiParseDto>(normalizedOutput, JsonOptions);
             if (parsed == null)
             {
@@ -245,22 +241,6 @@ public class OpenAiResumeParserProvider : IResumeParsingAiProvider
     }
 
     /// <summary>
-    /// Builds request.
-    /// </summary>
-    /// <param name="requestBody">The <paramref name="requestBody"/> value.</param>
-    /// <returns>The operation result.</returns>
-    private HttpRequestMessage BuildRequest(object requestBody)
-    {
-        string endpoint = BuildEndpoint();
-        HttpRequestMessage request = new(HttpMethod.Post, endpoint)
-        {
-            Content = new StringContent(JsonSerializer.Serialize(requestBody, JsonOptions), Encoding.UTF8, "application/json")
-        };
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _settings.ApiKey);
-        return request;
-    }
-
-    /// <summary>
     /// Builds request body.
     /// </summary>
     /// <param name="systemPrompt">The <paramref name="systemPrompt"/> value.</param>
@@ -269,7 +249,7 @@ public class OpenAiResumeParserProvider : IResumeParsingAiProvider
     /// <returns>The operation result.</returns>
     private object BuildRequestBody(string systemPrompt, string userPrompt, bool requireJson)
     {
-        if (UsesChatCompletions())
+        if (OpenAiCompatibleApiHelper.UsesChatCompletions(_settings))
         {
             return new
             {
@@ -309,118 +289,4 @@ public class OpenAiResumeParserProvider : IResumeParsingAiProvider
     /// Builds endpoint.
     /// </summary>
     /// <returns>The resulting string value.</returns>
-    private string BuildEndpoint()
-    {
-        string baseUrl = _settings.BaseUrl.TrimEnd('/');
-        return UsesChatCompletions()
-            ? $"{baseUrl}{OpenAiChatCompletionsSuffix}"
-            : $"{baseUrl}{OpenAiResponsesSuffix}";
-    }
-
-    /// <summary>
-    /// Executes the uses chat completions operation.
-    /// </summary>
-    /// <returns>A value indicating whether the operation succeeded.</returns>
-    private bool UsesChatCompletions()
-    {
-        return _settings.BaseUrl.Contains("generativelanguage.googleapis.com", StringComparison.OrdinalIgnoreCase)
-            || _settings.BaseUrl.EndsWith("/openai", StringComparison.OrdinalIgnoreCase);
-    }
-
-    /// <summary>
-    /// Extracts output text.
-    /// </summary>
-    /// <param name="rawResponse">The <paramref name="rawResponse"/> value.</param>
-    /// <returns>The operation result.</returns>
-    private static string? ExtractOutputText(string rawResponse)
-    {
-        using JsonDocument document = JsonDocument.Parse(rawResponse);
-        if (document.RootElement.TryGetProperty("output_text", out JsonElement outputText))
-        {
-            return outputText.GetString();
-        }
-
-        if (document.RootElement.TryGetProperty("choices", out JsonElement choices) && choices.ValueKind == JsonValueKind.Array)
-        {
-            foreach (JsonElement choice in choices.EnumerateArray())
-            {
-                if (!choice.TryGetProperty("message", out JsonElement message))
-                {
-                    continue;
-                }
-
-                if (!message.TryGetProperty("content", out JsonElement content))
-                {
-                    continue;
-                }
-
-                if (content.ValueKind == JsonValueKind.String)
-                {
-                    return content.GetString();
-                }
-
-                if (content.ValueKind != JsonValueKind.Array)
-                {
-                    continue;
-                }
-
-                foreach (JsonElement contentPart in content.EnumerateArray())
-                {
-                    if (contentPart.TryGetProperty("text", out JsonElement text))
-                    {
-                        return text.GetString();
-                    }
-                }
-            }
-        }
-
-        if (!document.RootElement.TryGetProperty("output", out JsonElement output) || output.ValueKind != JsonValueKind.Array)
-        {
-            return null;
-        }
-
-        foreach (JsonElement outputItem in output.EnumerateArray())
-        {
-            if (!outputItem.TryGetProperty("content", out JsonElement content) || content.ValueKind != JsonValueKind.Array)
-            {
-                continue;
-            }
-
-            foreach (JsonElement contentItem in content.EnumerateArray())
-            {
-                if (contentItem.TryGetProperty("text", out JsonElement text))
-                {
-                    return text.GetString();
-                }
-            }
-        }
-
-        return null;
-    }
-
-    /// <summary>
-    /// Normalizes json payload.
-    /// </summary>
-    /// <param name="payload">The <paramref name="payload"/> value.</param>
-    /// <returns>The resulting string value.</returns>
-    private static string NormalizeJsonPayload(string payload)
-    {
-        string trimmed = payload.Trim();
-        if (trimmed.StartsWith("```", StringComparison.Ordinal))
-        {
-            int firstLineBreak = trimmed.IndexOf('\n');
-            if (firstLineBreak >= 0)
-            {
-                trimmed = trimmed[(firstLineBreak + 1)..];
-            }
-
-            int closingFence = trimmed.LastIndexOf("```", StringComparison.Ordinal);
-            if (closingFence >= 0)
-            {
-                trimmed = trimmed[..closingFence];
-            }
-        }
-
-        return trimmed.Trim();
-    }
 }

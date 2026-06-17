@@ -1,16 +1,16 @@
 ==========================================================
-InterviewService - Detailed Analysis
+InterviewService - Phan Tich Chi Tiet
 ==========================================================
 
-1. OVERVIEW
+1. TONG QUAN
 ----------------------------------------------------------
 
-InterviewService manages interview listing, scheduling, status updates, and deletion.
+InterviewService quan ly danh sach interview, sap lich, cap nhat trang thai va xoa.
 
-It also provides schedule-building data used by the UI when arranging interviews.
+No cung cung cap du lieu xay lich de UI su dung khi bo tri buoi phong van.
 
 ----------------------------------------------------------
-2. DEPENDENCIES
+2. PHU THUOC
 ----------------------------------------------------------
 
 - `IInterviewRepository`
@@ -18,85 +18,84 @@ It also provides schedule-building data used by the UI when arranging interviews
 - `IUserRepository`
 - `IUnitOfWork`
 
-It also relies on:
+Service nay cung dua vao:
 - `DbDateTime`
 - `ApplicationStatusWorkflow`
 
 ----------------------------------------------------------
-3. MAIN CAPABILITIES
+3. NANG LUC CHINH
 ----------------------------------------------------------
 
 `GetInterviewsAsync(...)`
-- paged HR/admin listing with optional keyword, status, and date filters
+- danh sach phan trang cho HR/admin voi bo loc keyword, status va ngay
 
 `GetCandidateInterviewsAsync(Guid userId)`
-- aggregates interviews from the candidate's own applications
+- tong hop interview tu cac ho so cua chinh ung vien
 
 `GetScheduleDataAsync(string? applicationId)`
-- returns candidate summary, interviewer choices, and occupied slot data
+- tra ve tom tat ung vien, lua chon interviewer va du lieu slot da ban
 
 `CreateInterviewAsync(CreateInterviewRequest request)`
-- validates application/candidate/job/interviewer consistency
-- ensures the application is in a schedulable stage
-- creates the interview
-- transitions application status to `Interview` when allowed
+- kiem tra tinh nhat quan giua application/candidate/job/interviewer
+- dam bao ho so dang o giai doan co the len lich
+- tao interview
+- chuyen trang thai application sang `Interview` neu duoc phep
 
 `UpdateInterviewStatusAsync(...)`
-- validates interview existence
-- parses status string
-- persists status change
+- xac thuc interview ton tai
+- parse chuoi status
+- persist thay doi trang thai
 
 `DeleteInterviewAsync(...)`
-- removes a tracked interview record
+- xoa interview dang duoc tracking
 
 ----------------------------------------------------------
-4. SCHEDULING LOGIC
+4. LOGIC SAP LICH
 ----------------------------------------------------------
 
-`GetScheduleDataAsync(...)` and `BuildBusySlotsByDateAsync()` are the heart of the scheduling experience.
+`GetScheduleDataAsync(...)` va `BuildBusySlotsByDateAsync()` la trung tam cua trai nghiem sap lich.
 
-Key design choice:
-- interviewer assignments are not yet persisted in detail
-- therefore the service exposes a global occupied-slot map as a conservative heuristic
+Lua chon thiet ke quan trong:
+- phan cong interviewer hien chua duoc persist chi tiet
+- vi vay service tra ra ban do occupied-slot toan cuc nhu mot heuristic an toan
 
-This is documented inline in the service code and is important for understanding current scheduling limitations.
-
-----------------------------------------------------------
-5. BUSINESS RULES
-----------------------------------------------------------
-
-`CreateInterviewAsync(...)` enforces:
-- application id must be valid
-- application must exist
-- application must be in `ManagerReview` or already `Interview`
-- optional candidate id must match application owner
-- optional job id must match application job
-- optional interviewer id must exist
+Dieu nay da duoc ghi chu trong code va rat quan trong de hieu gioi han hien tai cua module sap lich.
 
 ----------------------------------------------------------
-6. HELPERS
+5. LUAT NGHIEP VU
+----------------------------------------------------------
+
+`CreateInterviewAsync(...)` dang ep:
+- application id phai hop le
+- application phai ton tai
+- application phai o `ManagerReview` hoac da o `Interview`
+- candidate id neu co phai khop owner cua application
+- job id neu co phai khop job cua application
+- interviewer id neu co phai ton tai
+
+----------------------------------------------------------
+6. CAC HELPER
 ----------------------------------------------------------
 
 `BuildBusySlotsByDateAsync()`
-- loads scheduled interviews for the next two months
-- groups them by date
-- converts interview times to minute offsets
+- tai interview da len lich trong 2 thang toi
+- nhom theo ngay
+- doi thoi gian interview sang so phut tinh tu dau ngay
 
 `CloneBusySlots(...)`
-- deep-copies the dictionary so each interviewer DTO gets isolated lists
+- deep-copy dictionary de moi interviewer DTO co danh sach rieng
 
 `BuildMeta(...)`
-- standard pagination helper
+- helper phan trang tong quat
 
 `ParseInterviewStatus(...)`
-- normalizes multiple labels such as `canceled` / `cancelled`
+- chuan hoa nhieu nhan nhu `canceled` / `cancelled`
 
 `MapInterviewListItem(...)`
-- transforms entities into UI list rows
+- bien doi entity thanh dong du lieu cho danh sach UI
 
 ----------------------------------------------------------
-7. REUSABLE PATTERNS
+7. MAU CO THE TAI SU DUNG
 ----------------------------------------------------------
 
-`BuildMeta(...)` is repeated across multiple application services and should be extracted to a shared pagination helper.
-
+`BuildMeta(...)` dang lap lai o nhieu application service va nen duoc tach thanh helper phan trang dung chung.

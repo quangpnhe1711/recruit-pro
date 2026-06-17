@@ -81,7 +81,7 @@ public class JobService : IJobService
         return ApiResponse<JobSearchResponseDto>.Ok(new JobSearchResponseDto
         {
             Items = jobs.Select(MapJobListItem).ToList(),
-            Meta = BuildMeta(request.Page, request.PageSize, total)
+            Meta = PaginationMetaBuilder.Build(request.Page, request.PageSize, total)
         });
     }
 
@@ -171,7 +171,7 @@ public class JobService : IJobService
                 Max = job.SalaryMax,
                 Label = "VND"
             },
-            SalaryLabel = BuildSalaryLabel(job.SalaryMin, job.SalaryMax),
+            SalaryLabel = CompensationLabelHelper.BuildSalaryLabel(job.SalaryMin, job.SalaryMax),
             Department = job.Department?.Name ?? string.Empty,
             JobType = $"{MapEmploymentType(job.EmploymentType)}, {job.WorkMode}",
             VacancyCount = job.VacancyCount,
@@ -287,7 +287,7 @@ public class JobService : IJobService
                     Email = job.CreatedByNavigation.Email
                 }
             }).ToList(),
-            Meta = BuildMeta(request.Page, request.PageSize, total),
+            Meta = PaginationMetaBuilder.Build(request.Page, request.PageSize, total),
             Stats = new HrJobStatsDto
             {
                 ActiveJobs = allMatchingJobs.Count(job => job.Status == JobStatus.Approved),
@@ -333,7 +333,7 @@ public class JobService : IJobService
                 ApplicationsCount = job.Applications.Count,
                 IsOverdue = IsApprovalOverdue(job)
             }).ToList(),
-            Meta = BuildMeta(request.Page, request.PageSize, total),
+            Meta = PaginationMetaBuilder.Build(request.Page, request.PageSize, total),
             Summary = new ManagerJobApprovalSummaryDto
             {
                 PendingApprovals = allPendingJobs.Count,
@@ -737,8 +737,8 @@ public class JobService : IJobService
             SalaryMax = job.SalaryMax,
             Deadline = job.Deadline,
             JobType = $"{MapEmploymentType(job.EmploymentType)} / {job.WorkMode}",
-            SalaryRange = BuildSalaryLabel(job.SalaryMin, job.SalaryMax),
-            SalaryLabel = BuildSalaryLabel(job.SalaryMin, job.SalaryMax),
+            SalaryRange = CompensationLabelHelper.BuildSalaryLabel(job.SalaryMin, job.SalaryMax),
+            SalaryLabel = CompensationLabelHelper.BuildSalaryLabel(job.SalaryMin, job.SalaryMax),
             Posted = job.CreatedAt?.ToString("yyyy-MM-dd") ?? string.Empty,
             VacancyCount = job.VacancyCount,
             Status = job.Status.ToString(),
@@ -783,17 +783,6 @@ public class JobService : IJobService
     /// <param name="pageSize">The <paramref name="pageSize"/> value.</param>
     /// <param name="total">The <paramref name="total"/> value.</param>
     /// <returns>The operation result.</returns>
-    private static ApiEnvelopeMeta BuildMeta(int page, int pageSize, int total)
-    {
-        return new ApiEnvelopeMeta
-        {
-            Page = page,
-            PageSize = pageSize,
-            TotalItems = total,
-            TotalPages = (int)Math.Ceiling(total / (double)pageSize)
-        };
-    }
-
     /// <summary>
     /// Serializes list.
     /// </summary>
@@ -1063,29 +1052,4 @@ public class JobService : IJobService
         };
     }
 
-    /// <summary>
-    /// Builds salary label.
-    /// </summary>
-    /// <param name="salaryMin">The <paramref name="salaryMin"/> value.</param>
-    /// <param name="salaryMax">The <paramref name="salaryMax"/> value.</param>
-    /// <returns>The resulting string value.</returns>
-    private static string BuildSalaryLabel(decimal? salaryMin, decimal? salaryMax)
-    {
-        if (!salaryMin.HasValue && !salaryMax.HasValue)
-        {
-            return "Thương lượng";
-        }
-
-        if (salaryMin.HasValue && salaryMax.HasValue)
-        {
-            return $"{salaryMin.Value:N0} - {salaryMax.Value:N0} VNĐ";
-        }
-
-        if (salaryMin.HasValue)
-        {
-            return $"{salaryMin.Value:N0}+ VNĐ";
-        }
-
-        return $"Up to {salaryMax!.Value:N0} VNĐ";
-    }
 }

@@ -151,7 +151,7 @@ namespace RecruitPro.Application.Services
                 return ApiResponse<string>.Ok("If the account exists, a temporary password has been issued.");
             }
 
-            string temporaryPassword = GenerateTemporaryPassword();
+            string temporaryPassword = CredentialUtility.GenerateTemporaryPassword();
             user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(temporaryPassword);
             user.UpdatedAt = DbDateTime.Now;
 
@@ -162,13 +162,5 @@ namespace RecruitPro.Application.Services
             return ApiResponse<string>.Ok("If the account exists, a temporary password has been issued.");
         }
 
-        /// <summary>
-        /// Generates temporary password.
-        /// </summary>
-        /// <returns>The resulting string value.</returns>
-        private static string GenerateTemporaryPassword()
-        {
-            return $"Rp!{Guid.NewGuid():N}"[..12];
-        }
     }
 }

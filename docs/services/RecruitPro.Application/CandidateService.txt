@@ -1,26 +1,26 @@
 ==========================================================
-CandidateService - Detailed Analysis
+CandidateService - Phan Tich Chi Tiet
 ==========================================================
 
-1. OVERVIEW
+1. TONG QUAN
 ----------------------------------------------------------
 
-CandidateService is the broadest candidate-domain orchestration service in the backend.
+CandidateService la service dieu phoi nghiep vu rong nhat lien quan den mien ung vien.
 
-It covers:
-- candidate self-registration
-- HR candidate listing/detail
-- import template generation
-- bulk import with invitation emails
-- candidate profile read/update
-- skills and experience management
-- resume parsing and upload
-- profile completeness evaluation
+No bao gom:
+- tu dang ky ung vien
+- danh sach/chi tiet ung vien cho HR
+- tao template import
+- import hang loat kem email moi
+- doc/cap nhat profile
+- quan ly skills va kinh nghiem
+- parse va upload CV
+- danh gia do day du profile
 
-This class contains both business operations and a large amount of parsing / mapping logic.
+Class nay vua chua nghiep vu, vua chua rat nhieu logic parsing / mapping.
 
 ----------------------------------------------------------
-2. DEPENDENCIES
+2. PHU THUOC
 ----------------------------------------------------------
 
 - `ICandidateProfileRepository`
@@ -34,94 +34,94 @@ This class contains both business operations and a large amount of parsing / map
 - `IMapper`
 - `ILogger<CandidateService>`
 
-It also owns several regex helpers for fallback resume parsing.
+Ngoai ra service con so huu nhieu regex helper cho fallback resume parsing.
 
 ----------------------------------------------------------
-3. REGISTRATION / IMPORT FLOWS
+3. LUONG DANG KY / IMPORT
 ----------------------------------------------------------
 
 `RegisterAsync(...)`
 
-Purpose:
-- create a user
-- assign candidate role
-- optionally create initial profile
-- optionally upload initial resume
+Muc dich:
+- tao user
+- gan role candidate
+- tuy chon tao profile ban dau
+- tuy chon upload CV ban dau
 
-Important behavior:
-- explicit transaction
-- rollback on failure
-- delete uploaded file if DB transaction fails
+Hanh vi quan trong:
+- transaction ro rang
+- rollback neu that bai
+- xoa file da upload neu transaction DB fail
 
 `GenerateImportTemplateAsync()`
-- builds an XLSX template for bulk import
+- tao file XLSX mau cho import hang loat
 
 `PreviewImportAsync(...)`
-- parses upload and validates rows without writing data
+- parse file upload va validate tung dong nhung chua ghi DB
 
 `ImportCandidatesAsync(...)`
-- validates rows
-- creates users and profiles for valid rows
-- assigns candidate role
-- commits once
-- sends invitation emails after DB success
+- validate tung dong
+- tao users va profiles cho nhung dong hop le
+- gan role candidate
+- commit mot lan
+- gui email moi sau khi DB thanh cong
 
-This split between DB commit and email delivery is good because email failure does not corrupt imported data.
+Viec tach DB commit va email delivery la hop ly vi loi email khong lam hong du lieu da import.
 
 ----------------------------------------------------------
-4. PROFILE MANAGEMENT
+4. QUAN LY PROFILE
 ----------------------------------------------------------
 
 `GetProfileAsync(Guid userId)`
-- returns full candidate profile DTO
+- tra ve DTO profile day du
 
 `UpdateProfileAsync(...)`
-- applies profile updates
-- retries once on EF concurrency conflict
+- ap thay doi vao profile
+- retry 1 lan neu gap EF concurrency conflict
 
 `UpdateSkillsAsync(...)`
-- replaces candidate skill set transactionally
+- thay toan bo tap skill cua ung vien trong transaction
 
 `CreateExperienceAsync(...)`
-- appends an experience document entry
+- them mot kinh nghiem vao tai lieu nhung
 
 `UpdateExperienceAsync(...)`
-- updates one embedded experience item by id
+- cap nhat mot muc kinh nghiem theo id
 
 `DeleteExperienceAsync(...)`
-- removes one embedded experience item by id
+- xoa mot muc kinh nghiem theo id
 
 ----------------------------------------------------------
-5. RESUME FLOWS
+5. CAC LUONG LIEN QUAN DEN CV
 ----------------------------------------------------------
 
 `ParseResumeAsync(...)`
 
-Main behavior:
+Hanh vi chinh:
 - validate input
-- extract raw text based on file type
-- attempt AI parsing first
-- fallback to deterministic parsing if AI is unavailable or fails
-- return preview DTO for user confirmation
+- trich xuat text thuan theo loai file
+- uu tien AI parsing truoc
+- fallback sang parse xac dinh khi AI khong kha dung hoac that bai
+- tra ve DTO preview de user xac nhan
 
 `UploadResumeAsync(...)`
 
-Main behavior:
-- upload file to storage
-- mark previous resumes as not current
-- create new resume version
-- update profile/user timestamps
-- rollback DB changes and delete uploaded object on failure
+Hanh vi chinh:
+- upload file len storage
+- danh dau CV cu khong con la current
+- tao resume version moi
+- cap nhat timestamp profile/user
+- rollback thay doi DB va xoa object da upload neu that bai
 
 `GetResumeDownloadUrlAsync(...)`
-- resolve resume owner profile
-- generate presigned URL
+- tim profile so huu CV
+- sinh presigned URL
 
 ----------------------------------------------------------
-6. IMPORTANT INTERNAL SUBSYSTEMS
+6. CAC HE THONG PHU NOI BO QUAN TRONG
 ----------------------------------------------------------
 
-Profile persistence helpers:
+Helper luu tru profile:
 - `GetProfileEntityAsync(...)`
 - `GetProfileEntityForUpdateAsync(...)`
 - `SaveProfileAsync(...)`
@@ -129,19 +129,19 @@ Profile persistence helpers:
 - `ReplaceCandidateProjectsAsync(...)`
 - `ReplaceCandidateSkillsAsync(...)`
 
-Document serialization helpers:
+Helper serialize tai lieu:
 - `LoadExperiences(...)`
 - `SerializeDocuments<TDocument>(...)`
 - `LoadDocuments<TDocument>(...)`
 - `LoadStringList(...)`
 
-Resume extraction helpers:
+Helper trich xuat CV:
 - `ExtractResumeTextAsync(...)`
 - `ReadPlainTextAsync(...)`
 - `ExtractDocxTextAsync(...)`
 - `NormalizeResumeText(...)`
 
-Fallback resume parsing helpers:
+Helper fallback parse CV:
 - `ExtractResumeSections(...)`
 - `DetectSectionKey(...)`
 - `ExtractEmail(...)`
@@ -163,7 +163,7 @@ Fallback resume parsing helpers:
 - `ParseCertifications(...)`
 - `ParseLanguages(...)`
 
-Import helpers:
+Helper import:
 - `ParseAndValidateImportRowsAsync(...)`
 - `ValidateRequestRowsAsync(...)`
 - `ApplyImportValidationAsync(...)`
@@ -173,27 +173,26 @@ Import helpers:
 - `ResolveCandidateSource(...)`
 
 ----------------------------------------------------------
-7. DESIGN OBSERVATIONS
+7. NHAN XET THIET KE
 ----------------------------------------------------------
 
-- The service combines CRUD, import, resume extraction, AI orchestration, fallback parsing, and DTO mapping
-- It is highly capable but also very large
-- Many internal helpers are pure and would be easy to extract
+- Service nay tron CRUD, import, trich xuat CV, AI orchestration, fallback parsing va DTO mapping
+- No rat manh nhung cung rat lon
+- Nhieu helper noi bo la pure function va de tach ra thanh thanh phan rieng
 
-Possible future splits:
-- CandidateProfileService
-- CandidateImportService
-- ResumeParsingService
-- CandidateResumeService
+Nhung huong tach trong tuong lai:
+- `CandidateProfileService`
+- `CandidateImportService`
+- `ResumeParsingService`
+- `CandidateResumeService`
 
 ----------------------------------------------------------
-8. STRONG COMMONIZATION CANDIDATES
+8. CAC UNG VIEN MANH DE DUNG CHUNG
 ----------------------------------------------------------
 
 - `GenerateTemporaryPassword(...)`
 - `NormalizeOptionalText(...)`
 - `BuildMeta(...)`
-- file-name extraction helper
-- document JSON load/save helpers
-- generic resume text normalization/parsing utilities
-
+- helper tach ten file
+- helper load/save JSON cho document
+- tien ich chuan hoa/phan tich text CV dung chung

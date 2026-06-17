@@ -1,68 +1,66 @@
 ==========================================================
-PdfResumeTextExtractor - Detailed Analysis
+PdfResumeTextExtractor - Phan Tich Chi Tiet
 ==========================================================
 
-1. OVERVIEW
+1. TONG QUAN
 ----------------------------------------------------------
 
-PdfResumeTextExtractor is the infrastructure implementation of `IResumeTextExtractor`.
+PdfResumeTextExtractor la implementation ha tang cua `IResumeTextExtractor`.
 
-Its job is simple:
-- accept a PDF stream
-- read all pages
-- concatenate extracted text
-- return plain text for downstream parsing or AI enrichment
+Nhiem vu cua no don gian:
+- nhan mot stream PDF
+- doc tat ca cac trang
+- noi text da trich xuat
+- tra ve plain text cho parsing downstream hoac AI enrichment
 
 ----------------------------------------------------------
-2. DEPENDENCIES
+2. PHU THUOC
 ----------------------------------------------------------
 
-External library:
+Thu vien ngoai:
 - `UglyToad.PdfPig`
 
-Internal dependencies:
-- none besides the input stream and cancellation token
+Phu thuoc noi bo:
+- khong co ngoai stream dau vao va cancellation token
 
 ----------------------------------------------------------
-3. METHOD FLOW
+3. LUONG CUA METHOD
 ----------------------------------------------------------
 
 `ExtractTextAsync(Stream resumeStream, CancellationToken cancellationToken)`
 
-Step-by-step:
-
-1. Validate stream is not null
-2. Reset stream position when seeking is supported
-3. Open PDF document from stream
-4. Iterate all pages
-5. Check cancellation between pages
-6. Append page text to a `StringBuilder`
-7. Trim final output and return it
-
-----------------------------------------------------------
-4. BEHAVIORAL NOTES
-----------------------------------------------------------
-
-- The method is asynchronous only in signature shape; the actual PDF work is synchronous
-- Cancellation support is cooperative during page iteration
-- The method assumes the stream contains a valid PDF
-- Non-text PDFs may still return very poor output depending on document quality
+Tung buoc:
+1. validate stream khong null
+2. dua vi tri stream ve dau neu stream cho phep seek
+3. mo tai lieu PDF tu stream
+4. duyet qua tat ca cac trang
+5. kiem tra cancellation giua cac trang
+6. append text tung trang vao `StringBuilder`
+7. trim output cuoi va tra ve
 
 ----------------------------------------------------------
-5. CALLERS
+4. GHI CHU HANH VI
 ----------------------------------------------------------
 
-Known usage:
+- Method nay chi async o method signature; cong viec doc PDF ben trong la dong bo
+- Cancellation duoc ho tro theo kieu cooperative trong luc duyet trang
+- Method gia dinh stream dau vao la PDF hop le
+- PDF khong co layer text co the van cho output rat kem tuy chat luong tai lieu
+
+----------------------------------------------------------
+5. CALLER
+----------------------------------------------------------
+
+Nhung noi dang dung:
 - `CandidateService.ExtractResumeTextAsync`
 - `CopilotService.EnrichPoolWithResumeTextAsync`
 
-In both flows, this extractor is a foundational primitive that converts storage files
-into searchable or AI-readable text.
+Trong ca hai luong, extractor nay la primitive nen tang de bien file CV
+thanh text co the tim kiem hoac cho AI doc duoc.
 
 ----------------------------------------------------------
-6. IMPROVEMENT IDEAS
+6. Y TUONG CAI TIEN
 ----------------------------------------------------------
 
-- Add OCR fallback for scanned PDFs if required later
-- Add file type sniffing if multiple extractors are introduced behind a unified dispatcher
-
+- Them OCR fallback cho PDF scan neu sau nay can
+- Them file type sniffing neu gioi thieu nhieu extractor sau mot dispatcher chung

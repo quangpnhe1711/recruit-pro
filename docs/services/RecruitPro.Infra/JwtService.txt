@@ -1,107 +1,104 @@
 ==========================================================
-JwtService - Detailed Analysis
+JwtService - Phan Tich Chi Tiet
 ==========================================================
 
-1. OVERVIEW
+1. TONG QUAN
 ----------------------------------------------------------
 
-JwtService is the infrastructure implementation of `IJwtService`.
+JwtService la implementation ha tang cua `IJwtService`.
 
-Its responsibility is very focused:
+Trach nhiem cua no rat tap trung:
+- tao access token va refresh token cho user da xac thuc
+- nhung claim danh tinh va role vao token
+- su dung issuer, audience, signing key va thoi gian het han duoc cau hinh
 
-- Build access tokens and refresh tokens for authenticated users
-- Embed identity and role claims into the token
-- Use the configured issuer, audience, signing key, and expiry settings
-
-This service does not validate credentials.
-Authentication is handled earlier by `AuthService`.
+Service nay khong xac thuc credential.
+Buoc authentication duoc xu ly som hon boi `AuthService`.
 
 ----------------------------------------------------------
-2. DEPENDENCIES
+2. PHU THUOC
 ----------------------------------------------------------
 
 `JwtSettings`
 
-Used fields:
+Nhung field duoc su dung:
 - `Key`
 - `Issuer`
 - `Audience`
 - `ExpiryMinutes`
 - `RefreshTokenExpiryMinutes`
 
-The service depends completely on configuration correctness.
+Service nay phu thuoc hoan toan vao do dung cua cau hinh.
 
 ----------------------------------------------------------
-3. MAIN METHOD
+3. PHUONG THUC CHINH
 ----------------------------------------------------------
 
 `GenerateToken(User user, string type)`
 
-Purpose:
-- Produce a signed JWT string for the supplied user
+Muc dich:
+- tao chuoi JWT da ky cho user duoc truyen vao
 
-Main flow:
+Luong chinh:
+1. tao cac claim co ban
+- `sub`
+- `nameidentifier`
+- `email`
+- `jti`
 
-1. Create base claims
-   - `sub`
-   - `nameidentifier`
-   - `email`
-   - `jti`
+2. them role claims
+- moi role trong `user.UserRoles` tro thanh mot `ClaimTypes.Role`
 
-2. Append role claims
-   - Every role in `user.UserRoles` becomes a `ClaimTypes.Role` claim
+3. tao signing key
+- dung symmetric HMAC SHA256
 
-3. Build signing key
-   - Uses symmetric HMAC SHA256 signing
+4. chon thoi gian het han theo loai token
+- `"Access"` dung `ExpiryMinutes`
+- cac gia tri khac fallback sang `RefreshTokenExpiryMinutes`
 
-4. Select expiry by token type
-   - `"Access"` uses `ExpiryMinutes`
-   - Any other value falls back to `RefreshTokenExpiryMinutes`
+5. tao `JwtSecurityToken`
 
-5. Construct `JwtSecurityToken`
-
-6. Serialize the token to string with `JwtSecurityTokenHandler`
-
-----------------------------------------------------------
-4. CLAIM DESIGN
-----------------------------------------------------------
-
-Identity claims included:
-- User id in both `sub` and `nameidentifier`
-- Email for downstream identity lookup
-- Random `jti` for uniqueness
-
-Authorization claims included:
-- All roles assigned to the user
-
-This means downstream authorization can rely directly on JWT role claims
-without fetching roles again from the database for normal request handling.
+6. serialize token thanh string bang `JwtSecurityTokenHandler`
 
 ----------------------------------------------------------
-5. IMPORTANT NOTES
+4. THIET KE CLAIM
 ----------------------------------------------------------
 
-- The service assumes `user.UserRoles` and `Role.Name` are already loaded
-- The token type is string-based rather than enum-based, so callers must be consistent
-- Expiry uses `DateTime.Now`, not `DbDateTime.Now`
-- There is no refresh-token persistence here; this service only generates signed tokens
+Claim danh tinh bao gom:
+- User id trong ca `sub` va `nameidentifier`
+- Email de tra cuu danh tinh xuong downstream
+- `jti` ngau nhien de dam bao tinh duy nhat
+
+Claim phan quyen bao gom:
+- tat ca role duoc gan cho user
+
+Dieu nay cho phep authorization downstream dua truc tiep vao role claim trong JWT
+ma khong can doc lai role tu database o cac request thong thuong.
 
 ----------------------------------------------------------
-6. INTERACTIONS
+5. GHI CHU QUAN TRONG
 ----------------------------------------------------------
 
-Primary caller:
+- Service gia dinh `user.UserRoles` va `Role.Name` da duoc load san
+- Token type dang dung string thay vi enum, nen caller phai dong nhat
+- Thoi gian het han dang dung `DateTime.Now`, khong dung `DbDateTime.Now`
+- Khong co luu tru refresh token o day; service nay chi tao token da ky
+
+----------------------------------------------------------
+6. TUONG TAC
+----------------------------------------------------------
+
+Caller chinh:
 - `AuthService`
 
-Typical usage:
-- `LoginCoreAsync` generates both access and refresh tokens
-- AutoMapper then places them into `LoginResponseDto`
+Cach dung dien hinh:
+- `LoginCoreAsync` tao ca access token va refresh token
+- sau do AutoMapper dat chung vao `LoginResponseDto`
 
 ----------------------------------------------------------
-7. RISKS / IMPROVEMENT IDEAS
+7. RUI RO / Y TUONG CAI TIEN
 ----------------------------------------------------------
 
-- Replace raw `"Access"` string with a dedicated enum or constants class
-- Consider centralizing JWT claim creation if future services also mint tokens
-- Consider using `DateTime.UtcNow` if the system later standardizes token time handling in UTC
-
+- Thay chuoi `"Access"` bang enum hoac constants class ro rang
+- Can nhac gom logic tao claim JWT neu sau nay co them service phat hanh token
+- Can nhac chuyen sang `DateTime.UtcNow` neu he thong chuan hoa xu ly token theo UTC

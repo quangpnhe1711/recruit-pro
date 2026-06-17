@@ -1,102 +1,102 @@
 ==========================================================
-MinioFileStorageService - Detailed Analysis
+MinioFileStorageService - Phan Tich Chi Tiet
 ==========================================================
 
-1. OVERVIEW
+1. TONG QUAN
 ----------------------------------------------------------
 
-MinioFileStorageService is the infrastructure implementation of `IFileStorageService`.
+MinioFileStorageService la implementation ha tang cua `IFileStorageService`.
 
-Its job is to store and retrieve private files in MinIO-compatible object storage.
+Nhiem vu cua no la luu tru va truy xuat file rieng tu object storage tuong thich MinIO.
 
-Main responsibilities:
-- Upload candidate resumes and other files
-- Generate presigned download URLs
-- Download object content as stream
-- Best-effort delete objects
-- Ensure the target bucket exists before file operations
+Trach nhiem chinh:
+- upload CV ung vien va cac file khac
+- tao presigned download URL
+- tai noi dung object thanh stream
+- xoa object theo kieu best-effort
+- dam bao bucket muc tieu ton tai truoc khi thao tac file
 
 ----------------------------------------------------------
-2. DEPENDENCIES
+2. PHU THUOC
 ----------------------------------------------------------
 
 `IMinioClient`
-- Executes all bucket and object operations
+- thuc thi moi thao tac voi bucket va object
 
 `MinioSettings`
-- Supplies bucket name and URL expiry settings
+- cung cap ten bucket va thoi gian het han URL
 
 `ILogger<MinioFileStorageService>`
-- Logs successful uploads, URL generation, deletions, and failures
+- log upload thanh cong, tao URL, xoa va cac loi
 
 ----------------------------------------------------------
-3. PUBLIC METHODS
+3. CAC PHUONG THUC CONG KHAI
 ----------------------------------------------------------
 
 `UploadFileAsync(Stream stream, string objectName, string contentType)`
 
-Flow:
-1. Validate stream and object name
-2. Ensure bucket exists
-3. Copy incoming stream into a memory buffer
-4. Upload buffered content via `PutObjectAsync`
-5. Return the stored object key
+Luong xu ly:
+1. validate stream va object name
+2. dam bao bucket ton tai
+3. copy stream vao memory buffer
+4. upload buffer bang `PutObjectAsync`
+5. tra ve object key da luu
 
-Important detail:
-- The method buffers the whole stream into memory before upload
-- This simplifies retries/position handling but can become expensive for large files
+Chi tiet quan trong:
+- method nay dua ca stream vao bo nho truoc khi upload
+- cach nay don gian hon cho retry/position handling nhung co the ton RAM voi file lon
 
 `GetPresignedUrlAsync(string objectName)`
 
-Flow:
-1. Normalize incoming object name or URL
-2. Ensure bucket exists
-3. Build `PresignedGetObjectArgs`
-4. Use configured expiry
-5. Return a temporary read URL
+Luong xu ly:
+1. chuan hoa object name hoac URL dau vao
+2. dam bao bucket ton tai
+3. tao `PresignedGetObjectArgs`
+4. ap dung thoi gian het han tu cau hinh
+5. tra ve read URL tam thoi
 
 `DownloadFileAsync(string objectName)`
 
-Flow:
-1. Normalize object name
-2. Ensure bucket exists
-3. Download object into `MemoryStream`
-4. Reset stream position
-5. Return the stream to caller
+Luong xu ly:
+1. chuan hoa object name
+2. dam bao bucket ton tai
+3. tai object vao `MemoryStream`
+4. dua vi tri stream ve dau
+5. tra stream cho caller
 
 `DeleteFileAsync(string objectName)`
 
-Behavior:
-- Ignores empty input
-- Normalizes the key
-- Executes deletion as best-effort cleanup
-- Logs warnings instead of rethrowing MinIO delete failures
+Hanh vi:
+- bo qua input rong
+- chuan hoa key
+- xoa theo kieu best-effort cleanup
+- log warning thay vi nem lai loi MinIO
 
-This behavior is important in rollback paths where cleanup should not hide the original business failure.
+Dieu nay quan trong trong cac luong rollback, noi cleanup khong nen che mat loi nghiep vu goc.
 
 ----------------------------------------------------------
-4. INTERNAL HELPERS
+4. CAC HELPER NOI BO
 ----------------------------------------------------------
 
 `EnsureBucketExistsAsync()`
-- Checks if the configured bucket exists
-- Creates it lazily when missing
+- kiem tra bucket cau hinh da ton tai chua
+- tao lazily neu dang thieu
 
 `GetPresignedUrlExpiryInSeconds()`
-- Uses configured expiry if positive
-- Falls back to `3600` seconds
+- dung gia tri cau hinh neu hop le
+- fallback ve `3600` giay
 
 `NormalizeObjectName(string objectName)`
-- Accepts either a raw object key or a full URL
-- Removes leading slash
-- Strips bucket prefix from absolute URLs
-- Throws when object name is blank
+- chap nhan ca object key thuan va full URL
+- bo dau `/` o dau
+- loai bucket prefix khoi absolute URL
+- nem loi neu object name rong
 
 ----------------------------------------------------------
-5. REAL CALLERS
+5. CAC CALLER THUC TE
 ----------------------------------------------------------
 
-Common usages in the codebase:
+Nhung noi dung pho bien trong codebase:
 - `CandidateService.RegisterAsync`
 - `CandidateService.UploadResumeAsync`
 - `CandidateService.GetResumeDownloadUrlAsync`
@@ -105,24 +105,23 @@ Common usages in the codebase:
 - `CopilotService.EnrichPoolWithResumeTextAsync`
 
 ----------------------------------------------------------
-6. FAILURE MODEL
+6. MO HINH THAT BAI
 ----------------------------------------------------------
 
 Upload / presigned URL / download:
-- MinIO exceptions are logged and rethrown
+- log roi nem lai exception MinIO
 
 Delete:
-- MinIO exceptions are logged and swallowed
+- log roi nuot loi MinIO
 
-This split is intentional:
-- core business operations must fail loudly
-- cleanup should be best-effort
+Su tach biet nay la co chu dich:
+- thao tac nghiep vu cot loi phai fail ro rang
+- cleanup chi can best-effort
 
 ----------------------------------------------------------
-7. REFACTOR / IMPROVEMENT IDEAS
+7. Y TUONG REFACTOR / CAI TIEN
 ----------------------------------------------------------
 
-- Extract object-key normalization into a reusable file-storage helper
-- Consider streaming upload directly for large files
-- Consider a dedicated bucket bootstrap step during app startup to avoid per-request existence checks
-
+- Tach logic chuan hoa object-key thanh helper dung chung cho file storage
+- Can nhac upload streaming truc tiep voi file lon
+- Can nhac co buoc bootstrap bucket khi app startup de tranh check ton tai bucket tren moi request

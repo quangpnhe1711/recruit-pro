@@ -1,20 +1,20 @@
 ==========================================================
-DashboardService - Detailed Analysis
+DashboardService - Phan Tich Chi Tiet
 ==========================================================
 
-1. OVERVIEW
+1. TONG QUAN
 ----------------------------------------------------------
 
-DashboardService prepares dashboard payloads for three audiences:
+DashboardService chuan bi payload dashboard cho 3 doi tuong:
 - Candidate
 - HR
 - Manager
 
-It is not a raw repository pass-through.
-The service enriches and reshapes data into card- and widget-friendly DTOs.
+No khong phai service pass-through don thuan tu repository.
+Service nay lam giau va tai cau truc du lieu thanh DTO than thien cho card va widget.
 
 ----------------------------------------------------------
-2. DEPENDENCIES
+2. PHU THUOC
 ----------------------------------------------------------
 
 - `ICandidateProfileRepository`
@@ -24,83 +24,82 @@ The service enriches and reshapes data into card- and widget-friendly DTOs.
 - `INotificationRepository`
 
 ----------------------------------------------------------
-3. CANDIDATE DASHBOARD
+3. DASHBOARD CHO CANDIDATE
 ----------------------------------------------------------
 
 `GetCandidateDashboardAsync(Guid userId)`
 
-Main behavior:
-- load candidate profile
-- load all candidate applications
-- fetch recommended approved jobs based on current position and skills
-- compute stats
-- select the nearest future interview
+Hanh vi chinh:
+- tai profile ung vien
+- tai tat ca ho so cua ung vien
+- lay cac job da duoc approved va goi y dua tren vi tri hien tai va skill
+- tinh toan thong ke
+- chon buoi interview gan nhat trong tuong lai
 
-Key output areas:
-- greeting name
-- application/interview/notification stats
-- next interview card
-- recommended jobs list
+Nhung vung output chinh:
+- ten chao mung
+- thong ke application/interview/notification
+- card interview tiep theo
+- danh sach job goi y
 
 ----------------------------------------------------------
-4. HR DASHBOARD
+4. DASHBOARD CHO HR
 ----------------------------------------------------------
 
 `GetHrDashboardAsync()`
 
-Main behavior:
-- load next interview
-- load recent applications
-- load pending approval jobs
-- compute simple operational stats
+Hanh vi chinh:
+- tai buoi interview tiep theo
+- tai ho so moi nhat
+- tai job dang cho duyet
+- tinh cac thong ke van hanh co ban
 
-Notable detail:
-- some sections such as hiring velocity and diversity report are still mocked/static
-- this service already exposes the UI contract even where data is not fully dynamic yet
+Chi tiet dang chu y:
+- mot so muc nhu hiring velocity va diversity report van dang mock/static
+- service da mo hop dong UI du du lieu chua hoan toan dong
 
 ----------------------------------------------------------
-5. MANAGER DASHBOARD
+5. DASHBOARD CHO MANAGER
 ----------------------------------------------------------
 
 `GetManagerDashboardAsync()`
 
-Main behavior:
-- load pending approval jobs
-- load manager review queue
-- load application status counts
-- load department review-cycle metrics
-- load departments
+Hanh vi chinh:
+- tai job dang cho duyet
+- tai manager review queue
+- tai thong ke so luong ho so theo trang thai
+- tai metric review-cycle theo department
+- tai danh sach department
 
-Then computes:
+Sau do tinh:
 - pending approvals
 - active applications
 - average review cycle
 - acceptance rate
-- final-decision items
-- department hiring speed
+- cac muc final-decision
+- hiring speed theo department
 - recruitment funnel
 
 ----------------------------------------------------------
-6. INTERNAL HELPERS
+6. CAC HELPER NOI BO
 ----------------------------------------------------------
 
 `GetProfileEntityAsync(...)`
-- shared profile lookup with `NotFoundException` when candidate profile is missing
+- helper truy van profile dung chung, nem `NotFoundException` khi khong co profile
 
 `BuildPendingApprovalMeta(Job job)`
-- creates compact department + salary label used by cards
+- tao chuoi department + salary label ngan gon cho card
 
 `BuildManagerFunnel(...)`
-- converts application status counts into funnel rows
+- chuyen thong ke trang thai ho so thanh cac dong funnel
 
 ----------------------------------------------------------
-7. COMMONIZATION NOTES
+7. GHI CHU VE KHA NANG DUNG CHUNG
 ----------------------------------------------------------
 
-The profile lookup pattern is duplicated in several services:
+Pattern truy van profile dang bi lap lai o nhieu service:
 - `DashboardService`
 - `ApplicationService`
 - `CandidateService`
 
-This is a good candidate for a shared candidate-profile access helper.
-
+Day la ung vien tot cho mot helper truy cap candidate-profile dung chung.

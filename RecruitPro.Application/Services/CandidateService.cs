@@ -219,7 +219,7 @@ public class CandidateService : ICandidateService
         return ApiResponse<HrCandidatesResponseDto>.Ok(new HrCandidatesResponseDto
         {
             Items = items.ToList(),
-            Meta = BuildMeta(page, pageSize, total)
+            Meta = PaginationMetaBuilder.Build(page, pageSize, total)
         });
     }
 
@@ -360,13 +360,13 @@ public class CandidateService : ICandidateService
         {
             foreach (CandidateImportPreviewDto row in validRows)
             {
-                string temporaryPassword = GenerateTemporaryPassword();
+                string temporaryPassword = CredentialUtility.GenerateTemporaryPassword();
                 User user = new()
                 {
                     Id = Guid.NewGuid(),
                     Email = row.Email.Trim(),
                     FullName = row.FullName.Trim(),
-                    Phone = NormalizeOptionalText(row.PhoneNumber),
+                    Phone = TextNormalizationHelper.NormalizeOptionalText(row.PhoneNumber),
                     PasswordHash = BCrypt.Net.BCrypt.HashPassword(temporaryPassword),
                     CreatedAt = DbDateTime.Now,
                     UpdatedAt = DbDateTime.Now
@@ -379,7 +379,7 @@ public class CandidateService : ICandidateService
                 {
                     Id = Guid.NewGuid(),
                     UserId = user.Id,
-                    CurrentPosition = NormalizeOptionalText(row.PositionApplied),
+                    CurrentPosition = TextNormalizationHelper.NormalizeOptionalText(row.PositionApplied),
                     Bio = BuildImportedBio(row.Source, row.Notes)
                 };
 
@@ -756,7 +756,7 @@ public class CandidateService : ICandidateService
             resumeHistory.Add(new CandidateResumeDto
             {
                 Id = profile.Id.ToString(),
-                FileName = ExtractFileName(profile.ResumeUrl),
+                FileName = StoredFileNameHelper.ExtractDisplayFileName(profile.ResumeUrl),
                 FileUrl = await _fileStorage.GetPresignedUrlAsync(profile.ResumeUrl),
                 UploadedAt = profile.User.UpdatedAt ?? profile.User.CreatedAt ?? DbDateTime.Now,
                 Version = 1,
@@ -1040,8 +1040,8 @@ public class CandidateService : ICandidateService
         {
             Id = string.IsNullOrWhiteSpace(request.Id) ? Guid.NewGuid() : Guid.Parse(request.Id),
             Name = request.Name.Trim(),
-            Role = NormalizeOptionalText(request.Role),
-            Description = NormalizeOptionalText(request.Description),
+            Role = TextNormalizationHelper.NormalizeOptionalText(request.Role),
+            Description = TextNormalizationHelper.NormalizeOptionalText(request.Description),
             TechnologiesJson = SerializeDocuments(request.Technologies
                 .Select(value => value.Trim())
                 .Where(value => !string.IsNullOrWhiteSpace(value))
@@ -1067,10 +1067,10 @@ public class CandidateService : ICandidateService
             Id = string.IsNullOrWhiteSpace(request.Id) ? Guid.NewGuid().ToString("N") : request.Id,
             School = request.School.Trim(),
             Degree = request.Degree.Trim(),
-            FieldOfStudy = NormalizeOptionalText(request.FieldOfStudy),
+            FieldOfStudy = TextNormalizationHelper.NormalizeOptionalText(request.FieldOfStudy),
             StartYear = request.StartYear,
             EndYear = request.EndYear,
-            Description = NormalizeOptionalText(request.Description)
+            Description = TextNormalizationHelper.NormalizeOptionalText(request.Description)
         };
     }
 
@@ -1085,11 +1085,11 @@ public class CandidateService : ICandidateService
         {
             Id = string.IsNullOrWhiteSpace(request.Id) ? Guid.NewGuid().ToString("N") : request.Id,
             Name = request.Name.Trim(),
-            Issuer = NormalizeOptionalText(request.Issuer),
+            Issuer = TextNormalizationHelper.NormalizeOptionalText(request.Issuer),
             IssuedOn = request.IssuedOn,
             ExpiresOn = request.ExpiresOn,
-            CredentialId = NormalizeOptionalText(request.CredentialId),
-            CredentialUrl = NormalizeOptionalText(request.CredentialUrl)
+            CredentialId = TextNormalizationHelper.NormalizeOptionalText(request.CredentialId),
+            CredentialUrl = TextNormalizationHelper.NormalizeOptionalText(request.CredentialUrl)
         };
     }
 
@@ -1526,8 +1526,8 @@ public class CandidateService : ICandidateService
                 {
                     Id = Guid.NewGuid().ToString(),
                     Name = string.IsNullOrWhiteSpace(item.Name) ? "Project" : item.Name.Trim(),
-                    Role = NormalizeOptionalText(item.Role),
-                    Description = NormalizeOptionalText(item.Description),
+                    Role = TextNormalizationHelper.NormalizeOptionalText(item.Role),
+                    Description = TextNormalizationHelper.NormalizeOptionalText(item.Description),
                     Technologies = item.Technologies
                         .Select(value => value.Trim())
                         .Where(value => !string.IsNullOrWhiteSpace(value))
@@ -1550,10 +1550,10 @@ public class CandidateService : ICandidateService
                     Id = Guid.NewGuid().ToString("N"),
                     School = item.School.Trim(),
                     Degree = item.Degree.Trim(),
-                    FieldOfStudy = NormalizeOptionalText(item.FieldOfStudy),
+                    FieldOfStudy = TextNormalizationHelper.NormalizeOptionalText(item.FieldOfStudy),
                     StartYear = item.StartYear,
                     EndYear = item.EndYear,
-                    Description = NormalizeOptionalText(item.Description)
+                    Description = TextNormalizationHelper.NormalizeOptionalText(item.Description)
                 })
                 .Where(item => !string.IsNullOrWhiteSpace(item.School) && !string.IsNullOrWhiteSpace(item.Degree))
                 .ToList(),
@@ -1562,11 +1562,11 @@ public class CandidateService : ICandidateService
                 {
                     Id = Guid.NewGuid().ToString("N"),
                     Name = item.Name.Trim(),
-                    Issuer = NormalizeOptionalText(item.Issuer),
+                    Issuer = TextNormalizationHelper.NormalizeOptionalText(item.Issuer),
                     IssuedOn = item.IssuedOn,
                     ExpiresOn = item.ExpiresOn,
-                    CredentialId = NormalizeOptionalText(item.CredentialId),
-                    CredentialUrl = NormalizeOptionalText(item.CredentialUrl)
+                    CredentialId = TextNormalizationHelper.NormalizeOptionalText(item.CredentialId),
+                    CredentialUrl = TextNormalizationHelper.NormalizeOptionalText(item.CredentialUrl)
                 })
                 .Where(item => !string.IsNullOrWhiteSpace(item.Name))
                 .ToList(),
@@ -2163,40 +2163,6 @@ public class CandidateService : ICandidateService
     /// <param name="pageSize">The <paramref name="pageSize"/> value.</param>
     /// <param name="total">The <paramref name="total"/> value.</param>
     /// <returns>The operation result.</returns>
-    private static ApiEnvelopeMeta BuildMeta(int page, int pageSize, int total)
-    {
-        return new ApiEnvelopeMeta
-        {
-            Page = page,
-            PageSize = pageSize,
-            TotalItems = total,
-            TotalPages = (int)Math.Ceiling(total / (double)pageSize)
-        };
-    }
-
-    /// <summary>
-    /// Extracts file name.
-    /// </summary>
-    /// <param name="resumeValue">The <paramref name="resumeValue"/> value.</param>
-    /// <returns>The resulting string value.</returns>
-    private static string ExtractFileName(string resumeValue)
-    {
-        if (string.IsNullOrWhiteSpace(resumeValue))
-        {
-            return string.Empty;
-        }
-
-        string fileName = Path.GetFileName(
-            Uri.TryCreate(resumeValue, UriKind.Absolute, out Uri? uri)
-                ? uri.AbsolutePath
-                : resumeValue);
-
-        int separatorIndex = fileName.IndexOf('_');
-        return separatorIndex >= 0 && separatorIndex < fileName.Length - 1
-            ? fileName[(separatorIndex + 1)..]
-            : fileName;
-    }
-
     /// <summary>
     /// Assigns candidate role.
     /// </summary>
@@ -2374,21 +2340,6 @@ public class CandidateService : ICandidateService
     /// Generates temporary password.
     /// </summary>
     /// <returns>The resulting string value.</returns>
-    private static string GenerateTemporaryPassword()
-    {
-        return $"Rp!{Guid.NewGuid():N}"[..12];
-    }
-
-    /// <summary>
-    /// Normalizes optional text.
-    /// </summary>
-    /// <param name="value">The <paramref name="value"/> value.</param>
-    /// <returns>The operation result.</returns>
-    private static string? NormalizeOptionalText(string? value)
-    {
-        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
-    }
-
     /// <summary>
     /// Builds imported bio.
     /// </summary>

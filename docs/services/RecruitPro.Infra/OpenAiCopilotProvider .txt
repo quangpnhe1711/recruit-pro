@@ -1,121 +1,88 @@
 ==========================================================
-OpenAiCopilotProvider - Detailed Analysis
+OpenAiCopilotProvider - Phan Tich Chi Tiet
 ==========================================================
 
-1. OVERVIEW
+1. TONG QUAN
 ----------------------------------------------------------
 
-OpenAiCopilotProvider là implementation của IAiCopilotProvider.
+OpenAiCopilotProvider la implementation cua `IAiCopilotProvider`.
 
-Mục đích của service này là đóng vai trò cầu nối giữa ATS System và AI Provider (OpenAI, Gemini, Azure OpenAI, OpenRouter hoặc bất kỳ OpenAI-compatible API nào).
+Muc dich cua service nay la dong vai tro cau noi giua ATS System va AI Provider
+(OpenAI, Gemini, Azure OpenAI, OpenRouter hoac bat ky OpenAI-compatible API nao).
 
-Service hỗ trợ 2 chức năng chính:
+Service ho tro 2 chuc nang chinh:
 
-1. Candidate Ranking
-   - Nhận JD, Rules, Candidate Pool
-   - Gửi dữ liệu sang AI
-   - AI đánh giá và xếp hạng ứng viên
+1. Xep hang ung vien
+- nhan JD, Rules va Candidate Pool
+- gui du lieu sang AI
+- nhan ket qua danh gia va xep hang
 
 2. Recruiter Copilot Chat
-   - Recruiter đặt câu hỏi bằng ngôn ngữ tự nhiên
-   - AI trả lời dựa trên dữ liệu JD và Candidate Pool
+- recruiter dat cau hoi bang ngon ngu tu nhien
+- AI tra loi dua tren du lieu JD va Candidate Pool
 
-Toàn bộ giao tiếp với AI đều đi qua service này.
-
-----------------------------------------------------------
-2. CLASS MEMBERS
-----------------------------------------------------------
-
-private static readonly JsonSerializerOptions JsonOptions
-
-Mục đích:
-Chuẩn hóa quá trình Serialize và Deserialize JSON.
-
-Được sử dụng ở nhiều nơi:
-- Serialize payload gửi lên AI
-- Deserialize kết quả AI trả về
+Toan bo giao tiep voi AI deu di qua service nay.
 
 ----------------------------------------------------------
-
-private const string OpenAiResponsesSuffix = "/responses";
-
-Mục đích:
-Endpoint mặc định của OpenAI Responses API.
-
-Ví dụ:
-
-https://api.openai.com/v1/responses
-
+2. CAC THANH VIEN CHINH CUA CLASS
 ----------------------------------------------------------
 
-private const string OpenAiChatCompletionsSuffix = "/chat/completions";
+`private static readonly JsonSerializerOptions JsonOptions`
 
-Mục đích:
-Endpoint của OpenAI Compatible API.
+Muc dich:
+- chuan hoa qua trinh serialize va deserialize JSON
 
-Ví dụ:
+Duoc dung de:
+- serialize payload gui len AI
+- deserialize ket qua AI tra ve
 
-https://openrouter.ai/api/v1/chat/completions
+`private const string OpenAiResponsesSuffix = "/responses";`
 
-https://generativelanguage.googleapis.com/.../chat/completions
+Muc dich:
+- endpoint mac dinh cua OpenAI Responses API
 
-----------------------------------------------------------
+Vi du:
+- `https://api.openai.com/v1/responses`
 
-private readonly HttpClient _httpClient
+`private const string OpenAiChatCompletionsSuffix = "/chat/completions";`
 
-Dùng để gửi HTTP request tới AI Provider.
+Muc dich:
+- endpoint cho OpenAI-compatible Chat Completions API
 
-----------------------------------------------------------
+Vi du:
+- `https://openrouter.ai/api/v1/chat/completions`
+- `https://generativelanguage.googleapis.com/.../chat/completions`
 
-private readonly ILogger<OpenAiCopilotProvider> _logger
+`private readonly HttpClient _httpClient`
+- dung de gui HTTP request toi AI provider
 
-Dùng để ghi log:
+`private readonly ILogger<OpenAiCopilotProvider> _logger`
+- ghi log request bat dau, hoan tat, that bai va exception
 
-- Request started
-- Request completed
-- Request failed
-- Exception
-
-----------------------------------------------------------
-
-private readonly OpenAiSettings _settings
-
-Chứa toàn bộ cấu hình AI.
-
-Ví dụ:
-
-Enabled
-ApiKey
-Model
-BaseUrl
-MaxCandidatesForAi
+`private readonly OpenAiSettings _settings`
+- chua cau hinh AI nhu `Enabled`, `ApiKey`, `Model`, `BaseUrl`, `MaxCandidatesForAi`
 
 ----------------------------------------------------------
 3. CONSTRUCTOR
 ----------------------------------------------------------
 
-public OpenAiCopilotProvider(...)
+`public OpenAiCopilotProvider(...)`
 
 Inject:
+- `HttpClient`
+- `OpenAiSettings`
+- `ILogger<OpenAiCopilotProvider>`
 
-- HttpClient
-- OpenAiSettings
-- Logger
-
-Không chứa business logic.
-
-Chỉ khởi tạo dependency.
+Constructor khong chua business logic, chi khoi tao dependency.
 
 ----------------------------------------------------------
 4. TryCreateRankingAsync
 ----------------------------------------------------------
 
-Mục đích:
-
-Thực hiện AI Ranking.
+Muc dich:
+- thuc hien AI ranking
 
 Input:
-
 - Candidate Pool
 - Normalized Rules
 - Deterministic Ranking
@@ -123,10 +90,9 @@ Input:
 - Conversation Id
 
 Output:
+- `CopilotPromptResponseDto`
 
-CopilotPromptResponseDto
-
-Flow tổng quát:
+Luong tong quat:
 
 Job + Rules + Candidates
             ↓
@@ -138,139 +104,76 @@ Job + Rules + Candidates
             ↓
 CopilotPromptResponseDto
 
-----------------------------------------------------------
-Bước 1: Validate AI Configuration
-----------------------------------------------------------
+Buoc 1: Validate AI Configuration
+- kiem tra AI co duoc bat khong
+- kiem tra API key co ton tai khong
+- neu khong, tra `null` de ATS fallback ve deterministic ranking
 
-if (!_settings.Enabled || string.IsNullOrWhiteSpace(_settings.ApiKey))
+Buoc 2: Gioi han so ung vien
+- chi gui toi da so ung vien theo `MaxCandidatesForAi`
+- muc dich la tiet kiem token, giam chi phi va tranh vuot context
 
-Kiểm tra:
+Buoc 3: Build Payload
+- tao object gom `job`, `userPrompt`, `normalizedRules`, `candidates`, `deterministicRanking`
+- day la toan bo du lieu AI duoc phep thay
 
-- AI có được bật hay không
-- API Key có tồn tại hay không
+Buoc 4: Build Prompt
+- sinh prompt ranking
+- yeu cau AI tra dung schema
+- khong bo sot ung vien
+- moi candidate phai co summary
+- auto reject phai nam cuoi
+- ket qua phai la JSON hop le
 
-Nếu không:
+Buoc 5: Build Request Body
+- `BuildRequestBody(...)` chuyen prompt thanh request model phu hop voi provider
 
-return null
+Buoc 6: Build HTTP Request
+- `BuildRequest(...)` tao `HttpRequestMessage` gom URL, auth header va body
 
-Lý do:
+Buoc 7: Send Request
+- gui request bang `_httpClient.SendAsync(...)`
 
-Cho phép ATS fallback về deterministic ranking.
+Buoc 8: Read Response
+- doc raw JSON tu `response.Content.ReadAsStringAsync()`
 
-----------------------------------------------------------
-Bước 2: Candidate Limitation
-----------------------------------------------------------
+Buoc 9: Extract Output
+- `ExtractOutputText(raw)` lay phan text that su tu response
+- can co buoc nay vi moi provider co format hoi khac nhau
 
-int candidateLimit = ...
-
-Giới hạn số lượng ứng viên gửi sang AI.
-
-Ví dụ:
-
-MaxCandidatesForAi = 20
-
-=> Chỉ gửi 20 ứng viên đầu tiên.
-
-Mục đích:
-
-- Tiết kiệm token
-- Giảm chi phí
-- Tránh context overflow
-
-----------------------------------------------------------
-Bước 3: Build Payload
-----------------------------------------------------------
-
-Tạo object payload:
-
-{
-    job,
-    userPrompt,
-    normalizedRules,
-    candidates,
-    deterministicRanking
-}
-
-Đây là toàn bộ dữ liệu AI được phép nhìn thấy.
+Buoc 10: Normalize JSON
+- `NormalizeJsonPayload(...)` bo markdown fence neu AI tra ve dang ```json ... ```
 
 ----------------------------------------------------------
-Bước 4: Build Prompt
+5. CAC HELPER TICH HOP PROVIDER
 ----------------------------------------------------------
 
-BuildPrompt(payload)
+Nhung helper dang dong vai tro adapter cho OpenAI-compatible provider:
+- `BuildRequest(...)`
+- `BuildRequestBody(...)`
+- `BuildEndpoint(...)`
+- `UsesChatCompletions()`
+- `ExtractOutputText(...)`
+- `NormalizeJsonPayload(...)`
 
-Sinh prompt ranking.
-
-Prompt yêu cầu:
-
-- Trả đúng schema
-- Không bỏ sót ứng viên
-- Mỗi candidate phải có summary
-- Auto reject phải nằm cuối
-- Trả JSON hợp lệ
+Day la nhom logic lap lai rat gan voi `OpenAiResumeParserProvider`.
 
 ----------------------------------------------------------
-Bước 5: Build Request Body
+6. GIA TRI THIET KE
 ----------------------------------------------------------
 
-BuildRequestBody(...)
-
-Chuyển prompt thành request model phù hợp với provider.
-
-----------------------------------------------------------
-Bước 6: Build HTTP Request
-----------------------------------------------------------
-
-BuildRequest(...)
-
-Tạo:
-
-HttpRequestMessage
-
-Bao gồm:
-
-- URL
-- Authorization Header
-- Request Body
+- Cho phep he thong doi provider ma khong phai sua logic tang application
+- Ho tro nhieu kieu endpoint Responses / Chat Completions
+- Giu cho copilot co kha nang fallback ve deterministic ranking khi AI khong kha dung
 
 ----------------------------------------------------------
-Bước 7: Send Request
+7. CO HOI REFACTOR
 ----------------------------------------------------------
 
-_httpClient.SendAsync(...)
+Nhom helper OpenAI-compatible o tren nen duoc dua ve:
+- mot helper chung, hoac
+- mot abstract base class cho cac provider AI
 
-Gửi request đến AI Provider.
-
-----------------------------------------------------------
-Bước 8: Read Response
-----------------------------------------------------------
-
-response.Content.ReadAsStringAsync()
-
-Lấy raw JSON response.
-
-----------------------------------------------------------
-Bước 9: Extract Output
-----------------------------------------------------------
-
-ExtractOutputText(raw)
-
-Mục đích:
-
-Lấy phần text thực sự từ response.
-
-Do mỗi provider có format khác nhau.
-
-----------------------------------------------------------
-Bước 10: Normalize JSON
-----------------------------------------------------------
-
-NormalizeJsonPayload(...)
-
-Loại bỏ markdown fence.
-
-Ví dụ:
-
-```json
-{
-}
+Loi ich:
+- mot noi xu ly su khac biet giua provider
+- giam nguy co 2 implementation lech nhau khi request/response format thay doi

@@ -1,147 +1,144 @@
 ==========================================================
-OpenAiResumeParserProvider - Detailed Analysis
+OpenAiResumeParserProvider - Phan Tich Chi Tiet
 ==========================================================
 
-1. OVERVIEW
+1. TONG QUAN
 ----------------------------------------------------------
 
-OpenAiResumeParserProvider is the infrastructure implementation of `IResumeParsingAiProvider`.
+OpenAiResumeParserProvider la implementation ha tang cua `IResumeParsingAiProvider`.
 
-Its purpose is to convert raw extracted resume text into structured candidate data
-using an OpenAI-compatible provider.
+Muc dich cua no la bien doi resume text da trich xuat thanh du lieu ung vien co cau truc
+thong qua mot AI provider tuong thich OpenAI.
 
-The provider is designed as optional enhancement:
-- If AI is disabled, misconfigured, times out, or returns invalid output,
-  the application can fall back to rule-based parsing in `CandidateService`
+Provider nay duoc thiet ke nhu mot lop tang cuong tuy chon:
+- Neu AI bi tat, cau hinh sai, timeout, hoac tra ve output khong hop le,
+  ung dung co the fallback ve rule-based parsing trong `CandidateService`
 
 ----------------------------------------------------------
-2. WHAT IT PRODUCES
+2. NO TAO RA DIEU GI
 ----------------------------------------------------------
 
-The service asks AI to return structured JSON containing:
-- profile basics
-- normalized skills
-- experience entries
+Service yeu cau AI tra ve JSON co cau truc gom:
+- thong tin co ban cua profile
+- skills da chuan hoa
+- kinh nghiem lam viec
 - projects
 - educations
 - certifications
 - languages
 - parser notes
 
-The target DTO is `CandidateResumeAiParseDto`.
+DTO dich la `CandidateResumeAiParseDto`.
 
 ----------------------------------------------------------
-3. DEPENDENCIES
+3. PHU THUOC
 ----------------------------------------------------------
 
 `HttpClient`
-- Sends requests to the configured AI provider
+- gui request toi AI provider da cau hinh
 
 `OpenAiSettings`
-- Controls enable flag, API key, base URL, model, and resume truncation length
+- dieu khien co bat AI hay khong, API key, base URL, model va gioi han ky tu parse CV
 
 `ILogger<OpenAiResumeParserProvider>`
-- Logs provider failures and timeouts
+- ghi log loi provider va timeout
 
 ----------------------------------------------------------
-4. MAIN METHOD
+4. PHUONG THUC CHINH
 ----------------------------------------------------------
 
 `TryParseResumeAsync(string extractedText, IReadOnlyList<Skill> availableSkills, CancellationToken cancellationToken)`
 
-Main flow:
+Luong chinh:
+1. validate kha nang dung AI
+- flag bi tat
+- thieu API key
+- extracted text rong
 
-1. Validate AI availability
-   - disabled flag
-   - missing API key
-   - empty extracted text
+2. xay dung danh sach skill goc co gioi han
+- bo muc rong
+- loai trung khong phan biet hoa thuong
+- sap xep alphabet
+- gioi han toi da 250 muc
 
-2. Build bounded master skill list
-   - remove blanks
-   - deduplicate case-insensitively
-   - sort alphabetically
-   - cap at 250 items
+3. build prompt
+- dinh nghia schema JSON dich
+- nhac AI khong duoc hallucinate
+- uu tien ten skill nam trong master skill list
 
-3. Build prompt
-   - defines target JSON schema
-   - tells AI not to hallucinate
-   - asks AI to prefer names from the master skill list
+4. build request body theo tung provider
 
-4. Build provider-specific request body
+5. gui HTTP request
 
-5. Send HTTP request
+6. trich xuat output text that su tu nhieu dang response khac nhau
 
-6. Extract actual output text from variable provider response shapes
+7. chuan hoa JSON neu bi bao trong markdown fence
 
-7. Normalize fenced JSON if needed
+8. deserialize thanh `CandidateResumeAiParseDto`
 
-8. Deserialize into `CandidateResumeAiParseDto`
-
-9. Return `ResumeParsingAiResult`
-   - `UsedAi = true` when successful
-   - `UsedAi = false` plus `FailureReason` on fallback cases
+9. tra ve `ResumeParsingAiResult`
+- `UsedAi = true` neu thanh cong
+- `UsedAi = false` kem `FailureReason` khi phai fallback
 
 ----------------------------------------------------------
-5. PROVIDER COMPATIBILITY STRATEGY
+5. CHIEN LUOC TUONG THICH PROVIDER
 ----------------------------------------------------------
 
-The service supports more than one response format.
+Service nay ho tro hon mot kieu response.
 
-Helpers involved:
+Nhung helper lien quan:
 - `BuildEndpoint()`
 - `UsesChatCompletions()`
 - `BuildRequestBody(...)`
 - `ExtractOutputText(...)`
 
-This allows the same service to work with:
+Nho do, cung mot service co the chay voi:
 - OpenAI Responses API
-- OpenAI-compatible Chat Completions endpoints
-- Gemini/OpenAI-compatible endpoints
+- OpenAI-compatible Chat Completions endpoint
+- Gemini/OpenAI-compatible endpoint
 
 ----------------------------------------------------------
-6. PROMPTING STRATEGY
+6. CHIEN LUOC PROMPTING
 ----------------------------------------------------------
 
-`BuildPrompt(...)` does several important things:
+`BuildPrompt(...)` thuc hien nhieu viec quan trong:
+- cat ngan CV qua lon theo `MaxResumeParseChars` hoac fallback 12000 ky tu
+- cung cap schema JSON nghiem ngat
+- dua vao ten skill chuan
+- yeu cau suy luan kinh nghiem mot cach than trong
+- uu tien `null` / mang rong thay vi tu invent du lieu
 
-- truncates very large resumes to `MaxResumeParseChars` or 12000 chars fallback
-- provides strict JSON schema
-- supplies canonical skill names
-- asks for conservative experience inference
-- explicitly prefers `null` / empty arrays instead of invented data
-
-This is a good design because downstream mapping becomes more deterministic.
+Thiet ke nay tot vi giup mapping xuong downstream on dinh hon.
 
 ----------------------------------------------------------
-7. FAILURE HANDLING
+7. XU LY THAT BAI
 ----------------------------------------------------------
 
-Failure is not treated as fatal.
+Loi AI khong duoc xem la loi nghiep vu gay dung luong.
 
-Handled cases:
-- AI disabled
-- missing API key
-- empty extracted text
-- non-success HTTP status
-- empty output text
-- invalid JSON payload
+Nhung truong hop duoc xu ly:
+- AI bi tat
+- thieu API key
+- extracted text rong
+- HTTP status khong thanh cong
+- output text rong
+- JSON payload khong hop le
 - timeout
-- unexpected exception
+- exception khac
 
-In all these cases the service returns a structured failure result rather than throwing.
+Trong tat ca truong hop tren, service tra ve ket qua that bai co cau truc thay vi nem exception.
 
-That choice is important because `CandidateService.ParseResumeAsync` can continue
-with fallback parsing and still provide a usable preview to the user.
+Lua chon nay quan trong vi `CandidateService.ParseResumeAsync` van co the tiep tuc
+bang fallback parsing va van tra duoc preview dung duoc cho user.
 
 ----------------------------------------------------------
-8. SHARED LOGIC WITH OpenAiCopilotProvider
+8. LOGIC CHUNG VOI OpenAiCopilotProvider
 ----------------------------------------------------------
 
-This service duplicates several provider integration helpers:
-- request body construction
-- endpoint selection
-- output extraction
-- markdown-fence normalization
+Service nay lap lai nhieu helper tich hop provider:
+- tao request body
+- chon endpoint
+- trich xuat output
+- chuan hoa JSON co markdown fence
 
-These are strong candidates for a shared OpenAI-compatible base/helper component.
-
+Day la ung vien rat manh cho mot helper/base component OpenAI-compatible dung chung.

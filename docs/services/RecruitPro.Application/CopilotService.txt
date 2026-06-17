@@ -1,25 +1,25 @@
 ==========================================================
-CopilotService - Detailed Analysis
+CopilotService - Phan Tich Chi Tiet
 ==========================================================
 
-1. OVERVIEW
+1. TONG QUAN
 ----------------------------------------------------------
 
-CopilotService is the application-layer orchestration service for the recruitment copilot feature.
+CopilotService la service dieu phoi o tang application cho tinh nang recruitment copilot.
 
-It manages:
-- copilot conversations
-- candidate pool loading
-- deterministic ranking
-- optional AI ranking refinement
-- recruiter chat-style Q&A
-- saved screening rules
-- ranking-session history
+No quan ly:
+- hoi thoai copilot
+- nap candidate pool
+- xep hang xac dinh
+- tinh chinh xep hang bang AI khi can
+- hoi dap kieu chat cho recruiter
+- tap rule screening da luu
+- lich su ranking session
 
-This service is one of the most feature-dense services in the solution.
+Day la mot trong nhung service giau tinh nang nhat cua he thong.
 
 ----------------------------------------------------------
-2. DEPENDENCIES
+2. PHU THUOC
 ----------------------------------------------------------
 
 - `ICopilotRepository`
@@ -30,91 +30,90 @@ This service is one of the most feature-dense services in the solution.
 - `OpenAiSettings`
 
 ----------------------------------------------------------
-3. HIGH-LEVEL MODES
+3. CAC CHE DO HOAT DONG CAP CAO
 ----------------------------------------------------------
 
-The service operates in two modes:
+Service van hanh theo 2 che do:
 
 1. Chat mode
-   - natural-language recruiter question
-   - no ranking required
-   - AI returns a concise response
+- recruiter dat cau hoi bang ngon ngu tu nhien
+- khong can ranking
+- AI tra ve cau tra loi ngan gon
 
 2. Ranking mode
-   - rules/prompt require actual candidate ranking
-   - service builds deterministic results first
-   - AI may refine/explain those results
+- rule/prompt yeu cau xep hang thuc su
+- service tinh ket qua xac dinh truoc
+- AI co the tinh chinh hoac giai thich them
 
 ----------------------------------------------------------
-4. PUBLIC METHODS
+4. CAC PHUONG THUC CONG KHAI
 ----------------------------------------------------------
 
 `GetJobsAsync()`
-- returns selectable job options for copilot entry
+- tra ve danh sach job co the chon khi vao copilot
 
 `CreateConversationAsync(...)`
-- reuses latest conversation for the same job/user when available
-- otherwise creates a new active conversation
+- tai su dung hoi thoai moi nhat cung job/user neu co
+- neu khong thi tao hoi thoai active moi
 
 `GetConversationAsync(...)`
-- ensures ownership before returning messages and metadata
+- dam bao dung owner truoc khi tra ve message va metadata
 
 `GetCandidatePoolAsync(Guid jobId)`
-- loads the candidate pool snapshot for one job
+- tai snapshot candidate pool cua mot job
 
 `CreateRankingAsync(...)`
-- the core copilot workflow
-- decides whether to run chat mode or ranking mode
+- workflow copilot cot loi
+- quyet dinh chay chat mode hay ranking mode
 
 `GetRankingSessionAsync(...)`
-- returns historical ranking session detail
+- tra ve chi tiet ranking session trong lich su
 
 `GetSavedRulesAsync(...)`
-- returns user-owned saved rules for a job
+- tra ve saved rule cua user cho mot job
 
 `CreateSavedRuleAsync(...)`
-- builds normalized rules from criteria and persists them
+- chuan hoa rules tu criteria va persist
 
 `UpdateSavedRuleStatusAsync(...)`
-- toggles saved rule active state
+- bat/tat trang thai active cua saved rule
 
 `DeleteSavedRuleAsync(...)`
-- soft-deletes a saved rule
+- soft-delete mot saved rule
 
 ----------------------------------------------------------
-5. CREATE RANKING FLOW
+5. LUONG TAO XEP HANG
 ----------------------------------------------------------
 
-`CreateRankingAsync(...)` contains the most important orchestration logic.
+`CreateRankingAsync(...)` la noi chua logic dieu phoi quan trong nhat.
 
-Major stages:
+Nhung giai doan chinh:
+1. validate quyen so huu hoi thoai va tinh nhat quan job
+2. tai candidate pool
+3. lam giau pool bang resume text neu co the
+4. quyet dinh di theo nhanh chat hay ranking
 
-1. Validate conversation ownership and job consistency
-2. Load candidate pool
-3. Enrich pool with resume text when possible
-4. Decide between chat vs ranking path
+Nhanh chat:
+- goi `TryCreateChatReplyAsync`
+- persist message cua user va assistant
+- cap nhat timestamp hoi thoai
 
-Chat path:
-- call `TryCreateChatReplyAsync`
-- persist user and assistant messages
-- update conversation timestamp
-
-Ranking path:
-- load active saved rules
-- normalize rules from prompt + criteria + saved rules
-- optionally merge with latest ranking session context
-- compute deterministic ranking
-- ask AI provider to refine/explain results
-- normalize final results
-- persist conversation messages
+Nhanh ranking:
+- tai cac saved rule dang active
+- chuan hoa rules tu prompt + criteria + saved rules
+- tuy chon gop them ngu canh tu ranking session gan nhat
+- tinh xep hang xac dinh
+- goi AI de tinh chinh/giai thich ket qua
+- chuan hoa ket qua cuoi
+- persist message hoi thoai
 - persist ranking session
-- update conversation latest ranking pointer
+- cap nhat con tro ranking moi nhat cua hoi thoai
 
 ----------------------------------------------------------
-6. DETERMINISTIC RANKING LAYER
+6. TANG XEP HANG XAC DINH
 ----------------------------------------------------------
 
-Important helper groups:
+Nhom helper quan trong:
 - `BuildRules(...)`
 - `RankCandidates(...)`
 - `GetPenaltyScore(...)`
@@ -124,31 +123,31 @@ Important helper groups:
 - `MatchesAutoReject(...)`
 - `IsNegativeHit(...)`
 
-These helpers mean the system does not fully depend on AI to produce a usable ranking.
-AI is an enhancement layer, not the sole ranking engine.
+Nhung helper nay cho thay he thong khong phu thuoc hoan toan vao AI de tao ranking dung duoc.
+AI la lop bo tro, khong phai dong co duy nhat.
 
 ----------------------------------------------------------
-7. RESUME ENRICHMENT
+7. LAM GIAU NOI DUNG CV
 ----------------------------------------------------------
 
 `EnrichPoolWithResumeTextAsync(...)`
 
-Purpose:
-- improve ranking and chat quality by appending extracted PDF text to candidate CV summaries
+Muc dich:
+- tang chat luong ranking va chat bang cach bo sung text trich xuat tu PDF vao tom tat CV
 
-Behavior:
-- download each resume when URL exists
-- extract text with `IResumeTextExtractor`
-- clip text to configured max chars
-- tolerate all extraction failures silently
+Hanh vi:
+- tai tung CV khi co URL
+- trich xuat text bang `IResumeTextExtractor`
+- cat ngan theo gioi han ky tu cau hinh
+- bo qua im lang moi loi trich xuat
 
-This is intentionally best-effort so copilot still works even when resume download/parsing fails.
+No duoc thiet ke theo kieu best-effort de copilot van chay du resume parsing that bai.
 
 ----------------------------------------------------------
-8. MAPPING / SERIALIZATION HELPERS
+8. HELPER MAPPING / SERIALIZATION
 ----------------------------------------------------------
 
-The service contains many persistence mapping helpers:
+Service nay chua nhieu helper mapping luu tru:
 - `MapConversation(...)`
 - `MapConversationDetail(...)`
 - `MapRankingSession(...)`
@@ -159,14 +158,13 @@ The service contains many persistence mapping helpers:
 - `DeserializeSummary(...)`
 - `DeserializeIsAiGenerated(...)`
 
-These keep the repository layer simpler by storing JSON while the service reconstructs typed DTOs.
+Nhung helper nay giu repository don gian hon bang cach luu JSON roi tai tao DTO typed o tang service.
 
 ----------------------------------------------------------
-9. COMMONIZATION NOTES
+9. GHI CHU VE KHA NANG DUNG CHUNG
 ----------------------------------------------------------
 
-Potential extractions:
-- JSON serialize/deserialize utility for copilot metadata fields
-- shared OpenAI-compatible provider helper layer
-- reusable ranking-rule normalization primitives
-
+Nhung huong tach co the xem xet:
+- utility serialize/deserialize JSON cho metadata copilot
+- helper OpenAI-compatible dung chung
+- primitive chuan hoa ranking-rule co the tai su dung

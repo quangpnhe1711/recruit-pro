@@ -54,7 +54,7 @@ public class InterviewService : IInterviewService
         return ApiResponse<InterviewListResponseDto>.Ok(new InterviewListResponseDto
         {
             Items = interviews.Select(MapInterviewListItem).ToList(),
-            Meta = BuildMeta(page, pageSize, total)
+            Meta = PaginationMetaBuilder.Build(page, pageSize, total)
         });
     }
 
@@ -75,7 +75,7 @@ public class InterviewService : IInterviewService
         return ApiResponse<InterviewListResponseDto>.Ok(new InterviewListResponseDto
         {
             Items = items,
-            Meta = BuildMeta(1, items.Count == 0 ? 10 : items.Count, items.Count)
+            Meta = PaginationMetaBuilder.Build(1, items.Count == 0 ? 10 : items.Count, items.Count)
         });
     }
 
@@ -315,17 +315,6 @@ public class InterviewService : IInterviewService
     /// <param name="pageSize">The <paramref name="pageSize"/> value.</param>
     /// <param name="totalItems">The <paramref name="totalItems"/> value.</param>
     /// <returns>The operation result.</returns>
-    private static ApiEnvelopeMeta BuildMeta(int page, int pageSize, int totalItems)
-    {
-        return new ApiEnvelopeMeta
-        {
-            Page = page,
-            PageSize = pageSize,
-            TotalItems = totalItems,
-            TotalPages = (int)Math.Ceiling(totalItems / (double)pageSize)
-        };
-    }
-
     /// <summary>
     /// Parses interview status.
     /// </summary>
