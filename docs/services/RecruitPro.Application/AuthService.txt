@@ -1,0 +1,110 @@
+==========================================================
+AuthService - Detailed Analysis
+==========================================================
+
+1. OVERVIEW
+----------------------------------------------------------
+
+AuthService handles login and password-reset behavior for both candidate
+and internal users.
+
+Core responsibilities:
+- validate email/password combinations
+- enforce portal-specific role rules
+- generate access and refresh tokens
+- issue temporary passwords for forgot-password flows
+
+It is intentionally thin on persistence complexity and delegates token creation
+to `JwtService`.
+
+----------------------------------------------------------
+2. DEPENDENCIES
+----------------------------------------------------------
+
+- `IUserRepository`
+- `IJwtService`
+- `IEmailService`
+- `IUnitOfWork`
+- `IMapper`
+
+Supporting constants:
+- candidate login URL
+- internal login URL
+
+----------------------------------------------------------
+3. PUBLIC ENTRY POINTS
+----------------------------------------------------------
+
+`LoginAsync(LoginRequest request)`
+- Generic login path using email/password from request
+
+`CandidateLoginAsync(string email, string password)`
+- Restricts login to users who have the `Candidate` role
+
+`InternalLoginAsync(string employeeIdOrEmail, string password)`
+- Restricts login to non-candidate roles
+
+`ForgotCandidatePasswordAsync(string email)`
+- Issues a temporary password when the account belongs to a candidate
+
+`ForgotInternalPasswordAsync(string employeeIdOrEmail)`
+- Issues a temporary password when the account belongs to an internal user
+
+----------------------------------------------------------
+4. CORE INTERNAL FLOW
+----------------------------------------------------------
+
+`LoginCoreAsync(...)`
+
+Main behavior:
+
+1. Load user by email
+2. Verify BCrypt password hash
+3. Load assigned roles
+4. Apply optional role filter
+5. Generate access token
+6. Generate refresh token
+7. Map user into `LoginResponseDto`
+8. Attach generated tokens through AutoMapper context items
+
+This method centralizes the authentication logic so the public login methods only define role boundaries.
+
+----------------------------------------------------------
+5. PASSWORD RESET FLOW
+----------------------------------------------------------
+
+`ResetPasswordAsync(...)`
+
+Important behavior:
+
+- blank identifiers return bad request
+- missing user still returns success-like generic response
+- wrong-role user also returns the same generic response
+
+This prevents account enumeration.
+
+If the account is valid:
+1. Generate temporary password
+2. Hash it with BCrypt
+3. Update `UpdatedAt`
+4. Persist changes
+5. Invoke email service with correct portal URL
+
+----------------------------------------------------------
+6. SECURITY NOTES
+----------------------------------------------------------
+
+- BCrypt is used for verification and reset hashing
+- User existence is intentionally hidden in forgot-password responses
+- Role scoping is done after password verification
+- Temporary password generation is simple but effective for bootstrap/reset workflows
+
+----------------------------------------------------------
+7. SHARED / REUSABLE PATTERNS
+----------------------------------------------------------
+
+Potential common helpers:
+- temporary password generation
+- generic user-role portal validation
+- standardized forgot-password response policy
+

@@ -1,0 +1,106 @@
+==========================================================
+DashboardService - Detailed Analysis
+==========================================================
+
+1. OVERVIEW
+----------------------------------------------------------
+
+DashboardService prepares dashboard payloads for three audiences:
+- Candidate
+- HR
+- Manager
+
+It is not a raw repository pass-through.
+The service enriches and reshapes data into card- and widget-friendly DTOs.
+
+----------------------------------------------------------
+2. DEPENDENCIES
+----------------------------------------------------------
+
+- `ICandidateProfileRepository`
+- `IApplicationRepository`
+- `IJobRepository`
+- `IInterviewRepository`
+- `INotificationRepository`
+
+----------------------------------------------------------
+3. CANDIDATE DASHBOARD
+----------------------------------------------------------
+
+`GetCandidateDashboardAsync(Guid userId)`
+
+Main behavior:
+- load candidate profile
+- load all candidate applications
+- fetch recommended approved jobs based on current position and skills
+- compute stats
+- select the nearest future interview
+
+Key output areas:
+- greeting name
+- application/interview/notification stats
+- next interview card
+- recommended jobs list
+
+----------------------------------------------------------
+4. HR DASHBOARD
+----------------------------------------------------------
+
+`GetHrDashboardAsync()`
+
+Main behavior:
+- load next interview
+- load recent applications
+- load pending approval jobs
+- compute simple operational stats
+
+Notable detail:
+- some sections such as hiring velocity and diversity report are still mocked/static
+- this service already exposes the UI contract even where data is not fully dynamic yet
+
+----------------------------------------------------------
+5. MANAGER DASHBOARD
+----------------------------------------------------------
+
+`GetManagerDashboardAsync()`
+
+Main behavior:
+- load pending approval jobs
+- load manager review queue
+- load application status counts
+- load department review-cycle metrics
+- load departments
+
+Then computes:
+- pending approvals
+- active applications
+- average review cycle
+- acceptance rate
+- final-decision items
+- department hiring speed
+- recruitment funnel
+
+----------------------------------------------------------
+6. INTERNAL HELPERS
+----------------------------------------------------------
+
+`GetProfileEntityAsync(...)`
+- shared profile lookup with `NotFoundException` when candidate profile is missing
+
+`BuildPendingApprovalMeta(Job job)`
+- creates compact department + salary label used by cards
+
+`BuildManagerFunnel(...)`
+- converts application status counts into funnel rows
+
+----------------------------------------------------------
+7. COMMONIZATION NOTES
+----------------------------------------------------------
+
+The profile lookup pattern is duplicated in several services:
+- `DashboardService`
+- `ApplicationService`
+- `CandidateService`
+
+This is a good candidate for a shared candidate-profile access helper.
+

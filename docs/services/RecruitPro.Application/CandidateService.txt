@@ -1,0 +1,199 @@
+==========================================================
+CandidateService - Detailed Analysis
+==========================================================
+
+1. OVERVIEW
+----------------------------------------------------------
+
+CandidateService is the broadest candidate-domain orchestration service in the backend.
+
+It covers:
+- candidate self-registration
+- HR candidate listing/detail
+- import template generation
+- bulk import with invitation emails
+- candidate profile read/update
+- skills and experience management
+- resume parsing and upload
+- profile completeness evaluation
+
+This class contains both business operations and a large amount of parsing / mapping logic.
+
+----------------------------------------------------------
+2. DEPENDENCIES
+----------------------------------------------------------
+
+- `ICandidateProfileRepository`
+- `IUserRepository`
+- `ISkillRepository`
+- `IUnitOfWork`
+- `IFileStorageService`
+- `IEmailService`
+- `IResumeTextExtractor`
+- `IResumeParsingAiProvider`
+- `IMapper`
+- `ILogger<CandidateService>`
+
+It also owns several regex helpers for fallback resume parsing.
+
+----------------------------------------------------------
+3. REGISTRATION / IMPORT FLOWS
+----------------------------------------------------------
+
+`RegisterAsync(...)`
+
+Purpose:
+- create a user
+- assign candidate role
+- optionally create initial profile
+- optionally upload initial resume
+
+Important behavior:
+- explicit transaction
+- rollback on failure
+- delete uploaded file if DB transaction fails
+
+`GenerateImportTemplateAsync()`
+- builds an XLSX template for bulk import
+
+`PreviewImportAsync(...)`
+- parses upload and validates rows without writing data
+
+`ImportCandidatesAsync(...)`
+- validates rows
+- creates users and profiles for valid rows
+- assigns candidate role
+- commits once
+- sends invitation emails after DB success
+
+This split between DB commit and email delivery is good because email failure does not corrupt imported data.
+
+----------------------------------------------------------
+4. PROFILE MANAGEMENT
+----------------------------------------------------------
+
+`GetProfileAsync(Guid userId)`
+- returns full candidate profile DTO
+
+`UpdateProfileAsync(...)`
+- applies profile updates
+- retries once on EF concurrency conflict
+
+`UpdateSkillsAsync(...)`
+- replaces candidate skill set transactionally
+
+`CreateExperienceAsync(...)`
+- appends an experience document entry
+
+`UpdateExperienceAsync(...)`
+- updates one embedded experience item by id
+
+`DeleteExperienceAsync(...)`
+- removes one embedded experience item by id
+
+----------------------------------------------------------
+5. RESUME FLOWS
+----------------------------------------------------------
+
+`ParseResumeAsync(...)`
+
+Main behavior:
+- validate input
+- extract raw text based on file type
+- attempt AI parsing first
+- fallback to deterministic parsing if AI is unavailable or fails
+- return preview DTO for user confirmation
+
+`UploadResumeAsync(...)`
+
+Main behavior:
+- upload file to storage
+- mark previous resumes as not current
+- create new resume version
+- update profile/user timestamps
+- rollback DB changes and delete uploaded object on failure
+
+`GetResumeDownloadUrlAsync(...)`
+- resolve resume owner profile
+- generate presigned URL
+
+----------------------------------------------------------
+6. IMPORTANT INTERNAL SUBSYSTEMS
+----------------------------------------------------------
+
+Profile persistence helpers:
+- `GetProfileEntityAsync(...)`
+- `GetProfileEntityForUpdateAsync(...)`
+- `SaveProfileAsync(...)`
+- `ApplyProfileUpdateAsync(...)`
+- `ReplaceCandidateProjectsAsync(...)`
+- `ReplaceCandidateSkillsAsync(...)`
+
+Document serialization helpers:
+- `LoadExperiences(...)`
+- `SerializeDocuments<TDocument>(...)`
+- `LoadDocuments<TDocument>(...)`
+- `LoadStringList(...)`
+
+Resume extraction helpers:
+- `ExtractResumeTextAsync(...)`
+- `ReadPlainTextAsync(...)`
+- `ExtractDocxTextAsync(...)`
+- `NormalizeResumeText(...)`
+
+Fallback resume parsing helpers:
+- `ExtractResumeSections(...)`
+- `DetectSectionKey(...)`
+- `ExtractEmail(...)`
+- `ExtractPhone(...)`
+- `ExtractUrl(...)`
+- `ExtractCandidateName(...)`
+- `ExtractHeadline(...)`
+- `ExtractLocation(...)`
+- `ExtractSummary(...)`
+- `MatchSkills(...)`
+- `ExtractYearsOfExperienceForSkill(...)`
+- `SplitIntoChunks(...)`
+- `ContainsDateRange(...)`
+- `ParsePeriodFromChunk(...)`
+- `ExtractMonthNumber(...)`
+- `ParseExperienceEntries(...)`
+- `ParseProjects(...)`
+- `ParseEducations(...)`
+- `ParseCertifications(...)`
+- `ParseLanguages(...)`
+
+Import helpers:
+- `ParseAndValidateImportRowsAsync(...)`
+- `ValidateRequestRowsAsync(...)`
+- `ApplyImportValidationAsync(...)`
+- `BuildPreviewResponse(...)`
+- `IsValidEmail(...)`
+- `BuildImportedBio(...)`
+- `ResolveCandidateSource(...)`
+
+----------------------------------------------------------
+7. DESIGN OBSERVATIONS
+----------------------------------------------------------
+
+- The service combines CRUD, import, resume extraction, AI orchestration, fallback parsing, and DTO mapping
+- It is highly capable but also very large
+- Many internal helpers are pure and would be easy to extract
+
+Possible future splits:
+- CandidateProfileService
+- CandidateImportService
+- ResumeParsingService
+- CandidateResumeService
+
+----------------------------------------------------------
+8. STRONG COMMONIZATION CANDIDATES
+----------------------------------------------------------
+
+- `GenerateTemporaryPassword(...)`
+- `NormalizeOptionalText(...)`
+- `BuildMeta(...)`
+- file-name extraction helper
+- document JSON load/save helpers
+- generic resume text normalization/parsing utilities
+

@@ -1,0 +1,100 @@
+==========================================================
+OfferService - Detailed Analysis
+==========================================================
+
+1. OVERVIEW
+----------------------------------------------------------
+
+OfferService manages offer preparation and sending for a job application.
+
+It supports:
+- loading the offer editor screen
+- saving draft offers
+- sending offers
+- assembling master data for templates, benefits, currencies, and managers
+
+----------------------------------------------------------
+2. DEPENDENCIES
+----------------------------------------------------------
+
+- `IApplicationRepository`
+- `IOfferRepository`
+- `IUserRepository`
+- `IUnitOfWork`
+
+Supporting constants:
+- reporting manager roles = `HR`, `Manager`
+
+----------------------------------------------------------
+3. PUBLIC METHODS
+----------------------------------------------------------
+
+`GetOfferEditorAsync(string applicationId)`
+- validates and loads application
+- loads existing offer if present
+- builds the full editor DTO
+
+`SaveDraftAsync(...)`
+- delegates to shared upsert logic with `OfferStatus.Draft`
+
+`SendOfferAsync(...)`
+- delegates to shared upsert logic with `OfferStatus.Sent`
+
+----------------------------------------------------------
+4. CORE WRITE FLOW
+----------------------------------------------------------
+
+`UpsertOfferAsync(...)`
+
+This is the central method of the service.
+
+Key validations:
+- application must exist
+- application must be in an offer-preparable status
+- currency must exist
+- optional template id must parse
+- optional reporting manager id must parse
+- all selected benefit ids must parse and exist
+
+Write behavior:
+- create new `ApplicationOffer` when missing
+- normalize optional text fields
+- keep application status aligned to `ApplicationStatus.Offer`
+- synchronize benefit links
+- save inside explicit transaction
+- reload fresh data for response
+
+----------------------------------------------------------
+5. IMPORTANT HELPERS
+----------------------------------------------------------
+
+`GetApplicationAsync(...)`
+- shared application lookup with tracked/non-tracked variants
+
+`CurrencyExistsAsync(...)`
+- validates the requested currency code against repository master data
+
+`SynchronizeBenefits(...)`
+- performs add/remove sync on many-to-many offer benefits
+
+`BuildEditorDtoAsync(...)`
+- assembles the full editor payload
+- includes application summary, editable offer data, and master data options
+
+`NormalizeOptionalText(...)`
+- trims nullable text fields and converts whitespace-only values to `null`
+
+----------------------------------------------------------
+6. DESIGN NOTES
+----------------------------------------------------------
+
+- `actorId` currently exists in method signatures but is not yet used
+- `BuildEditorDtoAsync` intentionally supplies sensible defaults when no offer exists yet
+- The service keeps UI assembly close to domain write logic, which is convenient now but may grow large later
+
+----------------------------------------------------------
+7. COMMONIZATION NOTES
+----------------------------------------------------------
+
+`NormalizeOptionalText(...)` appears in multiple services and is a good candidate for a shared text-normalization helper.
+

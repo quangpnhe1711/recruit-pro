@@ -1,0 +1,102 @@
+==========================================================
+InterviewService - Detailed Analysis
+==========================================================
+
+1. OVERVIEW
+----------------------------------------------------------
+
+InterviewService manages interview listing, scheduling, status updates, and deletion.
+
+It also provides schedule-building data used by the UI when arranging interviews.
+
+----------------------------------------------------------
+2. DEPENDENCIES
+----------------------------------------------------------
+
+- `IInterviewRepository`
+- `IApplicationRepository`
+- `IUserRepository`
+- `IUnitOfWork`
+
+It also relies on:
+- `DbDateTime`
+- `ApplicationStatusWorkflow`
+
+----------------------------------------------------------
+3. MAIN CAPABILITIES
+----------------------------------------------------------
+
+`GetInterviewsAsync(...)`
+- paged HR/admin listing with optional keyword, status, and date filters
+
+`GetCandidateInterviewsAsync(Guid userId)`
+- aggregates interviews from the candidate's own applications
+
+`GetScheduleDataAsync(string? applicationId)`
+- returns candidate summary, interviewer choices, and occupied slot data
+
+`CreateInterviewAsync(CreateInterviewRequest request)`
+- validates application/candidate/job/interviewer consistency
+- ensures the application is in a schedulable stage
+- creates the interview
+- transitions application status to `Interview` when allowed
+
+`UpdateInterviewStatusAsync(...)`
+- validates interview existence
+- parses status string
+- persists status change
+
+`DeleteInterviewAsync(...)`
+- removes a tracked interview record
+
+----------------------------------------------------------
+4. SCHEDULING LOGIC
+----------------------------------------------------------
+
+`GetScheduleDataAsync(...)` and `BuildBusySlotsByDateAsync()` are the heart of the scheduling experience.
+
+Key design choice:
+- interviewer assignments are not yet persisted in detail
+- therefore the service exposes a global occupied-slot map as a conservative heuristic
+
+This is documented inline in the service code and is important for understanding current scheduling limitations.
+
+----------------------------------------------------------
+5. BUSINESS RULES
+----------------------------------------------------------
+
+`CreateInterviewAsync(...)` enforces:
+- application id must be valid
+- application must exist
+- application must be in `ManagerReview` or already `Interview`
+- optional candidate id must match application owner
+- optional job id must match application job
+- optional interviewer id must exist
+
+----------------------------------------------------------
+6. HELPERS
+----------------------------------------------------------
+
+`BuildBusySlotsByDateAsync()`
+- loads scheduled interviews for the next two months
+- groups them by date
+- converts interview times to minute offsets
+
+`CloneBusySlots(...)`
+- deep-copies the dictionary so each interviewer DTO gets isolated lists
+
+`BuildMeta(...)`
+- standard pagination helper
+
+`ParseInterviewStatus(...)`
+- normalizes multiple labels such as `canceled` / `cancelled`
+
+`MapInterviewListItem(...)`
+- transforms entities into UI list rows
+
+----------------------------------------------------------
+7. REUSABLE PATTERNS
+----------------------------------------------------------
+
+`BuildMeta(...)` is repeated across multiple application services and should be extracted to a shared pagination helper.
+

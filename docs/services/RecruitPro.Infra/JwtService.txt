@@ -1,0 +1,107 @@
+==========================================================
+JwtService - Detailed Analysis
+==========================================================
+
+1. OVERVIEW
+----------------------------------------------------------
+
+JwtService is the infrastructure implementation of `IJwtService`.
+
+Its responsibility is very focused:
+
+- Build access tokens and refresh tokens for authenticated users
+- Embed identity and role claims into the token
+- Use the configured issuer, audience, signing key, and expiry settings
+
+This service does not validate credentials.
+Authentication is handled earlier by `AuthService`.
+
+----------------------------------------------------------
+2. DEPENDENCIES
+----------------------------------------------------------
+
+`JwtSettings`
+
+Used fields:
+- `Key`
+- `Issuer`
+- `Audience`
+- `ExpiryMinutes`
+- `RefreshTokenExpiryMinutes`
+
+The service depends completely on configuration correctness.
+
+----------------------------------------------------------
+3. MAIN METHOD
+----------------------------------------------------------
+
+`GenerateToken(User user, string type)`
+
+Purpose:
+- Produce a signed JWT string for the supplied user
+
+Main flow:
+
+1. Create base claims
+   - `sub`
+   - `nameidentifier`
+   - `email`
+   - `jti`
+
+2. Append role claims
+   - Every role in `user.UserRoles` becomes a `ClaimTypes.Role` claim
+
+3. Build signing key
+   - Uses symmetric HMAC SHA256 signing
+
+4. Select expiry by token type
+   - `"Access"` uses `ExpiryMinutes`
+   - Any other value falls back to `RefreshTokenExpiryMinutes`
+
+5. Construct `JwtSecurityToken`
+
+6. Serialize the token to string with `JwtSecurityTokenHandler`
+
+----------------------------------------------------------
+4. CLAIM DESIGN
+----------------------------------------------------------
+
+Identity claims included:
+- User id in both `sub` and `nameidentifier`
+- Email for downstream identity lookup
+- Random `jti` for uniqueness
+
+Authorization claims included:
+- All roles assigned to the user
+
+This means downstream authorization can rely directly on JWT role claims
+without fetching roles again from the database for normal request handling.
+
+----------------------------------------------------------
+5. IMPORTANT NOTES
+----------------------------------------------------------
+
+- The service assumes `user.UserRoles` and `Role.Name` are already loaded
+- The token type is string-based rather than enum-based, so callers must be consistent
+- Expiry uses `DateTime.Now`, not `DbDateTime.Now`
+- There is no refresh-token persistence here; this service only generates signed tokens
+
+----------------------------------------------------------
+6. INTERACTIONS
+----------------------------------------------------------
+
+Primary caller:
+- `AuthService`
+
+Typical usage:
+- `LoginCoreAsync` generates both access and refresh tokens
+- AutoMapper then places them into `LoginResponseDto`
+
+----------------------------------------------------------
+7. RISKS / IMPROVEMENT IDEAS
+----------------------------------------------------------
+
+- Replace raw `"Access"` string with a dedicated enum or constants class
+- Consider centralizing JWT claim creation if future services also mint tokens
+- Consider using `DateTime.UtcNow` if the system later standardizes token time handling in UTC
+

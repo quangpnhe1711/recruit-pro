@@ -1,0 +1,68 @@
+==========================================================
+PdfResumeTextExtractor - Detailed Analysis
+==========================================================
+
+1. OVERVIEW
+----------------------------------------------------------
+
+PdfResumeTextExtractor is the infrastructure implementation of `IResumeTextExtractor`.
+
+Its job is simple:
+- accept a PDF stream
+- read all pages
+- concatenate extracted text
+- return plain text for downstream parsing or AI enrichment
+
+----------------------------------------------------------
+2. DEPENDENCIES
+----------------------------------------------------------
+
+External library:
+- `UglyToad.PdfPig`
+
+Internal dependencies:
+- none besides the input stream and cancellation token
+
+----------------------------------------------------------
+3. METHOD FLOW
+----------------------------------------------------------
+
+`ExtractTextAsync(Stream resumeStream, CancellationToken cancellationToken)`
+
+Step-by-step:
+
+1. Validate stream is not null
+2. Reset stream position when seeking is supported
+3. Open PDF document from stream
+4. Iterate all pages
+5. Check cancellation between pages
+6. Append page text to a `StringBuilder`
+7. Trim final output and return it
+
+----------------------------------------------------------
+4. BEHAVIORAL NOTES
+----------------------------------------------------------
+
+- The method is asynchronous only in signature shape; the actual PDF work is synchronous
+- Cancellation support is cooperative during page iteration
+- The method assumes the stream contains a valid PDF
+- Non-text PDFs may still return very poor output depending on document quality
+
+----------------------------------------------------------
+5. CALLERS
+----------------------------------------------------------
+
+Known usage:
+- `CandidateService.ExtractResumeTextAsync`
+- `CopilotService.EnrichPoolWithResumeTextAsync`
+
+In both flows, this extractor is a foundational primitive that converts storage files
+into searchable or AI-readable text.
+
+----------------------------------------------------------
+6. IMPROVEMENT IDEAS
+----------------------------------------------------------
+
+- Add OCR fallback for scanned PDFs if required later
+- Add file type sniffing if multiple extractors are introduced behind a unified dispatcher
+

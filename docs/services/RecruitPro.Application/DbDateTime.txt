@@ -1,0 +1,60 @@
+==========================================================
+DbDateTime - Detailed Analysis
+==========================================================
+
+1. OVERVIEW
+----------------------------------------------------------
+
+`DbDateTime` is a small common utility used throughout application services.
+
+Its purpose is to standardize date/time values written into the domain layer,
+especially when the codebase wants to avoid accidental `DateTimeKind` mismatches.
+
+----------------------------------------------------------
+2. EXPOSED MEMBERS
+----------------------------------------------------------
+
+`Now`
+- returns the current local date/time
+- explicitly marks it as `DateTimeKind.Unspecified`
+
+`Today`
+- returns the date part of `Now`
+
+`CurrentYear`
+- returns `Now.Year`
+
+----------------------------------------------------------
+3. WHY IT EXISTS
+----------------------------------------------------------
+
+The project frequently writes timestamps such as:
+- `CreatedAt`
+- `UpdatedAt`
+- `AppliedAt`
+- `SentAt`
+- `UploadDate`
+
+Using one shared utility reduces random direct calls to `DateTime.Now`
+inside business services and keeps persistence behavior more consistent.
+
+----------------------------------------------------------
+4. KNOWN USAGE
+----------------------------------------------------------
+
+This helper is used across many services including:
+- `AuthService`
+- `CandidateService`
+- `ApplicationService`
+- `DashboardService`
+- `InterviewService`
+- `OfferService`
+- `ManagerAnalyticsService`
+
+----------------------------------------------------------
+5. IMPROVEMENT IDEAS
+----------------------------------------------------------
+
+- If the system later moves to UTC everywhere, this file is the central place to change that policy
+- If testability becomes a concern, this utility could evolve into an injectable clock abstraction
+

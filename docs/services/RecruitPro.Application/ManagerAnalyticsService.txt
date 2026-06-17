@@ -1,0 +1,98 @@
+==========================================================
+ManagerAnalyticsService - Detailed Analysis
+==========================================================
+
+1. OVERVIEW
+----------------------------------------------------------
+
+ManagerAnalyticsService builds a manager-facing recruitment analytics dashboard.
+
+It aggregates data across:
+- applications
+- interviews
+- jobs
+- departments
+
+The output is a single `ManagerRecruitmentAnalyticsDto` composed of:
+- overview metrics
+- monthly trend series
+- funnel
+- pipeline distribution
+- department performance
+- department breakdown
+
+----------------------------------------------------------
+2. DATA SOURCES
+----------------------------------------------------------
+
+- `IApplicationRepository`
+- `IInterviewRepository`
+- `IJobRepository`
+
+This service is read-heavy and orchestration-oriented.
+It does not write data.
+
+----------------------------------------------------------
+3. MAIN FLOW
+----------------------------------------------------------
+
+`GetRecruitmentAnalyticsAsync()`
+
+Major steps:
+
+1. Define reporting window
+   - current month anchor
+   - 6-month span starting 5 months back
+
+2. Load raw metrics in parallel sequence
+   - status counts
+   - average review cycle
+   - active candidates
+   - pending interviews
+   - monthly applications
+   - monthly completed interviews
+   - department pipeline snapshot
+   - review cycles by department
+   - department open roles
+
+3. Compute higher-level KPIs
+   - offer acceptance rate
+   - delta metrics
+   - stage totals
+   - distribution totals
+
+4. Build view-model sections
+   - overview
+   - trend chart
+   - funnel
+   - distribution
+   - department tables
+
+----------------------------------------------------------
+4. IMPORTANT HELPERS
+----------------------------------------------------------
+
+`BuildFunnelItem(...)`
+- converts raw count into a funnel row with percent-from-applied
+
+`BuildDistributionItem(...)`
+- computes percentage-of-total for stage distribution cards
+
+`CalculatePercentDelta(...)`
+- handles edge cases where previous period is zero
+
+----------------------------------------------------------
+5. DESIGN NOTES
+----------------------------------------------------------
+
+- The service translates repository snapshots into UI-ready values
+- Several percentages are rounded with `MidpointRounding.AwayFromZero`
+- The logic prefers resilient defaults over throwing
+
+----------------------------------------------------------
+6. IMPROVEMENT IDEAS
+----------------------------------------------------------
+
+- Some generic percentage/delta calculations could move to a shared analytics utility
+- If dashboard latency grows, this service is a good candidate for caching
+

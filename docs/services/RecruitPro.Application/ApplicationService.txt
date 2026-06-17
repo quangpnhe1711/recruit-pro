@@ -1,0 +1,160 @@
+==========================================================
+ApplicationService - Detailed Analysis
+==========================================================
+
+1. OVERVIEW
+----------------------------------------------------------
+
+ApplicationService manages end-to-end application lifecycle behavior.
+
+It supports:
+- apply-screen preparation
+- application submission
+- candidate self-service actions
+- HR application listings
+- manager review queue/detail
+- application decision transitions
+- resume access tied to application context
+
+----------------------------------------------------------
+2. DEPENDENCIES
+----------------------------------------------------------
+
+- `IApplicationRepository`
+- `ICandidateProfileRepository`
+- `IJobRepository`
+- `IOfferRepository`
+- `IUnitOfWork`
+- `IFileStorageService`
+- `ILogger<ApplicationService>`
+
+It also relies heavily on:
+- `ApplicationStatusWorkflow`
+- `DbDateTime`
+
+----------------------------------------------------------
+3. CANDIDATE APPLY FLOW
+----------------------------------------------------------
+
+`GetApplyScreenAsync(Guid userId, string jobId)`
+
+Purpose:
+- assemble the pre-application screen
+
+Included data:
+- job summary
+- candidate profile summary
+- current resume info with presigned URL
+- eligibility result
+
+`ApplyAsync(Guid userId, string jobId, ApplyJobRequest request)`
+
+Write flow:
+1. load job
+2. load candidate profile
+3. detect existing application
+4. compute eligibility
+5. short-circuit if blocked
+6. create new application with status `Applied`
+7. save in transaction
+
+----------------------------------------------------------
+4. CANDIDATE APPLICATION MANAGEMENT
+----------------------------------------------------------
+
+`GetCandidateApplicationsAsync(...)`
+- loads all user applications
+- applies in-memory status/keyword filters
+- builds candidate-facing status, next step, and available actions
+
+`WithdrawApplicationAsync(...)`
+- checks workflow permission
+- changes status to `Rejected`
+
+`AcceptOfferAsync(...)`
+- validates offer-response eligibility
+- requires sent offer when current status is `Offer`
+- transitions application to `Hired`
+- updates offer status to `Accepted`
+
+`DeclineOfferAsync(...)`
+- validates sent offer presence
+- transitions application to `OfferDeclined`
+- updates offer status to `Declined`
+
+----------------------------------------------------------
+5. HR / MANAGER VIEWS
+----------------------------------------------------------
+
+`GetJobApplicationsAsync(...)`
+- paged applications for one job
+
+`GetRecentApplicationsAsync(...)`
+- top 5 latest applications for one job
+
+`GetHrApplicationsAsync(...)`
+- HR-wide paged list with department/status/job filters
+
+`GetManagerReviewQueueAsync(...)`
+- builds scoring-based manager review rows
+- calculates summary metrics such as recommended count and average score
+
+`GetApplicationReviewDetailAsync(...)`
+- full detail view for one application
+
+`UpdateApplicationDecisionAsync(...)`
+- validates target status
+- checks transition through workflow rules
+- applies reviewer id when supplied
+- persists inside transaction
+
+----------------------------------------------------------
+6. FILE / EMAIL HELPERS
+----------------------------------------------------------
+
+`GetApplicationCvAsync(...)`
+- finds the candidate's current resume through application context
+- returns presigned URL and file metadata
+
+`SendApplicationEmailAsync(...)`
+- currently prepares a normalized subject/body result rather than actually sending email
+- acts more like a preview/placeholder than a real messaging integration
+
+----------------------------------------------------------
+7. IMPORTANT INTERNAL HELPERS
+----------------------------------------------------------
+
+- `GetExistingApplicationAsync(...)`
+- `BuildApplyEligibility(...)`
+- `GetJobAsync(...)`
+- `GetProfileEntityAsync(...)`
+- `GetTrackedApplicationForCandidateAsync(...)`
+- `MapApplicationToDto(...)`
+- `MapApplicationToReviewDetailDto(...)`
+- `MapManagerReviewQueueItem(...)`
+- `BuildReviewScore(...)`
+- `BuildMeta(...)`
+- `BuildSalaryLabel(...)`
+- `ParseApplicationStatus(...)`
+- `ExtractFileName(...)`
+- `BuildReferenceCode(...)`
+- `GetCurrentResume(...)`
+- `BuildStageLabel(...)`
+- `MapCandidateApplicationStatus(...)`
+- `BuildCandidateNextStep(...)`
+- `BuildReviewNextStep(...)`
+- `BuildCandidateAvailableActions(...)`
+- `BuildInitials(...)`
+
+Together these helpers show that the service owns both workflow rules and substantial presentation mapping.
+
+----------------------------------------------------------
+8. COMMONIZATION NOTES
+----------------------------------------------------------
+
+Strong common candidates:
+- pagination metadata builder
+- salary label builder
+- candidate profile lookup helper
+- resume filename extraction
+

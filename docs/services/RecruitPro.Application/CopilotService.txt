@@ -1,0 +1,172 @@
+==========================================================
+CopilotService - Detailed Analysis
+==========================================================
+
+1. OVERVIEW
+----------------------------------------------------------
+
+CopilotService is the application-layer orchestration service for the recruitment copilot feature.
+
+It manages:
+- copilot conversations
+- candidate pool loading
+- deterministic ranking
+- optional AI ranking refinement
+- recruiter chat-style Q&A
+- saved screening rules
+- ranking-session history
+
+This service is one of the most feature-dense services in the solution.
+
+----------------------------------------------------------
+2. DEPENDENCIES
+----------------------------------------------------------
+
+- `ICopilotRepository`
+- `IFileStorageService`
+- `IResumeTextExtractor`
+- `IAiCopilotProvider`
+- `IUnitOfWork`
+- `OpenAiSettings`
+
+----------------------------------------------------------
+3. HIGH-LEVEL MODES
+----------------------------------------------------------
+
+The service operates in two modes:
+
+1. Chat mode
+   - natural-language recruiter question
+   - no ranking required
+   - AI returns a concise response
+
+2. Ranking mode
+   - rules/prompt require actual candidate ranking
+   - service builds deterministic results first
+   - AI may refine/explain those results
+
+----------------------------------------------------------
+4. PUBLIC METHODS
+----------------------------------------------------------
+
+`GetJobsAsync()`
+- returns selectable job options for copilot entry
+
+`CreateConversationAsync(...)`
+- reuses latest conversation for the same job/user when available
+- otherwise creates a new active conversation
+
+`GetConversationAsync(...)`
+- ensures ownership before returning messages and metadata
+
+`GetCandidatePoolAsync(Guid jobId)`
+- loads the candidate pool snapshot for one job
+
+`CreateRankingAsync(...)`
+- the core copilot workflow
+- decides whether to run chat mode or ranking mode
+
+`GetRankingSessionAsync(...)`
+- returns historical ranking session detail
+
+`GetSavedRulesAsync(...)`
+- returns user-owned saved rules for a job
+
+`CreateSavedRuleAsync(...)`
+- builds normalized rules from criteria and persists them
+
+`UpdateSavedRuleStatusAsync(...)`
+- toggles saved rule active state
+
+`DeleteSavedRuleAsync(...)`
+- soft-deletes a saved rule
+
+----------------------------------------------------------
+5. CREATE RANKING FLOW
+----------------------------------------------------------
+
+`CreateRankingAsync(...)` contains the most important orchestration logic.
+
+Major stages:
+
+1. Validate conversation ownership and job consistency
+2. Load candidate pool
+3. Enrich pool with resume text when possible
+4. Decide between chat vs ranking path
+
+Chat path:
+- call `TryCreateChatReplyAsync`
+- persist user and assistant messages
+- update conversation timestamp
+
+Ranking path:
+- load active saved rules
+- normalize rules from prompt + criteria + saved rules
+- optionally merge with latest ranking session context
+- compute deterministic ranking
+- ask AI provider to refine/explain results
+- normalize final results
+- persist conversation messages
+- persist ranking session
+- update conversation latest ranking pointer
+
+----------------------------------------------------------
+6. DETERMINISTIC RANKING LAYER
+----------------------------------------------------------
+
+Important helper groups:
+- `BuildRules(...)`
+- `RankCandidates(...)`
+- `GetPenaltyScore(...)`
+- `ShouldRunRanking(...)`
+- `NormalizeRankingResults(...)`
+- `MergeRules(...)`
+- `MatchesAutoReject(...)`
+- `IsNegativeHit(...)`
+
+These helpers mean the system does not fully depend on AI to produce a usable ranking.
+AI is an enhancement layer, not the sole ranking engine.
+
+----------------------------------------------------------
+7. RESUME ENRICHMENT
+----------------------------------------------------------
+
+`EnrichPoolWithResumeTextAsync(...)`
+
+Purpose:
+- improve ranking and chat quality by appending extracted PDF text to candidate CV summaries
+
+Behavior:
+- download each resume when URL exists
+- extract text with `IResumeTextExtractor`
+- clip text to configured max chars
+- tolerate all extraction failures silently
+
+This is intentionally best-effort so copilot still works even when resume download/parsing fails.
+
+----------------------------------------------------------
+8. MAPPING / SERIALIZATION HELPERS
+----------------------------------------------------------
+
+The service contains many persistence mapping helpers:
+- `MapConversation(...)`
+- `MapConversationDetail(...)`
+- `MapRankingSession(...)`
+- `MapSavedRule(...)`
+- `MapCriterion(...)`
+- `DeserializeRules(...)`
+- `DeserializeStringList(...)`
+- `DeserializeSummary(...)`
+- `DeserializeIsAiGenerated(...)`
+
+These keep the repository layer simpler by storing JSON while the service reconstructs typed DTOs.
+
+----------------------------------------------------------
+9. COMMONIZATION NOTES
+----------------------------------------------------------
+
+Potential extractions:
+- JSON serialize/deserialize utility for copilot metadata fields
+- shared OpenAI-compatible provider helper layer
+- reusable ranking-rule normalization primitives
+

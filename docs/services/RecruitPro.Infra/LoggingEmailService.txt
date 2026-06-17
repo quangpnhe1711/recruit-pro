@@ -1,0 +1,97 @@
+==========================================================
+LoggingEmailService - Detailed Analysis
+==========================================================
+
+1. OVERVIEW
+----------------------------------------------------------
+
+LoggingEmailService is a lightweight implementation of `IEmailService`.
+
+It does not send real emails.
+Instead, it logs the email intent and payload to the application logger.
+
+Current use cases:
+- Candidate invitation email after bulk import
+- Password reset email for candidate/internal portals
+
+This is effectively a stub or development-safe adapter.
+
+----------------------------------------------------------
+2. DEPENDENCIES
+----------------------------------------------------------
+
+`ILogger<LoggingEmailService>`
+
+Used to record:
+- email type
+- target recipient
+- temporary password
+- login URL
+
+----------------------------------------------------------
+3. SUPPORTED OPERATIONS
+----------------------------------------------------------
+
+`SendCandidateInvitationAsync(...)`
+
+Purpose:
+- Record that the system wants to send an invitation email to a newly imported candidate
+
+Logged information:
+- recipient email
+- recipient full name
+- generated temporary password
+- target login URL
+
+`SendPasswordResetAsync(...)`
+
+Purpose:
+- Record that the system wants to send a password reset email
+
+Logged information:
+- recipient email
+- recipient full name
+- generated temporary password
+- target login URL
+
+----------------------------------------------------------
+4. BEHAVIORAL CHARACTERISTICS
+----------------------------------------------------------
+
+- Both methods are non-blocking from an infrastructure perspective
+- Both methods always return `Task.CompletedTask`
+- No SMTP/API integration is performed
+- No retry logic exists
+- No templating engine exists
+
+----------------------------------------------------------
+5. CALLERS
+----------------------------------------------------------
+
+Known callers:
+- `CandidateService.ImportCandidatesAsync`
+- `AuthService.ResetPasswordAsync`
+
+Because this service never throws under normal conditions, those flows remain
+simple in development and local testing.
+
+----------------------------------------------------------
+6. WHEN THIS SERVICE IS SUFFICIENT
+----------------------------------------------------------
+
+This implementation is appropriate when:
+- the team is still building backend flows
+- email sending is not production-ready
+- logs are enough to verify business flow correctness
+
+----------------------------------------------------------
+7. PRODUCTION GAP
+----------------------------------------------------------
+
+To move to production, this service would likely be replaced by:
+- SMTP adapter
+- SendGrid/Mailgun/Postmark integration
+- HTML template rendering
+- delivery status tracking
+- secret-based credential management
+

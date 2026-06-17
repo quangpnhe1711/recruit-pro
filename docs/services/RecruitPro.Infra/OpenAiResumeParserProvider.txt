@@ -1,0 +1,147 @@
+==========================================================
+OpenAiResumeParserProvider - Detailed Analysis
+==========================================================
+
+1. OVERVIEW
+----------------------------------------------------------
+
+OpenAiResumeParserProvider is the infrastructure implementation of `IResumeParsingAiProvider`.
+
+Its purpose is to convert raw extracted resume text into structured candidate data
+using an OpenAI-compatible provider.
+
+The provider is designed as optional enhancement:
+- If AI is disabled, misconfigured, times out, or returns invalid output,
+  the application can fall back to rule-based parsing in `CandidateService`
+
+----------------------------------------------------------
+2. WHAT IT PRODUCES
+----------------------------------------------------------
+
+The service asks AI to return structured JSON containing:
+- profile basics
+- normalized skills
+- experience entries
+- projects
+- educations
+- certifications
+- languages
+- parser notes
+
+The target DTO is `CandidateResumeAiParseDto`.
+
+----------------------------------------------------------
+3. DEPENDENCIES
+----------------------------------------------------------
+
+`HttpClient`
+- Sends requests to the configured AI provider
+
+`OpenAiSettings`
+- Controls enable flag, API key, base URL, model, and resume truncation length
+
+`ILogger<OpenAiResumeParserProvider>`
+- Logs provider failures and timeouts
+
+----------------------------------------------------------
+4. MAIN METHOD
+----------------------------------------------------------
+
+`TryParseResumeAsync(string extractedText, IReadOnlyList<Skill> availableSkills, CancellationToken cancellationToken)`
+
+Main flow:
+
+1. Validate AI availability
+   - disabled flag
+   - missing API key
+   - empty extracted text
+
+2. Build bounded master skill list
+   - remove blanks
+   - deduplicate case-insensitively
+   - sort alphabetically
+   - cap at 250 items
+
+3. Build prompt
+   - defines target JSON schema
+   - tells AI not to hallucinate
+   - asks AI to prefer names from the master skill list
+
+4. Build provider-specific request body
+
+5. Send HTTP request
+
+6. Extract actual output text from variable provider response shapes
+
+7. Normalize fenced JSON if needed
+
+8. Deserialize into `CandidateResumeAiParseDto`
+
+9. Return `ResumeParsingAiResult`
+   - `UsedAi = true` when successful
+   - `UsedAi = false` plus `FailureReason` on fallback cases
+
+----------------------------------------------------------
+5. PROVIDER COMPATIBILITY STRATEGY
+----------------------------------------------------------
+
+The service supports more than one response format.
+
+Helpers involved:
+- `BuildEndpoint()`
+- `UsesChatCompletions()`
+- `BuildRequestBody(...)`
+- `ExtractOutputText(...)`
+
+This allows the same service to work with:
+- OpenAI Responses API
+- OpenAI-compatible Chat Completions endpoints
+- Gemini/OpenAI-compatible endpoints
+
+----------------------------------------------------------
+6. PROMPTING STRATEGY
+----------------------------------------------------------
+
+`BuildPrompt(...)` does several important things:
+
+- truncates very large resumes to `MaxResumeParseChars` or 12000 chars fallback
+- provides strict JSON schema
+- supplies canonical skill names
+- asks for conservative experience inference
+- explicitly prefers `null` / empty arrays instead of invented data
+
+This is a good design because downstream mapping becomes more deterministic.
+
+----------------------------------------------------------
+7. FAILURE HANDLING
+----------------------------------------------------------
+
+Failure is not treated as fatal.
+
+Handled cases:
+- AI disabled
+- missing API key
+- empty extracted text
+- non-success HTTP status
+- empty output text
+- invalid JSON payload
+- timeout
+- unexpected exception
+
+In all these cases the service returns a structured failure result rather than throwing.
+
+That choice is important because `CandidateService.ParseResumeAsync` can continue
+with fallback parsing and still provide a usable preview to the user.
+
+----------------------------------------------------------
+8. SHARED LOGIC WITH OpenAiCopilotProvider
+----------------------------------------------------------
+
+This service duplicates several provider integration helpers:
+- request body construction
+- endpoint selection
+- output extraction
+- markdown-fence normalization
+
+These are strong candidates for a shared OpenAI-compatible base/helper component.
+

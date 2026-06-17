@@ -1,0 +1,146 @@
+==========================================================
+JobService - Detailed Analysis
+==========================================================
+
+1. OVERVIEW
+----------------------------------------------------------
+
+JobService is the main orchestration layer for job-related business flows.
+
+It serves both candidate-facing and internal management use cases:
+- public job listing/search
+- job detail screens
+- HR job management
+- manager approval queue/detail
+- job creation, patching, status updates, and deletion
+
+----------------------------------------------------------
+2. DEPENDENCIES
+----------------------------------------------------------
+
+- `IJobRepository`
+- `IApplicationRepository`
+- `ISkillRepository`
+- `IUnitOfWork`
+- `IMapper`
+
+----------------------------------------------------------
+3. CANDIDATE-FACING METHODS
+----------------------------------------------------------
+
+`GetJobsAsync(...)`
+- returns approved jobs with simple paging
+- uses AutoMapper for job cards
+
+`SearchJobsAsync(JobQueryRequest request)`
+- forwards search filters to repository
+- maps results into `JobListItemDto`
+
+`GetFiltersAsync()`
+- returns static salary buckets plus dynamic skill names
+
+`GetDepartmentsAsync()`
+- exposes department lookup data
+
+`GetSkillsAsync()`
+- exposes skill lookup data
+
+`GetJobDetailAsync(string jobId)`
+- returns the legacy detail DTO
+
+`GetJobScreenDetailAsync(string jobId)`
+- returns a richer screen DTO including applications summary and structured skills
+
+`GetJobStatisticsAsync(string jobId)`
+- returns hiring funnel counts for one job
+
+----------------------------------------------------------
+4. INTERNAL / HR METHODS
+----------------------------------------------------------
+
+`UpdateJobStatusAsync(...)`
+- validates requested enum value
+- updates tracked job status directly
+
+`GetHrJobsAsync(...)`
+- paged HR listing with department/status/creator filters
+- also computes stats from all matching records
+
+`GetManagerApprovalQueueAsync(...)`
+- returns pending approval cards and summary counters
+
+`GetManagerApprovalDetailAsync(...)`
+- returns a full manager-review page
+- includes job metadata, owner info, skills, pipeline insights, and approval snapshot
+
+`CreateJobAsync(...)`
+- resolves department
+- builds normalized job skills
+- serializes list-like fields
+- creates a pending-approval job
+
+`PatchJobAsync(...)`
+- partial update entry point
+- updates only provided fields
+- can replace entire skill set
+
+`DeleteJobAsync(...)`
+- tracked lookup then hard delete
+
+----------------------------------------------------------
+5. IMPORTANT HELPERS
+----------------------------------------------------------
+
+Lookup helpers:
+- `GetJobAsync(...)`
+- `GetTrackedJobAsync(...)`
+
+Mapping helpers:
+- `MapJobListItem(...)`
+- `MapLegacyJobDetail(...)`
+- `MapJobSkill(...)`
+
+Parsing/formatting helpers:
+- `ParseJsonArray(...)`
+- `SerializeList(...)`
+- `BuildMeta(...)`
+- `BuildSalaryLabel(...)`
+- `MapEmploymentType(...)`
+- `ParseEmploymentType(...)`
+- `ParseWorkMode(...)`
+- `ParseJobStatus(...)`
+
+Approval-display helpers:
+- `BuildJobReferenceCode(...)`
+- `BuildHiringTeamLabel(...)`
+- `IsApprovalOverdue(...)`
+- `MapApprovalStatusLabel(...)`
+- `BuildSubmittedAgoLabel(...)`
+
+Creation helpers:
+- `ResolveDepartmentAsync(...)`
+- `BuildJobSkillsAsync(...)`
+
+----------------------------------------------------------
+6. DESIGN OBSERVATIONS
+----------------------------------------------------------
+
+- The service mixes public search concerns, HR CRUD concerns, and manager approval concerns in one class
+- DTO assembly is extensive and UI-shaped
+- Several helper methods are pure and reusable
+
+This class is a likely future split candidate:
+- PublicJobQueryService
+- HrJobManagementService
+- ManagerJobApprovalService
+
+----------------------------------------------------------
+7. COMMONIZATION NOTES
+----------------------------------------------------------
+
+Potential shared helpers:
+- pagination metadata builder
+- JSON string-array parse/serialize helpers
+- salary label formatting
+- tracked/untracked job lookup wrapper
+

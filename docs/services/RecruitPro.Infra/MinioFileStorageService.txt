@@ -1,0 +1,128 @@
+==========================================================
+MinioFileStorageService - Detailed Analysis
+==========================================================
+
+1. OVERVIEW
+----------------------------------------------------------
+
+MinioFileStorageService is the infrastructure implementation of `IFileStorageService`.
+
+Its job is to store and retrieve private files in MinIO-compatible object storage.
+
+Main responsibilities:
+- Upload candidate resumes and other files
+- Generate presigned download URLs
+- Download object content as stream
+- Best-effort delete objects
+- Ensure the target bucket exists before file operations
+
+----------------------------------------------------------
+2. DEPENDENCIES
+----------------------------------------------------------
+
+`IMinioClient`
+- Executes all bucket and object operations
+
+`MinioSettings`
+- Supplies bucket name and URL expiry settings
+
+`ILogger<MinioFileStorageService>`
+- Logs successful uploads, URL generation, deletions, and failures
+
+----------------------------------------------------------
+3. PUBLIC METHODS
+----------------------------------------------------------
+
+`UploadFileAsync(Stream stream, string objectName, string contentType)`
+
+Flow:
+1. Validate stream and object name
+2. Ensure bucket exists
+3. Copy incoming stream into a memory buffer
+4. Upload buffered content via `PutObjectAsync`
+5. Return the stored object key
+
+Important detail:
+- The method buffers the whole stream into memory before upload
+- This simplifies retries/position handling but can become expensive for large files
+
+`GetPresignedUrlAsync(string objectName)`
+
+Flow:
+1. Normalize incoming object name or URL
+2. Ensure bucket exists
+3. Build `PresignedGetObjectArgs`
+4. Use configured expiry
+5. Return a temporary read URL
+
+`DownloadFileAsync(string objectName)`
+
+Flow:
+1. Normalize object name
+2. Ensure bucket exists
+3. Download object into `MemoryStream`
+4. Reset stream position
+5. Return the stream to caller
+
+`DeleteFileAsync(string objectName)`
+
+Behavior:
+- Ignores empty input
+- Normalizes the key
+- Executes deletion as best-effort cleanup
+- Logs warnings instead of rethrowing MinIO delete failures
+
+This behavior is important in rollback paths where cleanup should not hide the original business failure.
+
+----------------------------------------------------------
+4. INTERNAL HELPERS
+----------------------------------------------------------
+
+`EnsureBucketExistsAsync()`
+- Checks if the configured bucket exists
+- Creates it lazily when missing
+
+`GetPresignedUrlExpiryInSeconds()`
+- Uses configured expiry if positive
+- Falls back to `3600` seconds
+
+`NormalizeObjectName(string objectName)`
+- Accepts either a raw object key or a full URL
+- Removes leading slash
+- Strips bucket prefix from absolute URLs
+- Throws when object name is blank
+
+----------------------------------------------------------
+5. REAL CALLERS
+----------------------------------------------------------
+
+Common usages in the codebase:
+- `CandidateService.RegisterAsync`
+- `CandidateService.UploadResumeAsync`
+- `CandidateService.GetResumeDownloadUrlAsync`
+- `ApplicationService.GetApplyScreenAsync`
+- `ApplicationService.GetApplicationCvAsync`
+- `CopilotService.EnrichPoolWithResumeTextAsync`
+
+----------------------------------------------------------
+6. FAILURE MODEL
+----------------------------------------------------------
+
+Upload / presigned URL / download:
+- MinIO exceptions are logged and rethrown
+
+Delete:
+- MinIO exceptions are logged and swallowed
+
+This split is intentional:
+- core business operations must fail loudly
+- cleanup should be best-effort
+
+----------------------------------------------------------
+7. REFACTOR / IMPROVEMENT IDEAS
+----------------------------------------------------------
+
+- Extract object-key normalization into a reusable file-storage helper
+- Consider streaming upload directly for large files
+- Consider a dedicated bucket bootstrap step during app startup to avoid per-request existence checks
+
