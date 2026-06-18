@@ -48,6 +48,7 @@ public class OpenAiResumeParserProvider : IResumeParsingAiProvider
             return new ResumeParsingAiResult
             {
                 UsedAi = false,
+                Provider = "OpenAICompatible",
                 ModelName = _settings.Model,
                 FailureReason = !_settings.Enabled
                     ? "AI parsing is disabled in configuration."
@@ -86,12 +87,29 @@ public class OpenAiResumeParserProvider : IResumeParsingAiProvider
             string raw = await response.Content.ReadAsStringAsync(cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
-                _logger.LogWarning("AI resume parser request failed with status {StatusCode}: {Response}", response.StatusCode, raw);
+                string? traceId = response.Headers.TryGetValues("x-request-id", out IEnumerable<string>? requestIds)
+                    ? requestIds.FirstOrDefault()
+                    : response.Headers.TryGetValues("request-id", out IEnumerable<string>? altRequestIds)
+                        ? altRequestIds.FirstOrDefault()
+                        : null;
+
+                _logger.LogWarning(
+                    "AI resume parser request failed. Provider={Provider}, Model={Model}, StatusCode={StatusCode}, TraceId={TraceId}, Response={Response}",
+                    "OpenAICompatible",
+                    _settings.Model,
+                    (int)response.StatusCode,
+                    traceId,
+                    raw);
                 return new ResumeParsingAiResult
                 {
                     UsedAi = false,
+                    Provider = "OpenAICompatible",
                     ModelName = _settings.Model,
-                    FailureReason = $"AI provider returned HTTP {(int)response.StatusCode}."
+                    FailureReason = $"AI provider returned HTTP {(int)response.StatusCode}.",
+                    HttpStatusCode = (int)response.StatusCode,
+                    RawProviderResponse = raw,
+                    TraceId = traceId,
+                    IsRetryable = IsRetryableStatusCode((int)response.StatusCode)
                 };
             }
 
@@ -101,6 +119,7 @@ public class OpenAiResumeParserProvider : IResumeParsingAiProvider
                 return new ResumeParsingAiResult
                 {
                     UsedAi = false,
+                    Provider = "OpenAICompatible",
                     ModelName = _settings.Model,
                     FailureReason = "AI provider returned no output text."
                 };
@@ -113,6 +132,7 @@ public class OpenAiResumeParserProvider : IResumeParsingAiProvider
                 return new ResumeParsingAiResult
                 {
                     UsedAi = false,
+                    Provider = "OpenAICompatible",
                     ModelName = _settings.Model,
                     FailureReason = "AI provider returned output that could not be deserialized."
                 };
@@ -121,6 +141,7 @@ public class OpenAiResumeParserProvider : IResumeParsingAiProvider
             return new ResumeParsingAiResult
             {
                 UsedAi = true,
+                Provider = "OpenAICompatible",
                 ModelName = _settings.Model,
                 Data = parsed
             };
@@ -131,8 +152,10 @@ public class OpenAiResumeParserProvider : IResumeParsingAiProvider
             return new ResumeParsingAiResult
             {
                 UsedAi = false,
+                Provider = "OpenAICompatible",
                 ModelName = _settings.Model,
-                FailureReason = "AI parsing timed out before a complete response was returned."
+                FailureReason = "AI parsing timed out before a complete response was returned.",
+                IsRetryable = true
             };
         }
         catch (Exception exception)
@@ -141,6 +164,7 @@ public class OpenAiResumeParserProvider : IResumeParsingAiProvider
             return new ResumeParsingAiResult
             {
                 UsedAi = false,
+                Provider = "OpenAICompatible",
                 ModelName = _settings.Model,
                 FailureReason = exception.Message
             };
@@ -162,16 +186,18 @@ public class OpenAiResumeParserProvider : IResumeParsingAiProvider
 
         Required JSON shape:
         {
-          "profile": {
-            "name": "string or null",
-            "headline": "string or null",
-            "email": "string or null",
-            "phone": "string or null",
-            "location": "string or null",
-            "bio": "string or null",
-            "github": "string or null",
-            "linkedin": "string or null"
-          },
+            "profile": {
+              "name": "string or null",
+              "headline": "string or null",
+              "summary": "string or null",
+              "email": "string or null",
+              "phone": "string or null",
+              "location": "string or null",
+              "github": "string or null",
+              "linkedin": "string or null",
+              "portfolio": "string or null",
+              "website": "string or null"
+            },
           "skills": [
             {
               "name": "skill from master list when possible",
@@ -229,7 +255,25 @@ public class OpenAiResumeParserProvider : IResumeParsingAiProvider
               "proficiency": "string"
             }
           ],
-          "notes": ["short parser notes"]
+          "awards": [
+            {
+              "name": "string",
+              "issuer": "string or null",
+              "year": 2024,
+              "description": "string or null"
+            }
+          ],
+          "activities": [
+            {
+              "organization": "string",
+              "role": "string or null",
+              "description": "string or null",
+              "startYear": 2023,
+              "endYear": 2024
+            }
+          ],
+          "keywords": ["backend developer", "asp.net core"],
+          "parserWarnings": ["short parser note"]
         }
 
         Master skill list:
@@ -289,4 +333,8 @@ public class OpenAiResumeParserProvider : IResumeParsingAiProvider
     /// Builds endpoint.
     /// </summary>
     /// <returns>The resulting string value.</returns>
+    private static bool IsRetryableStatusCode(int statusCode)
+    {
+        return statusCode is 429 or 500 or 502 or 503 or 504;
+    }
 }

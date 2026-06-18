@@ -28,7 +28,14 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<IJwtService, JwtService>();
         services.AddSingleton<IResumeTextExtractor, PdfResumeTextExtractor>();
+        services.AddSingleton<IApplicationSemanticProcessingQueue, InMemoryApplicationSemanticProcessingQueue>();
+        services.AddSingleton<IEmbeddingCache, InMemoryEmbeddingCache>();
         services.AddHttpClient<IResumeParsingAiProvider, OpenAiResumeParserProvider>((serviceProvider, client) =>
+        {
+            OpenAiSettings settings = serviceProvider.GetRequiredService<IOptions<OpenAiSettings>>().Value;
+            client.Timeout = TimeSpan.FromSeconds(Math.Max(30, settings.RequestTimeoutSeconds));
+        });
+        services.AddHttpClient<IEmbeddingProvider, OpenAiEmbeddingProvider>((serviceProvider, client) =>
         {
             OpenAiSettings settings = serviceProvider.GetRequiredService<IOptions<OpenAiSettings>>().Value;
             client.Timeout = TimeSpan.FromSeconds(Math.Max(30, settings.RequestTimeoutSeconds));

@@ -33,6 +33,30 @@ public partial class CandidateProfile
 
     public string? LinkedinUrl { get; set; }
 
+    public string? ParsedResumeJson { get; set; }
+
+    public string? ResumeExtractedText { get; set; }
+
+    public string? ResumeParseStatus { get; set; }
+
+    public string? ResumeParseError { get; set; }
+
+    public string? ResumeParseModel { get; set; }
+
+    public string? ResumeParserWarningsJson { get; set; }
+
+    public DateTime? ResumeParsedAt { get; set; }
+
+    public string? CandidateEmbeddingVectorJson { get; set; }
+
+    public string? CandidateEmbeddingTextHash { get; set; }
+
+    public string? CandidateEmbeddingStatus { get; set; }
+
+    public string? CandidateEmbeddingError { get; set; }
+
+    public DateTime? CandidateEmbeddingUpdatedAt { get; set; }
+
     public virtual User User { get; set; } = null!;
 
     public virtual ICollection<Skill> Skills { get; set; } = new List<Skill>();

@@ -34,6 +34,17 @@ public class CandidateService : ICandidateService
     private const string ImportedSourcePrefix = "[Imported Source]";
     private const string ImportedNotesPrefix = "[Imported Notes]";
     private const string CandidateLoginUrl = "http://localhost:5173/login";
+    private const string ResumeParseStatusNotStarted = "NotStarted";
+    private const string ResumeParseStatusTextExtractionFailed = "TextExtractionFailed";
+    private const string ResumeParseStatusParsing = "Parsing";
+    private const string ResumeParseStatusCompleted = "Completed";
+    private const string ResumeParseStatusRetryPending = "RetryPending";
+    private const string ResumeParseStatusFailed = "Failed";
+    private const string ResumeEmbeddingStatusNotStarted = "NotStarted";
+    private const int MinimumResumeTextLength = 50;
+    private const string ResumeExtractionFailureMessage = "Unable to read the resume content. Please upload a text-based PDF or DOCX file. Image-based or scanned PDF files are not supported.";
+    private const string ResumeAiRetryMessage = "Your CV was uploaded successfully, but the AI parser is temporarily unavailable. The system will retry parsing later.";
+    private const string ResumeAiFailedMessage = "Your CV was uploaded successfully, but automatic parsing could not be completed right now. You can retry parsing later without uploading again.";
     private static readonly Regex PhonePattern = new(@"^0\d{9}$", RegexOptions.Compiled);
     private static readonly Regex EmailExtractorPattern = new(@"(?<email>[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex PhoneExtractorPattern = new(@"(?<phone>(?:\+?84|0)[\s\-.]?(?:\d[\s\-.]?){8,10})", RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -140,7 +151,9 @@ public class CandidateService : ICandidateService
                     Bio = request.Profile.Bio,
                     GithubUrl = request.Profile.GitHubUrl,
                     LinkedinUrl = request.Profile.LinkedInUrl,
-                    ResumeUrl = resumeObjectKey
+                    ResumeUrl = resumeObjectKey,
+                    ResumeParseStatus = ResumeParseStatusNotStarted,
+                    CandidateEmbeddingStatus = ResumeEmbeddingStatusNotStarted
                 };
 
                 if (initialResume != null)
@@ -380,7 +393,9 @@ public class CandidateService : ICandidateService
                     Id = Guid.NewGuid(),
                     UserId = user.Id,
                     CurrentPosition = TextNormalizationHelper.NormalizeOptionalText(row.PositionApplied),
-                    Bio = BuildImportedBio(row.Source, row.Notes)
+                    Bio = BuildImportedBio(row.Source, row.Notes),
+                    ResumeParseStatus = ResumeParseStatusNotStarted,
+                    CandidateEmbeddingStatus = ResumeEmbeddingStatusNotStarted
                 };
 
                 await _candidateRepository.SaveAsync(profile);
@@ -572,10 +587,11 @@ public class CandidateService : ICandidateService
         }
 
         CandidateProfile profile = await GetProfileEntityAsync(userId);
+        await using MemoryStream bufferedResume = await CopyToMemoryAsync(resumeStream);
         string extractedText;
         try
         {
-            extractedText = await ExtractResumeTextAsync(resumeStream, fileName);
+            extractedText = await ExtractResumeTextAsync(bufferedResume, fileName);
         }
         catch (NotSupportedException exception)
         {
@@ -588,9 +604,10 @@ public class CandidateService : ICandidateService
             return ApiResponse<CandidateResumeParseResponseDto>.BadRequest("We could not read this resume file. Please upload a PDF or DOCX resume.");
         }
 
-        if (string.IsNullOrWhiteSpace(extractedText))
+        extractedText = NormalizeResumeText(extractedText);
+        if (!HasUsableResumeText(extractedText))
         {
-            return ApiResponse<CandidateResumeParseResponseDto>.BadRequest("We could not extract readable text from this resume.");
+            return ApiResponse<CandidateResumeParseResponseDto>.BadRequest(ResumeExtractionFailureMessage);
         }
 
         IReadOnlyList<Skill> allSkills = await _skillRepository.GetAllAsync();
@@ -600,6 +617,7 @@ public class CandidateService : ICandidateService
             : BuildResumeParsePreview(extractedText, allSkills, profile);
         preview.ModelName ??= aiResult.ModelName;
         preview.AiFallbackReason = aiResult.UsedAi ? null : aiResult.FailureReason;
+        preview.Notes = NormalizeParserWarnings(preview.Notes);
         return ApiResponse<CandidateResumeParseResponseDto>.Ok(
             preview,
             aiResult.UsedAi
@@ -617,10 +635,26 @@ public class CandidateService : ICandidateService
     /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<ResumeUploadResponseDto>> UploadResumeAsync(Guid userId, Stream resumeStream, string fileName, string contentType)
     {
+        if (resumeStream == null || string.IsNullOrWhiteSpace(fileName))
+        {
+            return ApiResponse<ResumeUploadResponseDto>.BadRequest("Please select a valid resume file.");
+        }
+
+        try
+        {
+            ValidateSupportedResumeFile(fileName);
+        }
+        catch (NotSupportedException exception)
+        {
+            return ApiResponse<ResumeUploadResponseDto>.BadRequest(exception.Message);
+        }
+
         CandidateProfile profile = await GetProfileEntityAsync(userId);
         DateTime uploadedAt = DbDateTime.Now;
+        await using MemoryStream bufferedResume = await CopyToMemoryAsync(resumeStream);
         string objectName = $"resumes/{userId}/{Guid.NewGuid()}_{Path.GetFileName(fileName)}";
-        string uploadedObjectKey = await _fileStorage.UploadFileAsync(resumeStream, objectName, contentType);
+        bufferedResume.Position = 0;
+        string uploadedObjectKey = await _fileStorage.UploadFileAsync(bufferedResume, objectName, contentType);
         foreach (CandidateResume existingResume in profile.Resumes)
         {
             existingResume.IsCurrent = false;
@@ -640,6 +674,12 @@ public class CandidateService : ICandidateService
         profile.Resumes.Add(candidateResume);
         profile.ResumeUrl = uploadedObjectKey;
         profile.User.UpdatedAt = uploadedAt;
+        profile.ResumeParseStatus = ResumeParseStatusParsing;
+        profile.ResumeParseError = null;
+        profile.ResumeParseModel = null;
+        profile.ResumeParsedAt = null;
+        profile.ResumeParserWarningsJson = SerializeDocuments(new List<string>());
+        profile.ResumeExtractedText = null;
 
         await _unitOfWork.BeginTransactionAsync();
         try
@@ -658,14 +698,68 @@ public class CandidateService : ICandidateService
 
         _logger.LogInformation("Updated resume for candidate user {UserId} with profile {ProfileId}.", userId, profile.Id);
 
-        return ApiResponse<ResumeUploadResponseDto>.Ok(new ResumeUploadResponseDto
+        IReadOnlyList<Skill> allSkills = await _skillRepository.GetAllAsync();
+        ResumeUploadResponseDto response = new()
         {
             ResumeId = candidateResume.Id.ToString(),
             FileName = candidateResume.FileName,
             UploadedAt = uploadedAt,
             Version = candidateResume.Version,
-            IsCurrent = true
-        });
+            IsCurrent = true,
+            ParseStatus = ResumeParseStatusParsing
+        };
+
+        string extractedText;
+        try
+        {
+            bufferedResume.Position = 0;
+            extractedText = NormalizeResumeText(await ExtractResumeTextAsync(bufferedResume, fileName));
+        }
+        catch (Exception exception) when (exception is not NotSupportedException)
+        {
+            _logger.LogError(exception, "Resume extraction failed after upload for user {UserId} and file {FileName}.", userId, fileName);
+            await PersistResumeParsingFailureAsync(profile, ResumeParseStatusTextExtractionFailed, ResumeExtractionFailureMessage, null, []);
+            response.ParseStatus = ResumeParseStatusTextExtractionFailed;
+            response.ParseMessage = ResumeExtractionFailureMessage;
+            return ApiResponse<ResumeUploadResponseDto>.BadRequest(response.ParseMessage);
+        }
+
+        if (!HasUsableResumeText(extractedText))
+        {
+            await PersistResumeParsingFailureAsync(profile, ResumeParseStatusTextExtractionFailed, ResumeExtractionFailureMessage, extractedText, []);
+            response.ParseStatus = ResumeParseStatusTextExtractionFailed;
+            response.ParseMessage = ResumeExtractionFailureMessage;
+            return ApiResponse<ResumeUploadResponseDto>.BadRequest(response.ParseMessage);
+        }
+
+        ResumeParsingAiResult aiResult = await _resumeParsingAiProvider.TryParseResumeAsync(extractedText, allSkills);
+        if (aiResult.UsedAi && aiResult.Data != null)
+        {
+            CandidateResumeParseResponseDto preview = BuildResumeParsePreviewFromAi(aiResult.Data, extractedText, allSkills, profile, aiResult.ModelName);
+            await PersistParsedResumeAsync(profile, preview, aiResult.Data, extractedText, aiResult.ModelName);
+            response.ParseStatus = ResumeParseStatusCompleted;
+            response.ParseMessage = "Resume uploaded and parsed successfully.";
+            response.ParsedAt = profile.ResumeParsedAt;
+            response.ParserWarnings = NormalizeParserWarnings(preview.Notes);
+            return ApiResponse<ResumeUploadResponseDto>.Ok(response, response.ParseMessage);
+        }
+
+        CandidateResumeParseResponseDto fallbackPreview = BuildResumeParsePreview(extractedText, allSkills, profile);
+        if (aiResult.IsRetryable)
+        {
+            LogRetryableAiFailure(aiResult);
+            await PersistResumeParsingFailureAsync(profile, ResumeParseStatusRetryPending, aiResult.FailureReason, extractedText, fallbackPreview.Notes, aiResult.ModelName);
+            response.ParseStatus = ResumeParseStatusRetryPending;
+            response.ParseMessage = ResumeAiRetryMessage;
+            response.ParserWarnings = NormalizeParserWarnings(fallbackPreview.Notes);
+            return ApiResponse<ResumeUploadResponseDto>.Ok(response, response.ParseMessage);
+        }
+
+        await PersistResumeParsingFailureAsync(profile, ResumeParseStatusFailed, aiResult.FailureReason, extractedText, fallbackPreview.Notes, aiResult.ModelName);
+        response.ParseStatus = ResumeParseStatusFailed;
+        response.ParseMessage = ResumeAiFailedMessage;
+        response.ParserWarnings = NormalizeParserWarnings(fallbackPreview.Notes);
+        return ApiResponse<ResumeUploadResponseDto>.Ok(response, response.ParseMessage);
     }
 
     /// <summary>
@@ -859,7 +953,15 @@ public class CandidateService : ICandidateService
                 Proficiency = item.Proficiency
             }).ToList(),
             Resume = resume,
-            ResumeHistory = resumeHistory
+            ResumeHistory = resumeHistory,
+            ResumeParsing = new CandidateResumeParsingStatusDto
+            {
+                Status = string.IsNullOrWhiteSpace(profile.ResumeParseStatus) ? ResumeParseStatusNotStarted : profile.ResumeParseStatus,
+                Error = profile.ResumeParseError,
+                Model = profile.ResumeParseModel,
+                ParsedAt = profile.ResumeParsedAt,
+                Warnings = LoadStringList(profile.ResumeParserWarningsJson)
+            }
         };
     }
 
@@ -1029,6 +1131,28 @@ public class CandidateService : ICandidateService
         };
     }
 
+    private static CandidateExperienceDocument MapExperienceDto(CandidateExperienceDto request)
+    {
+        return new CandidateExperienceDocument
+        {
+            Id = string.IsNullOrWhiteSpace(request.Id) ? Guid.NewGuid().ToString("N") : request.Id,
+            Title = request.Title.Trim(),
+            Company = request.Company.Trim(),
+            Period = new CandidateExperiencePeriodDocument
+            {
+                StartMonth = request.Period.StartMonth,
+                StartYear = request.Period.StartYear,
+                EndMonth = request.Period.IsCurrent ? null : request.Period.EndMonth,
+                EndYear = request.Period.IsCurrent ? null : request.Period.EndYear,
+                IsCurrent = request.Period.IsCurrent
+            },
+            Bullets = request.Bullets
+                .Select(value => value.Trim())
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .ToList()
+        };
+    }
+
     /// <summary>
     /// Maps project request.
     /// </summary>
@@ -1074,6 +1198,20 @@ public class CandidateService : ICandidateService
         };
     }
 
+    private static CandidateEducationDocument MapEducationDto(CandidateEducationDto request)
+    {
+        return new CandidateEducationDocument
+        {
+            Id = string.IsNullOrWhiteSpace(request.Id) ? Guid.NewGuid().ToString("N") : request.Id,
+            School = request.School.Trim(),
+            Degree = request.Degree.Trim(),
+            FieldOfStudy = TextNormalizationHelper.NormalizeOptionalText(request.FieldOfStudy),
+            StartYear = request.StartYear,
+            EndYear = request.EndYear,
+            Description = TextNormalizationHelper.NormalizeOptionalText(request.Description)
+        };
+    }
+
     /// <summary>
     /// Maps certification request.
     /// </summary>
@@ -1093,12 +1231,36 @@ public class CandidateService : ICandidateService
         };
     }
 
+    private static CandidateCertificationDocument MapCertificationDto(CandidateCertificationDto request)
+    {
+        return new CandidateCertificationDocument
+        {
+            Id = string.IsNullOrWhiteSpace(request.Id) ? Guid.NewGuid().ToString("N") : request.Id,
+            Name = request.Name.Trim(),
+            Issuer = TextNormalizationHelper.NormalizeOptionalText(request.Issuer),
+            IssuedOn = request.IssuedOn,
+            ExpiresOn = request.ExpiresOn,
+            CredentialId = TextNormalizationHelper.NormalizeOptionalText(request.CredentialId),
+            CredentialUrl = TextNormalizationHelper.NormalizeOptionalText(request.CredentialUrl)
+        };
+    }
+
     /// <summary>
     /// Maps language request.
     /// </summary>
     /// <param name="request">The <paramref name="request"/> value.</param>
     /// <returns>The operation result.</returns>
     private static CandidateLanguageDocument MapLanguageRequest(CandidateLanguageUpsertRequest request)
+    {
+        return new CandidateLanguageDocument
+        {
+            Id = string.IsNullOrWhiteSpace(request.Id) ? Guid.NewGuid().ToString("N") : request.Id,
+            Name = request.Name.Trim(),
+            Proficiency = request.Proficiency.Trim()
+        };
+    }
+
+    private static CandidateLanguageDocument MapLanguageDto(CandidateLanguageDto request)
     {
         return new CandidateLanguageDocument
         {
@@ -1138,6 +1300,184 @@ public class CandidateService : ICandidateService
         }
 
         await _candidateRepository.ReplaceSkillsAsync(candidateProfileId, skillDetails);
+    }
+
+    private async Task PersistParsedResumeAsync(
+        CandidateProfile profile,
+        CandidateResumeParseResponseDto preview,
+        CandidateResumeAiParseDto rawAiData,
+        string extractedText,
+        string? modelName)
+    {
+        await _unitOfWork.BeginTransactionAsync();
+        try
+        {
+            await ApplyParsedResumeToProfileAsync(profile, preview);
+            profile.ParsedResumeJson = JsonSerializer.Serialize(rawAiData);
+            profile.ResumeExtractedText = extractedText;
+            profile.ResumeParseStatus = ResumeParseStatusCompleted;
+            profile.ResumeParseError = null;
+            profile.ResumeParseModel = modelName;
+            profile.ResumeParserWarningsJson = SerializeDocuments(NormalizeParserWarnings(preview.Notes));
+            profile.ResumeParsedAt = DbDateTime.Now;
+            profile.CandidateEmbeddingStatus ??= ResumeEmbeddingStatusNotStarted;
+            await _candidateRepository.UpdateAsync(profile);
+            await _userRepository.UpdateAsync(profile.User);
+            await _unitOfWork.SaveChangesAsync();
+            await _unitOfWork.CommitAsync();
+        }
+        catch
+        {
+            await _unitOfWork.RollbackAsync();
+            throw;
+        }
+    }
+
+    private async Task PersistResumeParsingFailureAsync(
+        CandidateProfile profile,
+        string status,
+        string? error,
+        string? extractedText,
+        IEnumerable<string> warnings,
+        string? modelName = null)
+    {
+        await _unitOfWork.BeginTransactionAsync();
+        try
+        {
+            profile.ResumeExtractedText = extractedText;
+            profile.ResumeParseStatus = status;
+            profile.ResumeParseError = TextNormalizationHelper.NormalizeOptionalText(error);
+            profile.ResumeParseModel = modelName;
+            profile.ResumeParserWarningsJson = SerializeDocuments(NormalizeParserWarnings(warnings));
+            profile.ResumeParsedAt = status == ResumeParseStatusCompleted ? DbDateTime.Now : null;
+            profile.CandidateEmbeddingStatus ??= ResumeEmbeddingStatusNotStarted;
+            await _candidateRepository.UpdateAsync(profile);
+            await _unitOfWork.SaveChangesAsync();
+            await _unitOfWork.CommitAsync();
+        }
+        catch
+        {
+            await _unitOfWork.RollbackAsync();
+            throw;
+        }
+    }
+
+    private async Task ApplyParsedResumeToProfileAsync(CandidateProfile profile, CandidateResumeParseResponseDto preview)
+    {
+        profile.User.FullName = string.IsNullOrWhiteSpace(preview.Profile.Name) ? profile.User.FullName : preview.Profile.Name.Trim();
+        profile.User.Email = string.IsNullOrWhiteSpace(preview.Profile.Email) ? profile.User.Email : preview.Profile.Email.Trim();
+        profile.User.Phone = string.IsNullOrWhiteSpace(preview.Profile.Phone) ? profile.User.Phone : preview.Profile.Phone.Trim();
+        profile.User.UpdatedAt = DbDateTime.Now;
+        profile.CurrentPosition = TextNormalizationHelper.NormalizeOptionalText(preview.Profile.Headline) ?? profile.CurrentPosition;
+        profile.Address = TextNormalizationHelper.NormalizeOptionalText(preview.Profile.Location) ?? profile.Address;
+        profile.Bio = TextNormalizationHelper.NormalizeOptionalText(preview.Profile.Bio) ?? profile.Bio;
+        profile.GithubUrl = TextNormalizationHelper.NormalizeOptionalText(preview.Profile.Github) ?? profile.GithubUrl;
+        profile.LinkedinUrl = TextNormalizationHelper.NormalizeOptionalText(preview.Profile.Linkedin) ?? profile.LinkedinUrl;
+        profile.ExperienceYears = CalculateExperienceYears(preview.ExperienceEntries);
+        profile.ExperienceEntriesJson = SerializeDocuments(preview.ExperienceEntries.Select(MapExperienceDto).ToList());
+        profile.EducationRecordsJson = SerializeDocuments(preview.Educations.Select(MapEducationDto).ToList());
+        profile.CertificationRecordsJson = SerializeDocuments(preview.Certifications.Select(MapCertificationDto).ToList());
+        profile.LanguageRecordsJson = SerializeDocuments(preview.Languages.Select(MapLanguageDto).ToList());
+
+        await ReplaceCandidateProjectsAsync(profile.Id, preview.Projects.Select(project => new CandidateProjectUpsertRequest
+        {
+            Id = project.Id,
+            Name = project.Name,
+            Role = project.Role,
+            Description = project.Description,
+            Technologies = project.Technologies,
+            Period = new CandidateExperiencePeriodRequest
+            {
+                StartMonth = project.Period.StartMonth,
+                StartYear = project.Period.StartYear,
+                EndMonth = project.Period.EndMonth,
+                EndYear = project.Period.EndYear,
+                IsCurrent = project.Period.IsCurrent
+            }
+        }));
+
+        await ReplaceCandidateSkillsAsync(profile.Id, preview.Skills
+            .Where(skill => Guid.TryParse(skill.Id, out _))
+            .Select(skill => new CandidateSkillUpsertRequest
+            {
+                SkillId = skill.Id,
+                YearsOfExperience = skill.YearsOfExperience
+            })
+            .ToList());
+    }
+
+    private static int? CalculateExperienceYears(IEnumerable<CandidateExperienceDto> experiences)
+    {
+        double totalMonths = 0;
+        foreach (CandidateExperienceDto experience in experiences)
+        {
+            int startMonth = Math.Clamp(experience.Period.StartMonth, 1, 12);
+            int startYear = experience.Period.StartYear;
+            int endMonth = experience.Period.IsCurrent ? DbDateTime.Now.Month : Math.Clamp(experience.Period.EndMonth ?? startMonth, 1, 12);
+            int endYear = experience.Period.IsCurrent ? DbDateTime.Now.Year : experience.Period.EndYear ?? startYear;
+            totalMonths += Math.Max(((endYear - startYear) * 12) + (endMonth - startMonth) + 1, 0);
+        }
+
+        if (totalMonths <= 0)
+        {
+            return null;
+        }
+
+        return (int)Math.Round(totalMonths / 12d, MidpointRounding.AwayFromZero);
+    }
+
+    private static List<string> NormalizeParserWarnings(IEnumerable<string>? warnings)
+    {
+        return (warnings ?? [])
+            .Select(value => value.Trim())
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static bool HasUsableResumeText(string? extractedText)
+    {
+        if (string.IsNullOrWhiteSpace(extractedText))
+        {
+            return false;
+        }
+
+        return extractedText.Trim().Length >= MinimumResumeTextLength;
+    }
+
+    private static void ValidateSupportedResumeFile(string fileName)
+    {
+        string extension = Path.GetExtension(fileName).Trim().ToLowerInvariant();
+        if (extension is ".pdf" or ".docx" or ".txt")
+        {
+            return;
+        }
+
+        throw new NotSupportedException("Unsupported resume format. Please upload a PDF, DOCX, or TXT file.");
+    }
+
+    private static async Task<MemoryStream> CopyToMemoryAsync(Stream source)
+    {
+        MemoryStream buffer = new();
+        if (source.CanSeek)
+        {
+            source.Position = 0;
+        }
+
+        await source.CopyToAsync(buffer);
+        buffer.Position = 0;
+        return buffer;
+    }
+
+    private void LogRetryableAiFailure(ResumeParsingAiResult aiResult)
+    {
+        _logger.LogWarning(
+            "Resume parsing provider unavailable. Provider={Provider}, Model={Model}, StatusCode={StatusCode}, TraceId={TraceId}, Response={Response}",
+            aiResult.Provider,
+            aiResult.ModelName,
+            aiResult.HttpStatusCode,
+            aiResult.TraceId,
+            aiResult.RawProviderResponse);
     }
 
     private static List<TDocument> LoadDocuments<TDocument>(string? jsonString)
@@ -1495,7 +1835,7 @@ public class CandidateService : ICandidateService
                 Email = aiPreview.Profile.Email ?? profile.User.Email,
                 Phone = aiPreview.Profile.Phone ?? profile.User.Phone ?? string.Empty,
                 Location = aiPreview.Profile.Location ?? profile.Address ?? string.Empty,
-                Bio = aiPreview.Profile.Bio ?? profile.Bio ?? string.Empty,
+                Bio = aiPreview.Profile.Summary ?? profile.Bio ?? string.Empty,
                 Github = aiPreview.Profile.Github ?? profile.GithubUrl ?? string.Empty,
                 Linkedin = aiPreview.Profile.Linkedin ?? profile.LinkedinUrl ?? string.Empty
             },
@@ -1580,8 +1920,8 @@ public class CandidateService : ICandidateService
                 .Where(item => !string.IsNullOrWhiteSpace(item.Name))
                 .DistinctBy(item => item.Name.ToLowerInvariant())
                 .ToList(),
-            Notes = aiPreview.Notes.Count > 0
-                ? aiPreview.Notes
+            Notes = aiPreview.ParserWarnings.Count > 0
+                ? aiPreview.ParserWarnings
                 : ["AI parser extracted structured data from the resume. Please verify before saving."],
             ExtractedTextPreview = string.Join(Environment.NewLine, NormalizeResumeText(extractedText).Split('\n').Take(40))
         };

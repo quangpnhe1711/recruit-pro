@@ -18,6 +18,7 @@ namespace RecruitPro.Application.Interfaces.IRepositories
         Task<Department?> GetDepartmentByNameAsync(string departmentName);
         Task<IReadOnlyList<Department>> GetDepartmentsAsync();
         Task<IReadOnlyList<Skill>> GetSkillsAsync();
+        Task<IReadOnlyList<Job>> GetAllApprovedForSemanticSearchAsync();
         Task AddAsync(Job job);
         Task DeleteAsync(Job job);
         Task<IReadOnlyList<string>> GetAllSkillNamesAsync();

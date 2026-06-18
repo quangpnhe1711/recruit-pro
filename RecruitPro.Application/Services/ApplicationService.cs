@@ -11,18 +11,21 @@ using RecruitPro.Application.Interfaces.IServices;
 using RecruitPro.Domain.Entities;
 using RecruitPro.Domain.Enums;
 using RecruitPro.Domain.Workflows;
+using System.Text.RegularExpressions;
 using System.Text.Json;
 
 namespace RecruitPro.Application.Services;
 
 public class ApplicationService : IApplicationService
 {
+    private const string ScoreStatusPendingSemantic = "PendingSemantic";
     private readonly IApplicationRepository _applicationRepository;
     private readonly ICandidateProfileRepository _candidateProfileRepository;
     private readonly IJobRepository _jobRepository;
     private readonly IOfferRepository _offerRepository;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IFileStorageService _fileStorage;
+    private readonly IApplicationSemanticProcessingQueue _semanticProcessingQueue;
     private readonly ILogger<ApplicationService> _logger;
 
     /// <summary>
@@ -42,6 +45,7 @@ public class ApplicationService : IApplicationService
         IOfferRepository offerRepository,
         IUnitOfWork unitOfWork,
         IFileStorageService fileStorage,
+        IApplicationSemanticProcessingQueue semanticProcessingQueue,
         ILogger<ApplicationService> logger)
     {
         _applicationRepository = applicationRepository;
@@ -50,6 +54,7 @@ public class ApplicationService : IApplicationService
         _offerRepository = offerRepository;
         _unitOfWork = unitOfWork;
         _fileStorage = fileStorage;
+        _semanticProcessingQueue = semanticProcessingQueue;
         _logger = logger;
     }
 
@@ -132,6 +137,7 @@ public class ApplicationService : IApplicationService
             return ApiResponse<ApplyJobResponseDto>.BadRequest(message);
         }
 
+        decimal ruleScore = CalculateRuleScore(profile, job);
         Domain.Entities.Application application = new()
         {
             Id = Guid.NewGuid(),
@@ -141,18 +147,28 @@ public class ApplicationService : IApplicationService
             AppliedAt = DbDateTime.Now,
             CoverLetter = string.IsNullOrWhiteSpace(request.CoverLetter)
                 ? null
-                : request.CoverLetter.Trim()
+                : request.CoverLetter.Trim(),
+            RuleScore = ruleScore,
+            SemanticScore = null,
+            FinalScore = ruleScore,
+            ScoreStatus = ScoreStatusPendingSemantic,
+            ScoredAt = DbDateTime.Now
         };
 
         await _unitOfWork.BeginTransactionAsync();
         await _applicationRepository.AddAsync(application);
         await _unitOfWork.SaveChangesAsync();
         await _unitOfWork.CommitAsync();
+        await _semanticProcessingQueue.EnqueueAsync(application.Id);
 
         return ApiResponse<ApplyJobResponseDto>.Created(new ApplyJobResponseDto
         {
             ApplicationId = application.Id.ToString(),
-            Status = application.Status.ToString()
+            Status = application.Status.ToString(),
+            RuleScore = application.RuleScore,
+            SemanticScore = application.SemanticScore,
+            FinalScore = application.FinalScore,
+            ScoreStatus = application.ScoreStatus
         }, "Application submitted successfully");
     }
 
@@ -196,7 +212,7 @@ public class ApplicationService : IApplicationService
             AvatarUrl = application.User.AvatarUrl,
             AppliedAt = application.AppliedAt,
             Status = application.Status.ToString(),
-            Score = null
+            Score = application.FinalScore ?? application.RuleScore
         }).ToList();
 
         return ApiResponse<IReadOnlyList<RecentJobApplicationDto>>.Ok(items);
@@ -699,7 +715,8 @@ public class ApplicationService : IApplicationService
     /// <returns>The operation result.</returns>
     private static ApplicationListItemDto MapApplicationToDto(Domain.Entities.Application application)
     {
-        (double score, _) = BuildReviewScore(application);
+        (double fallbackScore, _) = BuildReviewScore(application);
+        decimal? effectiveFinalScore = application.FinalScore ?? application.RuleScore;
 
         return new ApplicationListItemDto
         {
@@ -734,9 +751,113 @@ public class ApplicationService : IApplicationService
                 Phone = application.ReviewedByNavigation.Phone,
                 Roles = application.ReviewedByNavigation.UserRoles.Select(userRole => userRole.Role.Name).ToList()
             },
-            Score = score,
+            Score = (double?)effectiveFinalScore ?? fallbackScore,
+            RuleScore = application.RuleScore,
+            SemanticScore = application.SemanticScore,
+            FinalScore = application.FinalScore,
+            ScoreStatus = application.ScoreStatus,
             NextStep = BuildReviewNextStep(application)
         };
+    }
+
+    private static decimal CalculateRuleScore(CandidateProfile profile, Job job)
+    {
+        Dictionary<string, decimal?> candidateSkillYears = new(StringComparer.OrdinalIgnoreCase);
+        foreach (CandidateSkillDetail candidateSkill in profile.CandidateSkillDetails)
+        {
+            string? skillName = candidateSkill.Skill?.Name;
+            if (!string.IsNullOrWhiteSpace(skillName))
+            {
+                candidateSkillYears[skillName] = candidateSkill.YearsOfExperience;
+            }
+        }
+
+        foreach (Skill skill in profile.Skills)
+        {
+            if (!candidateSkillYears.ContainsKey(skill.Name))
+            {
+                candidateSkillYears[skill.Name] = null;
+            }
+        }
+
+        List<JobSkill> requiredSkills = job.JobSkills.Where(item => item.IsRequired).ToList();
+        List<JobSkill> niceToHaveSkills = job.JobSkills.Where(item => !item.IsRequired).ToList();
+
+        decimal requiredSkillScore = requiredSkills.Count == 0
+            ? 40
+            : (decimal)requiredSkills.Count(skill => candidateSkillYears.ContainsKey(skill.Skill.Name)) / requiredSkills.Count * 40m;
+
+        decimal experienceScore = 0;
+        if (job.MinExperienceYears.GetValueOrDefault() <= 0)
+        {
+            experienceScore = 20;
+        }
+        else
+        {
+            decimal candidateExperience = profile.ExperienceYears ?? 0;
+            experienceScore = Math.Min(candidateExperience / job.MinExperienceYears.Value, 1m) * 20m;
+        }
+
+        decimal niceToHaveScore = niceToHaveSkills.Count == 0
+            ? 15
+            : (decimal)niceToHaveSkills.Count(skill => candidateSkillYears.ContainsKey(skill.Skill.Name)) / niceToHaveSkills.Count * 15m;
+
+        decimal keywordScore = CalculateKeywordScore(profile, job) * 15m;
+
+        decimal total = requiredSkillScore + experienceScore + niceToHaveScore + keywordScore + 10m;
+        return Math.Round(Math.Min(Math.Max(total, 0), 100), 2, MidpointRounding.AwayFromZero);
+    }
+
+    private static decimal CalculateKeywordScore(CandidateProfile profile, Job job)
+    {
+        HashSet<string> candidateTerms = BuildCandidateKeywordSet(profile);
+        HashSet<string> jobTerms = BuildJobKeywordSet(job);
+        if (jobTerms.Count == 0)
+        {
+            return 1m;
+        }
+
+        int matchedTerms = jobTerms.Count(candidateTerms.Contains);
+        return matchedTerms / (decimal)jobTerms.Count;
+    }
+
+    private static HashSet<string> BuildCandidateKeywordSet(CandidateProfile profile)
+    {
+        List<string> tokens =
+        [
+            profile.CurrentPosition ?? string.Empty,
+            profile.Bio ?? string.Empty,
+            profile.Education ?? string.Empty,
+            profile.Address ?? string.Empty,
+            string.Join(' ', profile.Skills.Select(skill => skill.Name)),
+            string.Join(' ', profile.Projects.Select(project => $"{project.Name} {project.Role} {project.Description}"))
+        ];
+
+        return TokenizeKeywords(string.Join(' ', tokens));
+    }
+
+    private static HashSet<string> BuildJobKeywordSet(Job job)
+    {
+        List<string> tokens =
+        [
+            job.Title,
+            job.ShortPitch ?? string.Empty,
+            job.Description,
+            job.Requirements ?? string.Empty,
+            job.Location,
+            string.Join(' ', job.JobSkills.Select(skill => skill.Skill.Name))
+        ];
+
+        return TokenizeKeywords(string.Join(' ', tokens));
+    }
+
+    private static HashSet<string> TokenizeKeywords(string text)
+    {
+        string[] stopWords = ["and", "the", "with", "for", "from", "that", "this", "have", "has", "you", "your"];
+        return Regex.Split(text.ToLowerInvariant(), @"[^a-z0-9.+#]+")
+            .Select(token => token.Trim())
+            .Where(token => token.Length >= 2 && !stopWords.Contains(token))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
 
     /// <summary>

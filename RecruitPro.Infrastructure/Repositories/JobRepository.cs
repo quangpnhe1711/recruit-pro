@@ -239,6 +239,13 @@ namespace RecruitPro.Infrastructure.Repositories
                 .ToListAsync();
         }
 
+        public async Task<IReadOnlyList<Job>> GetAllApprovedForSemanticSearchAsync()
+        {
+            return await BuildJobQuery()
+                .Where(job => job.Status == JobStatus.Approved)
+                .ToListAsync();
+        }
+
         public async Task AddAsync(Job job)
         {
             await _context.Jobs.AddAsync(job);

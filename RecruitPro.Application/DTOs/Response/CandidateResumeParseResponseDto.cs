@@ -26,19 +26,24 @@ public class CandidateResumeAiParseDto
     public List<CandidateResumeAiEducationDto> Educations { get; set; } = [];
     public List<CandidateResumeAiCertificationDto> Certifications { get; set; } = [];
     public List<CandidateResumeAiLanguageDto> Languages { get; set; } = [];
-    public List<string> Notes { get; set; } = [];
+    public List<CandidateResumeAiAwardDto> Awards { get; set; } = [];
+    public List<CandidateResumeAiActivityDto> Activities { get; set; } = [];
+    public List<string> Keywords { get; set; } = [];
+    public List<string> ParserWarnings { get; set; } = [];
 }
 
 public class CandidateResumeAiProfileDto
 {
     public string? Name { get; set; }
     public string? Headline { get; set; }
+    public string? Summary { get; set; }
     public string? Email { get; set; }
     public string? Phone { get; set; }
     public string? Location { get; set; }
-    public string? Bio { get; set; }
     public string? Github { get; set; }
     public string? Linkedin { get; set; }
+    public string? Portfolio { get; set; }
+    public string? Website { get; set; }
 }
 
 public class CandidateResumeAiSkillDto
@@ -96,6 +101,23 @@ public class CandidateResumeAiLanguageDto
 {
     public string Name { get; set; } = string.Empty;
     public string Proficiency { get; set; } = string.Empty;
+}
+
+public class CandidateResumeAiAwardDto
+{
+    public string Name { get; set; } = string.Empty;
+    public string? Issuer { get; set; }
+    public int? Year { get; set; }
+    public string? Description { get; set; }
+}
+
+public class CandidateResumeAiActivityDto
+{
+    public string Organization { get; set; } = string.Empty;
+    public string? Role { get; set; }
+    public string? Description { get; set; }
+    public int? StartYear { get; set; }
+    public int? EndYear { get; set; }
 }
 
 public class CandidateResumeParseProfileDto

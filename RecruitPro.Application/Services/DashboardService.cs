@@ -15,6 +15,7 @@ public class DashboardService : IDashboardService
     private readonly IJobRepository _jobRepository;
     private readonly IInterviewRepository _interviewRepository;
     private readonly INotificationRepository _notificationRepository;
+    private readonly ISemanticDiscoveryService _semanticDiscoveryService;
 
     /// <summary>
     /// Initializes a new instance of the DashboardService class.
@@ -29,13 +30,15 @@ public class DashboardService : IDashboardService
         IApplicationRepository applicationRepository,
         IJobRepository jobRepository,
         IInterviewRepository interviewRepository,
-        INotificationRepository notificationRepository)
+        INotificationRepository notificationRepository,
+        ISemanticDiscoveryService semanticDiscoveryService)
     {
         _candidateProfileRepository = candidateProfileRepository;
         _applicationRepository = applicationRepository;
         _jobRepository = jobRepository;
         _interviewRepository = interviewRepository;
         _notificationRepository = notificationRepository;
+        _semanticDiscoveryService = semanticDiscoveryService;
     }
 
     /// <summary>
@@ -47,7 +50,10 @@ public class DashboardService : IDashboardService
     {
         CandidateProfile profile = await GetProfileEntityAsync(userId);
         IReadOnlyList<Domain.Entities.Application> allCandidateApplications = await _applicationRepository.GetByUserIdAsync(profile.UserId);
-        IReadOnlyList<Job> recommended = (await _jobRepository.SearchApprovedAsync(profile.CurrentPosition, [], profile.Skills.Select(skill => skill.Name).ToList(), "newest", 1, 5)).Jobs;
+        ApiResponse<IReadOnlyList<RecommendedJobDto>> semanticRecommendations = await _semanticDiscoveryService.GetRecommendedJobsForCandidateAsync(userId, 5);
+        IReadOnlyList<Job> recommended = semanticRecommendations.Data?.Count > 0
+            ? []
+            : (await _jobRepository.SearchApprovedAsync(profile.CurrentPosition, [], profile.Skills.Select(skill => skill.Name).ToList(), "newest", 1, 5)).Jobs;
 
         var upcomingInterview = allCandidateApplications
             .SelectMany(application => application.Interviews.Select(interview => new { application, interview }))
@@ -74,14 +80,16 @@ public class DashboardService : IDashboardService
                 InterviewerTitle = "HR",
                 MeetingUrl = upcomingInterview.interview.MeetingLink
             },
-            RecommendedJobs = recommended.Select(job => new RecommendedJobDto
-            {
-                Id = job.Id.ToString(),
-                Title = job.Title,
-                Meta = $"{job.WorkMode} • {(job.SalaryMin.HasValue || job.SalaryMax.HasValue ? $"{job.SalaryMin:0}-{job.SalaryMax:0}" : "Negotiable")}",
-                EmploymentType = job.EmploymentType.ToString(),
-                Skills = job.JobSkills.Select(jobSkill => jobSkill.Skill.Name).Distinct().ToList()
-            }).ToList()
+            RecommendedJobs = semanticRecommendations.Data?.Count > 0
+                ? semanticRecommendations.Data.ToList()
+                : recommended.Select(job => new RecommendedJobDto
+                {
+                    Id = job.Id.ToString(),
+                    Title = job.Title,
+                    Meta = $"{job.WorkMode} • {(job.SalaryMin.HasValue || job.SalaryMax.HasValue ? $"{job.SalaryMin:0}-{job.SalaryMax:0}" : "Negotiable")}",
+                    EmploymentType = job.EmploymentType.ToString(),
+                    Skills = job.JobSkills.Select(jobSkill => jobSkill.Skill.Name).Distinct().ToList()
+                }).ToList()
         });
     }
 

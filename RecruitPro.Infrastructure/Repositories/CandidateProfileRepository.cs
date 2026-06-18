@@ -58,6 +58,18 @@ namespace RecruitPro.Infrastructure.Repositories
                 .FirstOrDefaultAsync(profile => profile.Id == candidateId);
         }
 
+        public Task<CandidateProfile?> GetTrackedByIdAsync(Guid candidateId)
+        {
+            return _context.CandidateProfiles
+                .Include(profile => profile.User)
+                .Include(profile => profile.Skills)
+                .Include(profile => profile.CandidateSkillDetails)
+                    .ThenInclude(candidateSkill => candidateSkill.Skill)
+                .Include(profile => profile.Projects)
+                .Include(profile => profile.Resumes)
+                .FirstOrDefaultAsync(profile => profile.Id == candidateId);
+        }
+
         public Task<CandidateProfile?> GetByResumeIdAsync(Guid resumeId)
         {
             return _context.CandidateProfiles
@@ -120,6 +132,24 @@ namespace RecruitPro.Infrastructure.Repositories
                 .ToListAsync();
 
             return (candidates, total);
+        }
+
+        public async Task<IReadOnlyList<CandidateProfile>> GetAllForSemanticSearchAsync()
+        {
+            return await _context.CandidateProfiles
+                .AsNoTracking()
+                .Include(profile => profile.User)
+                .Include(profile => profile.Skills)
+                .Include(profile => profile.CandidateSkillDetails)
+                    .ThenInclude(detail => detail.Skill)
+                .Include(profile => profile.Projects)
+                .Where(profile =>
+                    !string.IsNullOrWhiteSpace(profile.CandidateEmbeddingVectorJson)
+                    || !string.IsNullOrWhiteSpace(profile.CurrentPosition)
+                    || !string.IsNullOrWhiteSpace(profile.Bio)
+                    || profile.Skills.Any()
+                    || profile.CandidateSkillDetails.Any())
+                .ToListAsync();
         }
 
         public Task<CandidateProfile?> GetFirstAsync()

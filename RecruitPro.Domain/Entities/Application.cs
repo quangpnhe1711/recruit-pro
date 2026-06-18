@@ -20,6 +20,18 @@ public partial class Application
 
     public string? CoverLetter { get; set; }
 
+    public decimal? RuleScore { get; set; }
+
+    public decimal? SemanticScore { get; set; }
+
+    public decimal? FinalScore { get; set; }
+
+    public string? ScoreStatus { get; set; }
+
+    public string? ScoreError { get; set; }
+
+    public DateTime? ScoredAt { get; set; }
+
     public virtual ApplicationOffer? Offer { get; set; }
 
     public virtual ICollection<Interview> Interviews { get; set; } = new List<Interview>();

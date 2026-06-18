@@ -7,4 +7,8 @@ public class ResumeUploadResponseDto
     public DateTime UploadedAt { get; set; }
     public int Version { get; set; }
     public bool IsCurrent { get; set; }
+    public string ParseStatus { get; set; } = string.Empty;
+    public string? ParseMessage { get; set; }
+    public DateTime? ParsedAt { get; set; }
+    public List<string> ParserWarnings { get; set; } = [];
 }

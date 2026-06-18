@@ -40,6 +40,14 @@ CREATE TABLE public.applications (
 
 ALTER TABLE public.applications OWNER TO postgres;
 
+ALTER TABLE public.applications
+    ADD COLUMN rule_score numeric(5,2),
+    ADD COLUMN semantic_score numeric(5,2),
+    ADD COLUMN final_score numeric(5,2),
+    ADD COLUMN score_status character varying(50),
+    ADD COLUMN score_error text,
+    ADD COLUMN scored_at timestamp without time zone;
+
 --
 -- TOC entry 240 (class 1259 OID 16810)
 -- Name: offer_templates; Type: TABLE; Schema: public; Owner: postgres
@@ -149,6 +157,20 @@ CREATE TABLE public.candidate_profiles (
 
 
 ALTER TABLE public.candidate_profiles OWNER TO postgres;
+
+ALTER TABLE public.candidate_profiles
+    ADD COLUMN parsed_resume_json jsonb,
+    ADD COLUMN resume_extracted_text text,
+    ADD COLUMN resume_parse_status character varying(50),
+    ADD COLUMN resume_parse_error text,
+    ADD COLUMN resume_parse_model character varying(100),
+    ADD COLUMN resume_parser_warnings_json jsonb,
+    ADD COLUMN resume_parsed_at timestamp without time zone,
+    ADD COLUMN candidate_embedding_vector jsonb,
+    ADD COLUMN candidate_embedding_text_hash character varying(128),
+    ADD COLUMN candidate_embedding_status character varying(50),
+    ADD COLUMN candidate_embedding_error text,
+    ADD COLUMN candidate_embedding_updated_at timestamp without time zone;
 
 --
 -- TOC entry 228 (class 1259 OID 16629)
@@ -266,6 +288,13 @@ CREATE TABLE public.jobs (
 
 
 ALTER TABLE public.jobs OWNER TO postgres;
+
+ALTER TABLE public.jobs
+    ADD COLUMN job_embedding_vector jsonb,
+    ADD COLUMN job_embedding_text_hash character varying(128),
+    ADD COLUMN job_embedding_status character varying(50),
+    ADD COLUMN job_embedding_error text,
+    ADD COLUMN job_embedding_updated_at timestamp without time zone;
 
 --
 -- TOC entry 233 (class 1259 OID 16735)

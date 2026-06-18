@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using RecruitPro.Application.Interfaces;
 using RecruitPro.Application.Interfaces.IServices;
 using RecruitPro.Application.Services;
 
@@ -17,6 +18,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IManagerAnalyticsService, ManagerAnalyticsService>();
         services.AddScoped<ICopilotService, CopilotService>();
         services.AddScoped<IOfferService, OfferService>();
+        services.AddScoped<IApplicationSemanticScoringService, ApplicationSemanticScoringService>();
+        services.AddScoped<ISemanticDiscoveryService, SemanticDiscoveryService>();
 
         return services;
     }

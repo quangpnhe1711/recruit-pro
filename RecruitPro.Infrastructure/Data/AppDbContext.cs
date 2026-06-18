@@ -98,7 +98,23 @@ public partial class AppDbContext : DbContext
                 .HasColumnType("text")
                 .HasColumnName("cover_letter");
             entity.Property(e => e.JobId).HasColumnName("job_id");
+            entity.Property(e => e.FinalScore)
+                .HasPrecision(5, 2)
+                .HasColumnName("final_score");
             entity.Property(e => e.ReviewedBy).HasColumnName("reviewed_by");
+            entity.Property(e => e.RuleScore)
+                .HasPrecision(5, 2)
+                .HasColumnName("rule_score");
+            entity.Property(e => e.ScoreError).HasColumnName("score_error");
+            entity.Property(e => e.ScoreStatus)
+                .HasMaxLength(50)
+                .HasColumnName("score_status");
+            entity.Property(e => e.ScoredAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("scored_at");
+            entity.Property(e => e.SemanticScore)
+                .HasPrecision(5, 2)
+                .HasColumnName("semantic_score");
             entity.Property(e => e.UserId).HasColumnName("user_id");
             entity.Property(e => e.Status)
                 .HasConversion(new ApplicationStatusValueConverter())
@@ -226,10 +242,40 @@ public partial class AppDbContext : DbContext
             entity.Property(e => e.ExperienceYears)
                 .HasDefaultValue(0)
                 .HasColumnName("experience_years");
+            entity.Property(e => e.CandidateEmbeddingError).HasColumnName("candidate_embedding_error");
+            entity.Property(e => e.CandidateEmbeddingStatus)
+                .HasMaxLength(50)
+                .HasColumnName("candidate_embedding_status");
+            entity.Property(e => e.CandidateEmbeddingVectorJson)
+                .HasColumnType("jsonb")
+                .HasColumnName("candidate_embedding_vector");
+            entity.Property(e => e.CandidateEmbeddingTextHash)
+                .HasMaxLength(128)
+                .HasColumnName("candidate_embedding_text_hash");
+            entity.Property(e => e.CandidateEmbeddingUpdatedAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("candidate_embedding_updated_at");
             entity.Property(e => e.GithubUrl).HasColumnName("github_url");
             entity.Property(e => e.LanguageRecordsJson).HasColumnName("language_records_json");
             entity.Property(e => e.LinkedinUrl).HasColumnName("linkedin_url");
+            entity.Property(e => e.ParsedResumeJson)
+                .HasColumnType("jsonb")
+                .HasColumnName("parsed_resume_json");
             entity.Property(e => e.ResumeUrl).HasColumnName("resume_url");
+            entity.Property(e => e.ResumeExtractedText).HasColumnName("resume_extracted_text");
+            entity.Property(e => e.ResumeParseError).HasColumnName("resume_parse_error");
+            entity.Property(e => e.ResumeParseModel)
+                .HasMaxLength(100)
+                .HasColumnName("resume_parse_model");
+            entity.Property(e => e.ResumeParsedAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("resume_parsed_at");
+            entity.Property(e => e.ResumeParseStatus)
+                .HasMaxLength(50)
+                .HasColumnName("resume_parse_status");
+            entity.Property(e => e.ResumeParserWarningsJson)
+                .HasColumnType("jsonb")
+                .HasColumnName("resume_parser_warnings_json");
             entity.Property(e => e.UserId).HasColumnName("user_id");
 
             entity.HasOne(d => d.User).WithOne(p => p.CandidateProfile)
@@ -553,6 +599,19 @@ public partial class AppDbContext : DbContext
                 .HasColumnName("deadline");
             entity.Property(e => e.DepartmentId).HasColumnName("department_id");
             entity.Property(e => e.Description).HasColumnName("description");
+            entity.Property(e => e.JobEmbeddingError).HasColumnName("job_embedding_error");
+            entity.Property(e => e.JobEmbeddingStatus)
+                .HasMaxLength(50)
+                .HasColumnName("job_embedding_status");
+            entity.Property(e => e.JobEmbeddingVectorJson)
+                .HasColumnType("jsonb")
+                .HasColumnName("job_embedding_vector");
+            entity.Property(e => e.JobEmbeddingTextHash)
+                .HasMaxLength(128)
+                .HasColumnName("job_embedding_text_hash");
+            entity.Property(e => e.JobEmbeddingUpdatedAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("job_embedding_updated_at");
             entity.Property(e => e.Location)
                 .HasMaxLength(255)
                 .HasColumnName("location");

@@ -67,6 +67,18 @@ namespace RecruitPro.Application.DTOs.Response
         [JsonPropertyName("score")]
         public double? Score { get; set; }
 
+        [JsonPropertyName("ruleScore")]
+        public decimal? RuleScore { get; set; }
+
+        [JsonPropertyName("semanticScore")]
+        public decimal? SemanticScore { get; set; }
+
+        [JsonPropertyName("finalScore")]
+        public decimal? FinalScore { get; set; }
+
+        [JsonPropertyName("scoreStatus")]
+        public string? ScoreStatus { get; set; }
+
         [JsonPropertyName("nextStep")]
         public string? NextStep { get; set; }
     }

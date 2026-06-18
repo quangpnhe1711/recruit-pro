@@ -44,6 +44,16 @@ public partial class Job
 
     public DateTime? CreatedAt { get; set; }
 
+    public string? JobEmbeddingVectorJson { get; set; }
+
+    public string? JobEmbeddingTextHash { get; set; }
+
+    public string? JobEmbeddingStatus { get; set; }
+
+    public string? JobEmbeddingError { get; set; }
+
+    public DateTime? JobEmbeddingUpdatedAt { get; set; }
+
     public virtual ICollection<Application> Applications { get; set; } = new List<Application>();
 
     public virtual User? ApprovedByNavigation { get; set; }
