@@ -410,10 +410,9 @@ public class SemanticDiscoveryService : ISemanticDiscoveryService
 
     private static SemanticCandidateCardDto MapSemanticCandidate(CandidateProfile candidate, decimal similarityScore, string query)
     {
-        List<string> topSkills = candidate.CandidateSkillDetails
+        List<string> topSkills = candidate.CandidateSkills
             .Where(detail => detail.Skill != null)
             .Select(detail => detail.Skill.Name)
-            .Concat(candidate.Skills.Select(skill => skill.Name))
             .Where(name => !string.IsNullOrWhiteSpace(name))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Take(6)
@@ -459,10 +458,9 @@ public class SemanticDiscoveryService : ISemanticDiscoveryService
         builder.AppendLine("Candidate Profile");
         AppendSection(builder, "Headline", profile.CurrentPosition);
         AppendSection(builder, "Summary", profile.Bio);
-        AppendSection(builder, "Skills", string.Join(", ", profile.CandidateSkillDetails
+        AppendSection(builder, "Skills", string.Join(", ", profile.CandidateSkills
             .Where(detail => detail.Skill != null)
             .Select(detail => detail.YearsOfExperience.HasValue ? $"{detail.Skill.Name} ({detail.YearsOfExperience:0.#} years)" : detail.Skill.Name)
-            .Concat(profile.Skills.Select(skill => skill.Name))
             .Distinct(StringComparer.OrdinalIgnoreCase)));
         AppendSection(builder, "Experience", FlattenJsonArray(profile.ExperienceEntriesJson, ["title", "company", "bullets"]));
         AppendSection(builder, "Projects", string.Join(Environment.NewLine, profile.Projects.Select(project =>

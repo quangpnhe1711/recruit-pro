@@ -60,6 +60,11 @@ namespace RecruitPro.Application.DTOs.Response
             return new ApiResponse<T>(false, 404, message);
         }
 
+        public static ApiResponse<T> Forbidden(string message = "Forbidden")
+        {
+            return new ApiResponse<T>(false, 403, message);
+        }
+
         public static ApiResponse<T> Error(string message = "Internal server error", object? extra = null)
         {
             return new ApiResponse<T>(false, 500, message, default, null, extra);

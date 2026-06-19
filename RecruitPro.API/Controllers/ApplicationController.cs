@@ -1,5 +1,6 @@
 using RecruitPro.Application.DTOs.Request.Applications;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using RecruitPro.API.Extensions;
 using RecruitPro.Application.DTOs.Request;
 using RecruitPro.Application.DTOs.Request.Jobs;
@@ -18,6 +19,7 @@ public class ApplicationController : ControllerBase
     }
 
     [HttpGet("api/jobs/{jobId}/apply-context")]
+    [Authorize(Roles = "Candidate")]
     public async Task<IActionResult> GetApplyContext(string jobId)
     {
         var result = await _applicationService.GetApplyScreenAsync(User.GetCurrentUserId(), jobId);
@@ -39,6 +41,7 @@ public class ApplicationController : ControllerBase
     }
 
     [HttpPost("api/jobs/{jobId}/apply")]
+    [Authorize(Roles = "Candidate")]
     public async Task<IActionResult> Apply(string jobId, [FromBody] ApplyJobRequest request)
     {
         var result = await _applicationService.ApplyAsync(User.GetCurrentUserId(), jobId, request);
@@ -46,6 +49,7 @@ public class ApplicationController : ControllerBase
     }
 
     [HttpGet("api/candidate/applications")]
+    [Authorize(Roles = "Candidate")]
     public async Task<IActionResult> GetCandidateApplications([FromQuery] int page = 1, [FromQuery] int pageSize = 10, [FromQuery] string? status = null, [FromQuery] string? keyword = null)
     {
         var result = await _applicationService.GetCandidateApplicationsAsync(User.GetCurrentUserId(), page, pageSize, status, keyword);
@@ -53,6 +57,7 @@ public class ApplicationController : ControllerBase
     }
 
     [HttpPost("api/candidate/applications/{applicationId}/withdraw")]
+    [Authorize(Roles = "Candidate")]
     public async Task<IActionResult> WithdrawApplication(string applicationId)
     {
         var result = await _applicationService.WithdrawApplicationAsync(User.GetCurrentUserId(), applicationId);
@@ -60,6 +65,7 @@ public class ApplicationController : ControllerBase
     }
 
     [HttpPost("api/candidate/applications/{applicationId}/accept-offer")]
+    [Authorize(Roles = "Candidate")]
     public async Task<IActionResult> AcceptOffer(string applicationId)
     {
         var result = await _applicationService.AcceptOfferAsync(User.GetCurrentUserId(), applicationId);
@@ -67,6 +73,7 @@ public class ApplicationController : ControllerBase
     }
 
     [HttpPost("api/candidate/applications/{applicationId}/decline-offer")]
+    [Authorize(Roles = "Candidate")]
     public async Task<IActionResult> DeclineOffer(string applicationId)
     {
         var result = await _applicationService.DeclineOfferAsync(User.GetCurrentUserId(), applicationId);
@@ -74,6 +81,7 @@ public class ApplicationController : ControllerBase
     }
 
     [HttpGet("api/hr/applications")]
+    [Authorize(Roles = "HR,Manager")]
     public async Task<IActionResult> GetHrApplications([FromQuery] HrApplicationQueryRequest request)
     {
         var result = await _applicationService.GetHrApplicationsAsync(
@@ -87,6 +95,7 @@ public class ApplicationController : ControllerBase
     }
 
     [HttpGet("api/manager/applications/review-queue")]
+    [Authorize(Roles = "Manager")]
     public async Task<IActionResult> GetManagerReviewQueue([FromQuery] int page = 1, [FromQuery] int pageSize = 10, [FromQuery] string? keyword = null)
     {
         var result = await _applicationService.GetManagerReviewQueueAsync(page, pageSize, keyword);
@@ -94,6 +103,7 @@ public class ApplicationController : ControllerBase
     }
 
     [HttpGet("api/hr/applications/{applicationId}")]
+    [Authorize(Roles = "HR,Manager")]
     public async Task<IActionResult> GetApplicationReviewDetail(string applicationId)
     {
         var result = await _applicationService.GetApplicationReviewDetailAsync(applicationId);
@@ -101,6 +111,7 @@ public class ApplicationController : ControllerBase
     }
 
     [HttpPatch("api/hr/applications/{applicationId}/decision")]
+    [Authorize(Roles = "HR,Manager")]
     public async Task<IActionResult> UpdateApplicationDecision(string applicationId, [FromBody] UpdateApplicationDecisionRequest request)
     {
         var result = await _applicationService.UpdateApplicationDecisionAsync(applicationId, User.TryGetCurrentUserId(), request);
@@ -108,6 +119,7 @@ public class ApplicationController : ControllerBase
     }
 
     [HttpGet("api/hr/applications/{applicationId}/cv")]
+    [Authorize(Roles = "HR,Manager")]
     public async Task<IActionResult> GetApplicationCv(string applicationId)
     {
         var result = await _applicationService.GetApplicationCvAsync(applicationId);
@@ -115,6 +127,7 @@ public class ApplicationController : ControllerBase
     }
 
     [HttpPost("api/hr/applications/{applicationId}/send-email")]
+    [Authorize(Roles = "HR,Manager")]
     public async Task<IActionResult> SendApplicationEmail(string applicationId, [FromBody] SendApplicationEmailRequest request)
     {
         var result = await _applicationService.SendApplicationEmailAsync(applicationId, request);

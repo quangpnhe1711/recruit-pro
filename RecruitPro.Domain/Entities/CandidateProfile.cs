@@ -59,11 +59,10 @@ public partial class CandidateProfile
 
     public virtual User User { get; set; } = null!;
 
-    public virtual ICollection<Skill> Skills { get; set; } = new List<Skill>();
+    public virtual ICollection<CandidateSkill> CandidateSkills { get; set; } = new List<CandidateSkill>();
 
     public virtual ICollection<CandidateProject> Projects { get; set; } = new List<CandidateProject>();
 
     public virtual ICollection<CandidateResume> Resumes { get; set; } = new List<CandidateResume>();
 
-    public virtual ICollection<CandidateSkillDetail> CandidateSkillDetails { get; set; } = new List<CandidateSkillDetail>();
 }

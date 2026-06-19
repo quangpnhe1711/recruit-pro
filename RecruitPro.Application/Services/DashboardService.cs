@@ -53,7 +53,13 @@ public class DashboardService : IDashboardService
         ApiResponse<IReadOnlyList<RecommendedJobDto>> semanticRecommendations = await _semanticDiscoveryService.GetRecommendedJobsForCandidateAsync(userId, 5);
         IReadOnlyList<Job> recommended = semanticRecommendations.Data?.Count > 0
             ? []
-            : (await _jobRepository.SearchApprovedAsync(profile.CurrentPosition, [], profile.Skills.Select(skill => skill.Name).ToList(), "newest", 1, 5)).Jobs;
+            : (await _jobRepository.SearchApprovedAsync(
+                profile.CurrentPosition,
+                [],
+                profile.CandidateSkills.Select(skill => skill.Skill.Name).ToList(),
+                "newest",
+                1,
+                5)).Jobs;
 
         var upcomingInterview = allCandidateApplications
             .SelectMany(application => application.Interviews.Select(interview => new { application, interview }))

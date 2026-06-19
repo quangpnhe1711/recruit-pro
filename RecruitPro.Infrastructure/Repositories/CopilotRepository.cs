@@ -70,7 +70,7 @@ public class CopilotRepository : ICopilotRepository
                     ? application.User.CandidateProfile.ExperienceYears.Value
                     : 0,
                 Skills = application.User.CandidateProfile != null
-                    ? application.User.CandidateProfile.Skills.Select(skill => skill.Name).OrderBy(name => name).ToList()
+                    ? application.User.CandidateProfile.CandidateSkills.Select(skill => skill.Skill.Name).OrderBy(name => name).ToList()
                     : new List<string>(),
                 CvSummary = application.User.CandidateProfile != null
                     ? (application.User.CandidateProfile.Bio ?? application.User.CandidateProfile.CurrentPosition ?? string.Empty)

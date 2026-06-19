@@ -9,7 +9,7 @@ namespace RecruitPro.Application.Exceptions
 {
     public class UnauthorizeException : BaseException
     {
-        public UnauthorizeException(string message) : base("Authorization failed", HttpStatusCodeConstants.Unauthorized)
+        public UnauthorizeException(string message) : base(message, HttpStatusCodeConstants.Unauthorized)
         {
         }
     }

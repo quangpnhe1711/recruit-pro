@@ -632,7 +632,7 @@ namespace RecruitPro.Infrastructure.Migrations
                         .HasConstraintName("applications_job_id_fkey");
 
                     b.HasOne("RecruitPro.Domain.Entities.User", "ReviewedByNavigation")
-                        .WithMany("Applications")
+                        .WithMany("ApplicationReviewedByNavigations")
                         .HasForeignKey("ReviewedBy")
                         .HasConstraintName("applications_reviewed_by_fkey");
 
@@ -772,11 +772,6 @@ namespace RecruitPro.Infrastructure.Migrations
                     b.Navigation("Interviews");
                 });
 
-            modelBuilder.Entity("RecruitPro.Domain.Entities.CandidateProfile", b =>
-                {
-                    b.Navigation("Applications");
-                });
-
             modelBuilder.Entity("RecruitPro.Domain.Entities.Department", b =>
                 {
                     b.Navigation("Jobs");
@@ -802,6 +797,8 @@ namespace RecruitPro.Infrastructure.Migrations
             modelBuilder.Entity("RecruitPro.Domain.Entities.User", b =>
                 {
                     b.Navigation("Applications");
+
+                    b.Navigation("ApplicationReviewedByNavigations");
 
                     b.Navigation("CandidateProfile");
 

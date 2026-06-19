@@ -30,8 +30,7 @@ namespace RecruitPro.Infrastructure.Repositories
                 .Include(profile => profile.User)
                     .ThenInclude(user => user.Applications)
                         .ThenInclude(application => application.Interviews)
-                .Include(profile => profile.Skills)
-                .Include(profile => profile.CandidateSkillDetails)
+                .Include(profile => profile.CandidateSkills)
                     .ThenInclude(candidateSkill => candidateSkill.Skill)
                 .Include(profile => profile.Projects)
                 .Include(profile => profile.Resumes)
@@ -50,8 +49,7 @@ namespace RecruitPro.Infrastructure.Repositories
             return _context.CandidateProfiles
                 .AsNoTracking()
                 .Include(profile => profile.User)
-                .Include(profile => profile.Skills)
-                .Include(profile => profile.CandidateSkillDetails)
+                .Include(profile => profile.CandidateSkills)
                     .ThenInclude(candidateSkill => candidateSkill.Skill)
                 .Include(profile => profile.Projects)
                 .Include(profile => profile.Resumes)
@@ -62,8 +60,7 @@ namespace RecruitPro.Infrastructure.Repositories
         {
             return _context.CandidateProfiles
                 .Include(profile => profile.User)
-                .Include(profile => profile.Skills)
-                .Include(profile => profile.CandidateSkillDetails)
+                .Include(profile => profile.CandidateSkills)
                     .ThenInclude(candidateSkill => candidateSkill.Skill)
                 .Include(profile => profile.Projects)
                 .Include(profile => profile.Resumes)
@@ -74,8 +71,7 @@ namespace RecruitPro.Infrastructure.Repositories
         {
             return _context.CandidateProfiles
                 .Include(profile => profile.User)
-                .Include(profile => profile.Skills)
-                .Include(profile => profile.CandidateSkillDetails)
+                .Include(profile => profile.CandidateSkills)
                     .ThenInclude(candidateSkill => candidateSkill.Skill)
                 .Include(profile => profile.Projects)
                 .Include(profile => profile.Resumes)
@@ -93,8 +89,7 @@ namespace RecruitPro.Infrastructure.Repositories
                 .Include(profile => profile.User)
                     .ThenInclude(user => user.Applications)
                         .ThenInclude(application => application.Interviews)
-                .Include(profile => profile.Skills)
-                .Include(profile => profile.CandidateSkillDetails)
+                .Include(profile => profile.CandidateSkills)
                     .ThenInclude(candidateSkill => candidateSkill.Skill)
                 .Include(profile => profile.Projects)
                 .Include(profile => profile.Resumes)
@@ -108,8 +103,8 @@ namespace RecruitPro.Infrastructure.Repositories
                 .Include(profile => profile.User)
                     .ThenInclude(user => user.Applications)
                 .Include(profile => profile.Resumes)
-                .Include(profile => profile.Skills)
-                .Include(profile => profile.CandidateSkillDetails)
+                .Include(profile => profile.CandidateSkills)
+                    .ThenInclude(candidateSkill => candidateSkill.Skill)
                 .AsQueryable();
 
             if (!string.IsNullOrWhiteSpace(keyword))
@@ -122,7 +117,7 @@ namespace RecruitPro.Infrastructure.Repositories
                 profile.User.Applications.Any() ||
                 (!string.IsNullOrWhiteSpace(profile.ResumeUrl)
                  && !string.IsNullOrWhiteSpace(profile.CurrentPosition)
-                 && profile.Skills.Any()));
+                 && profile.CandidateSkills.Any()));
 
             int total = await query.CountAsync();
             List<CandidateProfile> candidates = await query
@@ -139,16 +134,14 @@ namespace RecruitPro.Infrastructure.Repositories
             return await _context.CandidateProfiles
                 .AsNoTracking()
                 .Include(profile => profile.User)
-                .Include(profile => profile.Skills)
-                .Include(profile => profile.CandidateSkillDetails)
+                .Include(profile => profile.CandidateSkills)
                     .ThenInclude(detail => detail.Skill)
                 .Include(profile => profile.Projects)
                 .Where(profile =>
                     !string.IsNullOrWhiteSpace(profile.CandidateEmbeddingVectorJson)
                     || !string.IsNullOrWhiteSpace(profile.CurrentPosition)
                     || !string.IsNullOrWhiteSpace(profile.Bio)
-                    || profile.Skills.Any()
-                    || profile.CandidateSkillDetails.Any())
+                    || profile.CandidateSkills.Any())
                 .ToListAsync();
         }
 
@@ -160,8 +153,8 @@ namespace RecruitPro.Infrastructure.Repositories
                     .ThenInclude(user => user.Applications)
                         .ThenInclude(application => application.Job)
                 .Include(profile => profile.Resumes)
-                .Include(profile => profile.Skills)
-                .Include(profile => profile.CandidateSkillDetails)
+                .Include(profile => profile.CandidateSkills)
+                    .ThenInclude(candidateSkill => candidateSkill.Skill)
                 .OrderBy(profile => profile.User.FullName)
                 .FirstOrDefaultAsync();
         }
@@ -202,36 +195,34 @@ namespace RecruitPro.Infrastructure.Repositories
             await _context.CandidateProjects.AddRangeAsync(projects);
         }
 
-        public async Task ReplaceSkillsAsync(Guid candidateProfileId, IReadOnlyCollection<CandidateSkillDetail> skillDetails)
+        public async Task ReplaceSkillsAsync(Guid candidateProfileId, IReadOnlyCollection<CandidateSkill> skills)
         {
-            await _context.CandidateSkillDetails
+            List<CandidateSkill> trackedSkills = _context.ChangeTracker
+                .Entries<CandidateSkill>()
+                .Where(entry => entry.Entity.CandidateId == candidateProfileId)
+                .Select(entry => entry.Entity)
+                .ToList();
+
+            foreach (CandidateSkill trackedSkill in trackedSkills)
+            {
+                _context.Entry(trackedSkill).State = EntityState.Detached;
+            }
+
+            await _context.CandidateSkills
                 .Where(detail => detail.CandidateId == candidateProfileId)
                 .ExecuteDeleteAsync();
 
-            await _context.Set<Dictionary<string, object>>("CandidateSkill")
-                .Where(row => EF.Property<Guid>(row, "CandidateId") == candidateProfileId)
-                .ExecuteDeleteAsync();
-
-            if (skillDetails.Count == 0)
+            if (skills.Count == 0)
             {
                 return;
             }
 
-            foreach (CandidateSkillDetail detail in skillDetails)
+            foreach (CandidateSkill skill in skills)
             {
-                detail.CandidateId = candidateProfileId;
+                skill.CandidateId = candidateProfileId;
             }
 
-            await _context.CandidateSkillDetails.AddRangeAsync(skillDetails);
-
-            foreach (CandidateSkillDetail detail in skillDetails)
-            {
-                _context.Set<Dictionary<string, object>>("CandidateSkill").Add(new Dictionary<string, object>
-                {
-                    ["CandidateId"] = candidateProfileId,
-                    ["SkillId"] = detail.SkillId
-                });
-            }
+            await _context.CandidateSkills.AddRangeAsync(skills);
         }
     }
 }

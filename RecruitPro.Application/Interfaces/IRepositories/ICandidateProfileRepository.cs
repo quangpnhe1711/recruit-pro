@@ -16,5 +16,5 @@ public interface ICandidateProfileRepository
     Task<CandidateProfile?> GetFirstAsync();
     Task UpdateAsync(CandidateProfile profile);
     Task ReplaceProjectsAsync(Guid candidateProfileId, IReadOnlyCollection<CandidateProject> projects);
-    Task ReplaceSkillsAsync(Guid candidateProfileId, IReadOnlyCollection<CandidateSkillDetail> skillDetails);
+    Task ReplaceSkillsAsync(Guid candidateProfileId, IReadOnlyCollection<CandidateSkill> skills);
 }

@@ -1455,13 +1455,8 @@ CREATE TABLE IF NOT EXISTS public.candidate_projects (
 
 ALTER TABLE public.candidate_projects OWNER TO postgres;
 
-CREATE TABLE IF NOT EXISTS public.candidate_skill_details (
-    candidate_id uuid NOT NULL,
-    skill_id uuid NOT NULL,
-    years_of_experience numeric(5,1)
-);
-
-ALTER TABLE public.candidate_skill_details OWNER TO postgres;
+ALTER TABLE public.candidate_skills
+    ADD COLUMN IF NOT EXISTS years_of_experience numeric(5,1);
 
 ALTER TABLE ONLY public.candidate_resumes
     ADD CONSTRAINT candidate_resumes_pkey PRIMARY KEY (id);
@@ -1469,17 +1464,14 @@ ALTER TABLE ONLY public.candidate_resumes
 ALTER TABLE ONLY public.candidate_projects
     ADD CONSTRAINT candidate_projects_pkey PRIMARY KEY (id);
 
-ALTER TABLE ONLY public.candidate_skill_details
-    ADD CONSTRAINT candidate_skill_details_pkey PRIMARY KEY (candidate_id, skill_id);
-
 CREATE INDEX IF NOT EXISTS ix_candidate_resumes_candidate_profile_id
     ON public.candidate_resumes USING btree (candidate_profile_id, upload_date DESC);
 
 CREATE INDEX IF NOT EXISTS ix_candidate_projects_candidate_profile_id
     ON public.candidate_projects USING btree (candidate_profile_id, start_year DESC, start_month DESC);
 
-CREATE INDEX IF NOT EXISTS ix_candidate_skill_details_skill_id
-    ON public.candidate_skill_details USING btree (skill_id);
+CREATE INDEX IF NOT EXISTS ix_candidate_skills_skill_id
+    ON public.candidate_skills USING btree (skill_id);
 
 ALTER TABLE ONLY public.candidate_resumes
     ADD CONSTRAINT candidate_resumes_candidate_profile_id_fkey
@@ -1488,14 +1480,6 @@ ALTER TABLE ONLY public.candidate_resumes
 ALTER TABLE ONLY public.candidate_projects
     ADD CONSTRAINT candidate_projects_candidate_profile_id_fkey
     FOREIGN KEY (candidate_profile_id) REFERENCES public.candidate_profiles(id) ON DELETE CASCADE;
-
-ALTER TABLE ONLY public.candidate_skill_details
-    ADD CONSTRAINT candidate_skill_details_candidate_id_fkey
-    FOREIGN KEY (candidate_id) REFERENCES public.candidate_profiles(id) ON DELETE CASCADE;
-
-ALTER TABLE ONLY public.candidate_skill_details
-    ADD CONSTRAINT candidate_skill_details_skill_id_fkey
-    FOREIGN KEY (skill_id) REFERENCES public.skills(id) ON DELETE CASCADE;
 
 INSERT INTO public.candidate_resumes (
     id,
@@ -1523,27 +1507,16 @@ WHERE cp.resume_url IS NOT NULL
         AND cr.is_current = true
   );
 
-INSERT INTO public.candidate_skill_details (
-    candidate_id,
-    skill_id,
-    years_of_experience
-)
-SELECT
-    cs.candidate_id,
-    cs.skill_id,
-    CASE
+UPDATE public.candidate_skills cs
+SET years_of_experience = CASE
         WHEN cp.experience_years IS NULL THEN NULL
         ELSE cp.experience_years::numeric(5,1)
     END
-FROM public.candidate_skills cs
-INNER JOIN public.candidate_profiles cp
-    ON cp.id = cs.candidate_id
-WHERE NOT EXISTS (
-    SELECT 1
-    FROM public.candidate_skill_details csd
-    WHERE csd.candidate_id = cs.candidate_id
-      AND csd.skill_id = cs.skill_id
-);
+FROM public.candidate_profiles cp
+WHERE cp.id = cs.candidate_id
+  AND cs.years_of_experience IS NULL;
+
+DROP TABLE IF EXISTS public.candidate_skill_details;
 
 UPDATE public.candidate_profiles cp
 SET education_records_json = json_build_array(

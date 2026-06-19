@@ -225,17 +225,13 @@ public class ApplicationSemanticScoringService : IApplicationSemanticScoringServ
         AppendSection(builder, "Headline", profile.CurrentPosition);
         AppendSection(builder, "Summary", profile.Bio);
 
-        List<string> skills = profile.CandidateSkillDetails
+        List<string> skills = profile.CandidateSkills
             .Where(detail => detail.Skill != null)
             .Select(detail => detail.YearsOfExperience.HasValue
                 ? $"{detail.Skill.Name} ({detail.YearsOfExperience:0.#} years)"
                 : detail.Skill.Name)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
-        if (skills.Count == 0)
-        {
-            skills = profile.Skills.Select(skill => skill.Name).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-        }
 
         AppendSection(builder, "Skills", string.Join(", ", skills));
         AppendSection(builder, "Experience", FlattenJsonArray(profile.ExperienceEntriesJson, ["title", "company", "bullets"]));

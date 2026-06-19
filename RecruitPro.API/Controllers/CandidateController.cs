@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using RecruitPro.API.Extensions;
 using RecruitPro.Application.DTOs.Request.Candidate;
 using RecruitPro.Application.Interfaces.IServices;
@@ -34,6 +35,7 @@ public class CandidateController : ControllerBase
     }
 
     [HttpGet("api/candidate/profile")]
+    [Authorize(Roles = "Candidate")]
     public async Task<IActionResult> GetProfile()
     {
         var result = await _candidateService.GetProfileAsync(User.GetCurrentUserId());
@@ -41,6 +43,7 @@ public class CandidateController : ControllerBase
     }
 
     [HttpPut("api/candidate/profile")]
+    [Authorize(Roles = "Candidate")]
     public async Task<IActionResult> UpdateProfile([FromBody] UpdateCandidateProfileRequest request)
     {
         var result = await _candidateService.UpdateProfileAsync(User.GetCurrentUserId(), request);
@@ -48,6 +51,7 @@ public class CandidateController : ControllerBase
     }
 
     [HttpPut("api/candidate/profile/skills")]
+    [Authorize(Roles = "Candidate")]
     public async Task<IActionResult> UpdateSkills([FromBody] UpdateCandidateSkillsRequest request)
     {
         var result = await _candidateService.UpdateSkillsAsync(User.GetCurrentUserId(), request);
@@ -55,6 +59,7 @@ public class CandidateController : ControllerBase
     }
 
     [HttpPost("api/candidate/profile/experience")]
+    [Authorize(Roles = "Candidate")]
     public async Task<IActionResult> CreateExperience([FromBody] UpsertCandidateExperienceRequest request)
     {
         var result = await _candidateService.CreateExperienceAsync(User.GetCurrentUserId(), request);
@@ -62,6 +67,7 @@ public class CandidateController : ControllerBase
     }
 
     [HttpPut("api/candidate/profile/experience/{experienceId}")]
+    [Authorize(Roles = "Candidate")]
     public async Task<IActionResult> UpdateExperience(string experienceId, [FromBody] UpsertCandidateExperienceRequest request)
     {
         var result = await _candidateService.UpdateExperienceAsync(User.GetCurrentUserId(), experienceId, request);
@@ -69,6 +75,7 @@ public class CandidateController : ControllerBase
     }
 
     [HttpDelete("api/candidate/profile/experience/{experienceId}")]
+    [Authorize(Roles = "Candidate")]
     public async Task<IActionResult> DeleteExperience(string experienceId)
     {
         var result = await _candidateService.DeleteExperienceAsync(User.GetCurrentUserId(), experienceId);
@@ -76,6 +83,7 @@ public class CandidateController : ControllerBase
     }
 
     [HttpPost("api/candidate/profile/resume/parse")]
+    [Authorize(Roles = "Candidate")]
     public async Task<IActionResult> ParseResume(IFormFile resume)
     {
         await using Stream resumeStream = resume.OpenReadStream();
@@ -84,6 +92,7 @@ public class CandidateController : ControllerBase
     }
 
     [HttpPost("api/candidate/profile/resume")]
+    [Authorize(Roles = "Candidate")]
     public async Task<IActionResult> UploadResume(IFormFile resume)
     {
         await using Stream resumeStream = resume.OpenReadStream();
@@ -92,6 +101,7 @@ public class CandidateController : ControllerBase
     }
 
     [HttpGet("api/hr/candidates")]
+    [Authorize(Roles = "HR,Manager")]
     public async Task<IActionResult> GetCandidates([FromQuery] int page = 1, [FromQuery] int pageSize = 10, [FromQuery] string? keyword = null, [FromQuery] string? status = null, [FromQuery] string? source = null)
     {
         var result = await _candidateService.GetCandidatesAsync(page, pageSize, keyword, status, source);
@@ -99,6 +109,7 @@ public class CandidateController : ControllerBase
     }
 
     [HttpGet("api/hr/candidates/{candidateId}")]
+    [Authorize(Roles = "HR,Manager")]
     public async Task<IActionResult> GetCandidateDetail(string candidateId)
     {
         var result = await _candidateService.GetCandidateDetailAsync(candidateId);
@@ -114,6 +125,7 @@ public class CandidateController : ControllerBase
 
     [HttpPost("api/candidates/import/preview")]
     [Consumes("multipart/form-data")]
+    [Authorize(Roles = "HR,Manager")]
     public async Task<IActionResult> PreviewImport(IFormFile file)
     {
         await using var fileStream = file.OpenReadStream();
@@ -126,6 +138,7 @@ public class CandidateController : ControllerBase
     }
 
     [HttpPost("api/candidates/import")]
+    [Authorize(Roles = "HR,Manager")]
     public async Task<IActionResult> ImportCandidates([FromBody] CandidateImportRequest request)
     {
         var result = await _candidateService.ImportCandidatesAsync(request);

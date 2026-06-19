@@ -101,3 +101,7 @@ app.MapGet("/", () => Results.Ok("RecruitPro API Running"));
 app.MapControllers();
 
 app.Run();
+
+public partial class Program
+{
+}

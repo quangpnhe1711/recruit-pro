@@ -1,7 +1,9 @@
 ﻿using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
+using RecruitPro.Application.DTOs.Response;
 using System.Text;
 
 namespace RecruitPro.Infrastructure.Extensions
@@ -30,6 +32,25 @@ namespace RecruitPro.Infrastructure.Extensions
 
                         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt["Key"]!)
                         )
+                    };
+                    options.Events = new JwtBearerEvents
+                    {
+                        OnChallenge = async context =>
+                        {
+                            context.HandleResponse();
+                            if (!context.Response.HasStarted)
+                            {
+                                context.Response.StatusCode = 401;
+                                context.Response.ContentType = "application/json";
+                                await context.Response.WriteAsJsonAsync(ApiResponse<object>.Unauthorized("Unauthorized"));
+                            }
+                        },
+                        OnForbidden = async context =>
+                        {
+                            context.Response.StatusCode = 403;
+                            context.Response.ContentType = "application/json";
+                            await context.Response.WriteAsJsonAsync(ApiResponse<object>.Forbidden("Forbidden"));
+                        }
                     };
                 });
 

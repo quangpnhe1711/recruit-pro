@@ -835,9 +835,6 @@ public class CandidateService : ICandidateService
         List<CandidateEducationDocument> educations = LoadDocuments<CandidateEducationDocument>(profile.EducationRecordsJson);
         List<CandidateCertificationDocument> certifications = LoadDocuments<CandidateCertificationDocument>(profile.CertificationRecordsJson);
         List<CandidateLanguageDocument> languages = LoadDocuments<CandidateLanguageDocument>(profile.LanguageRecordsJson);
-        Dictionary<Guid, decimal?> skillYearsMap = profile.CandidateSkillDetails
-            .GroupBy(item => item.SkillId)
-            .ToDictionary(group => group.Key, group => group.First().YearsOfExperience);
         List<CandidateResumeDto> resumeHistory = [];
 
         foreach (CandidateResume candidateResume in profile.Resumes.OrderByDescending(item => item.Version))
@@ -878,14 +875,14 @@ public class CandidateService : ICandidateService
                 Linkedin = profile.LinkedinUrl,
                 CompletionScore = completionScore
             },
-            Skills = profile.Skills.Select(skill => new CandidateSkillViewDto
+            Skills = profile.CandidateSkills
+                .Where(candidateSkill => candidateSkill.Skill != null)
+                .Select(candidateSkill => new CandidateSkillViewDto
             {
-                Id = skill.Id.ToString(),
-                Label = skill.Name,
+                Id = candidateSkill.SkillId.ToString(),
+                Label = candidateSkill.Skill.Name,
                 Active = true,
-                YearsOfExperience = skillYearsMap.TryGetValue(skill.Id, out decimal? yearsOfExperience)
-                    ? yearsOfExperience
-                    : null
+                YearsOfExperience = candidateSkill.YearsOfExperience
             }).ToList(),
             ExperienceEntries = experiences
                 .OrderByDescending(item => item.Period.StartYear)
@@ -1283,23 +1280,24 @@ public class CandidateService : ICandidateService
             .Where(value => value != Guid.Empty)
             .Distinct()
             .ToList();
-        IReadOnlyList<Skill> skills = await _skillRepository.GetByIdsAsync(skillIds);
-        List<CandidateSkillDetail> skillDetails = [];
+        IReadOnlyList<Skill> resolvedSkills = await _skillRepository.GetByIdsAsync(skillIds);
+        List<CandidateSkill> candidateSkills = [];
 
-        foreach (Skill skill in skills)
+        foreach (Skill skill in resolvedSkills)
         {
             CandidateSkillUpsertRequest? request = requestedSkills.FirstOrDefault(item =>
                 Guid.TryParse(item.SkillId, out Guid parsedSkillId) && parsedSkillId == skill.Id);
 
-            skillDetails.Add(new CandidateSkillDetail
+            candidateSkills.Add(new CandidateSkill
             {
                 CandidateId = candidateProfileId,
                 SkillId = skill.Id,
+                Skill = skill,
                 YearsOfExperience = request?.YearsOfExperience
             });
         }
 
-        await _candidateRepository.ReplaceSkillsAsync(candidateProfileId, skillDetails);
+        await _candidateRepository.ReplaceSkillsAsync(candidateProfileId, candidateSkills);
     }
 
     private async Task PersistParsedResumeAsync(
@@ -1560,7 +1558,7 @@ public class CandidateService : ICandidateService
             score += 15;
         }
 
-        if (profile.Skills.Count > 0)
+        if (profile.CandidateSkills.Count > 0)
         {
             score += 20;
         }

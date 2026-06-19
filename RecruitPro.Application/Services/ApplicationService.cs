@@ -763,20 +763,12 @@ public class ApplicationService : IApplicationService
     private static decimal CalculateRuleScore(CandidateProfile profile, Job job)
     {
         Dictionary<string, decimal?> candidateSkillYears = new(StringComparer.OrdinalIgnoreCase);
-        foreach (CandidateSkillDetail candidateSkill in profile.CandidateSkillDetails)
+        foreach (CandidateSkill candidateSkill in profile.CandidateSkills)
         {
             string? skillName = candidateSkill.Skill?.Name;
             if (!string.IsNullOrWhiteSpace(skillName))
             {
                 candidateSkillYears[skillName] = candidateSkill.YearsOfExperience;
-            }
-        }
-
-        foreach (Skill skill in profile.Skills)
-        {
-            if (!candidateSkillYears.ContainsKey(skill.Name))
-            {
-                candidateSkillYears[skill.Name] = null;
             }
         }
 
@@ -829,7 +821,7 @@ public class ApplicationService : IApplicationService
             profile.Bio ?? string.Empty,
             profile.Education ?? string.Empty,
             profile.Address ?? string.Empty,
-            string.Join(' ', profile.Skills.Select(skill => skill.Name)),
+            string.Join(' ', profile.CandidateSkills.Select(skill => skill.Skill.Name)),
             string.Join(' ', profile.Projects.Select(project => $"{project.Name} {project.Role} {project.Description}"))
         ];
 
@@ -867,8 +859,8 @@ public class ApplicationService : IApplicationService
     /// <returns>The operation result.</returns>
     private static ApplicationReviewDetailDto MapApplicationToReviewDetailDto(Domain.Entities.Application application)
     {
-        List<string> candidateSkills = application.User.CandidateProfile?.Skills
-            .Select(skill => skill.Name)
+        List<string> candidateSkills = application.User.CandidateProfile?.CandidateSkills
+            .Select(skill => skill.Skill.Name)
             .Where(name => !string.IsNullOrWhiteSpace(name))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(name => name)
@@ -1006,20 +998,12 @@ public class ApplicationService : IApplicationService
         }
 
         Dictionary<string, decimal?> candidateSkillYears = new(StringComparer.OrdinalIgnoreCase);
-        foreach (CandidateSkillDetail candidateSkill in profile.CandidateSkillDetails)
+        foreach (CandidateSkill candidateSkill in profile.CandidateSkills)
         {
             string? skillName = candidateSkill.Skill?.Name;
             if (!string.IsNullOrWhiteSpace(skillName))
             {
                 candidateSkillYears[skillName] = candidateSkill.YearsOfExperience;
-            }
-        }
-
-        foreach (Skill skill in profile.Skills)
-        {
-            if (!candidateSkillYears.ContainsKey(skill.Name))
-            {
-                candidateSkillYears[skill.Name] = null;
             }
         }
 
@@ -1164,7 +1148,7 @@ public class ApplicationService : IApplicationService
             score += 15;
         }
 
-        if (profile.Skills.Count > 0)
+        if (profile.CandidateSkills.Count > 0)
         {
             score += 20;
         }

@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using RecruitPro.API.Extensions;
 using RecruitPro.Application.DTOs.Request;
 using RecruitPro.Application.DTOs.Request.Jobs;
@@ -52,6 +53,7 @@ public class JobController : ControllerBase
     }
 
     [HttpGet("api/hr/jobs")]
+    [Authorize(Roles = "HR,Manager")]
     public async Task<IActionResult> GetHrJobs([FromQuery] HrJobQueryRequest request)
     {
         var result = await _jobService.GetHrJobsAsync(request, User.GetCurrentUserId());
@@ -59,6 +61,7 @@ public class JobController : ControllerBase
     }
 
     [HttpGet("api/hr/jobs/{jobId}")]
+    [Authorize(Roles = "HR,Manager")]
     public async Task<IActionResult> GetHrJobDetail(string jobId)
     {
         var result = await _jobService.GetJobDetailAsync(jobId);
@@ -66,6 +69,7 @@ public class JobController : ControllerBase
     }
 
     [HttpGet("api/manager/jobs/approval-queue")]
+    [Authorize(Roles = "Manager")]
     public async Task<IActionResult> GetManagerApprovalQueue([FromQuery] ManagerJobApprovalQueryRequest request)
     {
         var result = await _jobService.GetManagerApprovalQueueAsync(request);
@@ -73,6 +77,7 @@ public class JobController : ControllerBase
     }
 
     [HttpGet("api/manager/jobs/{jobId}/approval-detail")]
+    [Authorize(Roles = "Manager")]
     public async Task<IActionResult> GetManagerApprovalDetail(string jobId)
     {
         var result = await _jobService.GetManagerApprovalDetailAsync(jobId);
@@ -80,6 +85,7 @@ public class JobController : ControllerBase
     }
 
     [HttpPost("api/hr/jobs")]
+    [Authorize(Roles = "HR,Manager")]
     public async Task<IActionResult> CreateJob([FromBody] CreateJobRequest request)
     {
         var result = await _jobService.CreateJobAsync(request, User.GetCurrentUserId());
@@ -87,6 +93,7 @@ public class JobController : ControllerBase
     }
 
     [HttpPatch("api/hr/jobs/{jobId}")]
+    [Authorize(Roles = "HR,Manager")]
     public async Task<IActionResult> PatchJob(string jobId, [FromBody] PatchJobRequest request)
     {
         var result = await _jobService.PatchJobAsync(jobId, request);
@@ -94,6 +101,7 @@ public class JobController : ControllerBase
     }
 
     [HttpPatch("api/hr/jobs/{jobId}/status")]
+    [Authorize(Roles = "HR,Manager")]
     public async Task<IActionResult> PatchHrJobStatus(string jobId, [FromBody] UpdateJobStatusRequest request)
     {
         var result = await _jobService.PatchJobAsync(jobId, new PatchJobRequest
@@ -104,6 +112,7 @@ public class JobController : ControllerBase
     }
 
     [HttpDelete("api/hr/jobs/{jobId}")]
+    [Authorize(Roles = "HR,Manager")]
     public async Task<IActionResult> DeleteJob(string jobId)
     {
         var result = await _jobService.DeleteJobAsync(jobId);

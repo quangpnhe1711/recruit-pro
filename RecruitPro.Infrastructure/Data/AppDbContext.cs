@@ -31,7 +31,7 @@ public partial class AppDbContext : DbContext
 
     public virtual DbSet<CandidateResume> CandidateResumes { get; set; }
 
-    public virtual DbSet<CandidateSkillDetail> CandidateSkillDetails { get; set; }
+    public virtual DbSet<CandidateSkill> CandidateSkills { get; set; }
 
     public virtual DbSet<CopilotCandidateTag> CopilotCandidateTags { get; set; }
 
@@ -282,23 +282,6 @@ public partial class AppDbContext : DbContext
                 .HasForeignKey<CandidateProfile>(d => d.UserId)
                 .HasConstraintName("candidate_profiles_user_id_fkey");
 
-            entity.HasMany(d => d.Skills).WithMany(p => p.Candidates)
-                .UsingEntity<Dictionary<string, object>>(
-                    "CandidateSkill",
-                    r => r.HasOne<Skill>().WithMany()
-                        .HasForeignKey("SkillId")
-                        .HasConstraintName("candidate_skills_skill_id_fkey"),
-                    l => l.HasOne<CandidateProfile>().WithMany()
-                        .HasForeignKey("CandidateId")
-                        .HasConstraintName("candidate_skills_candidate_id_fkey"),
-                    j =>
-                    {
-                        j.HasKey("CandidateId", "SkillId").HasName("candidate_skills_pkey");
-                        j.ToTable("candidate_skills");
-                        j.IndexerProperty<Guid>("CandidateId").HasColumnName("candidate_id");
-                        j.IndexerProperty<Guid>("SkillId").HasColumnName("skill_id");
-                    });
-
             entity.HasMany(d => d.Projects).WithOne(p => p.CandidateProfile)
                 .HasForeignKey(p => p.CandidateProfileId)
                 .HasConstraintName("candidate_projects_candidate_profile_id_fkey");
@@ -307,9 +290,9 @@ public partial class AppDbContext : DbContext
                 .HasForeignKey(p => p.CandidateProfileId)
                 .HasConstraintName("candidate_resumes_candidate_profile_id_fkey");
 
-            entity.HasMany(d => d.CandidateSkillDetails).WithOne(p => p.Candidate)
+            entity.HasMany(d => d.CandidateSkills).WithOne(p => p.Candidate)
                 .HasForeignKey(p => p.CandidateId)
-                .HasConstraintName("candidate_skill_details_candidate_id_fkey");
+                .HasConstraintName("candidate_skills_candidate_id_fkey");
         });
 
         modelBuilder.Entity<CandidateProject>(entity =>
@@ -362,11 +345,11 @@ public partial class AppDbContext : DbContext
             entity.Property(e => e.Version).HasColumnName("version");
         });
 
-        modelBuilder.Entity<CandidateSkillDetail>(entity =>
+        modelBuilder.Entity<CandidateSkill>(entity =>
         {
-            entity.HasKey(e => new { e.CandidateId, e.SkillId }).HasName("candidate_skill_details_pkey");
+            entity.HasKey(e => new { e.CandidateId, e.SkillId }).HasName("candidate_skills_pkey");
 
-            entity.ToTable("candidate_skill_details");
+            entity.ToTable("candidate_skills");
 
             entity.Property(e => e.CandidateId).HasColumnName("candidate_id");
             entity.Property(e => e.SkillId).HasColumnName("skill_id");
@@ -374,9 +357,9 @@ public partial class AppDbContext : DbContext
                 .HasPrecision(5, 1)
                 .HasColumnName("years_of_experience");
 
-            entity.HasOne(d => d.Skill).WithMany(p => p.CandidateSkillDetails)
+            entity.HasOne(d => d.Skill).WithMany(p => p.CandidateSkills)
                 .HasForeignKey(d => d.SkillId)
-                .HasConstraintName("candidate_skill_details_skill_id_fkey");
+                .HasConstraintName("candidate_skills_skill_id_fkey");
         });
 
         modelBuilder.Entity<CopilotConversation>(entity =>

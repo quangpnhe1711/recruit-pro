@@ -2,7 +2,7 @@ using System;
 
 namespace RecruitPro.Domain.Entities;
 
-public partial class CandidateSkillDetail
+public partial class CandidateSkill
 {
     public Guid CandidateId { get; set; }
 
