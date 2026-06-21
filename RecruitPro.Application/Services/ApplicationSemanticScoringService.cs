@@ -241,6 +241,7 @@ public class ApplicationSemanticScoringService : IApplicationSemanticScoringServ
         AppendSection(builder, "Certifications", FlattenJsonArray(profile.CertificationRecordsJson, ["name", "issuer"]));
         AppendSection(builder, "Languages", FlattenJsonArray(profile.LanguageRecordsJson, ["name", "proficiency"]));
         AppendSection(builder, "Parsed Resume Keywords", ExtractKeywordsFromParsedResume(profile.ParsedResumeJson));
+        AppendSection(builder, "Structured Sections", CandidateProfileSectionHelper.BuildStructuredNarrative(profile));
         return builder.ToString().Trim();
     }
 

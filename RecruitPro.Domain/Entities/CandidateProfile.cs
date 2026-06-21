@@ -65,4 +65,6 @@ public partial class CandidateProfile
 
     public virtual ICollection<CandidateResume> Resumes { get; set; } = new List<CandidateResume>();
 
+    public virtual ICollection<CandidateProfileSection> Sections { get; set; } = new List<CandidateProfileSection>();
+
 }

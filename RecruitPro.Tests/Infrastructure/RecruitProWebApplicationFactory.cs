@@ -26,7 +26,7 @@ public sealed class RecruitProWebApplicationFactory(PostgresTestFixture fixture)
             config.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["ConnectionStrings:Mycnn"] = Fixture.ConnectionString,
-                ["OpenAi:Enabled"] = "false"
+                ["AiProvider:Enabled"] = "false"
             });
         });
 

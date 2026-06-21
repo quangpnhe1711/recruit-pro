@@ -1455,6 +1455,45 @@ CREATE TABLE IF NOT EXISTS public.candidate_projects (
 
 ALTER TABLE public.candidate_projects OWNER TO postgres;
 
+CREATE TABLE IF NOT EXISTS public.candidate_profile_sections (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    candidate_profile_id uuid NOT NULL,
+    section_key character varying(100),
+    title character varying(255) NOT NULL,
+    section_type character varying(100) DEFAULT 'Custom' NOT NULL,
+    source character varying(50) DEFAULT 'User' NOT NULL,
+    display_order integer DEFAULT 0 NOT NULL,
+    schema_json text,
+    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+ALTER TABLE public.candidate_profile_sections OWNER TO postgres;
+
+CREATE TABLE IF NOT EXISTS public.candidate_profile_section_items (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    section_id uuid NOT NULL,
+    item_type character varying(100) DEFAULT 'Entry' NOT NULL,
+    title character varying(255) NOT NULL,
+    subtitle character varying(255),
+    organization character varying(255),
+    location character varying(255),
+    description text,
+    date_label character varying(120),
+    start_month integer,
+    start_year integer,
+    end_month integer,
+    end_year integer,
+    is_current boolean DEFAULT false NOT NULL,
+    display_order integer DEFAULT 0 NOT NULL,
+    tags_json text,
+    attributes_json text,
+    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+ALTER TABLE public.candidate_profile_section_items OWNER TO postgres;
+
 ALTER TABLE public.candidate_skills
     ADD COLUMN IF NOT EXISTS years_of_experience numeric(5,1);
 
@@ -1463,6 +1502,12 @@ ALTER TABLE ONLY public.candidate_resumes
 
 ALTER TABLE ONLY public.candidate_projects
     ADD CONSTRAINT candidate_projects_pkey PRIMARY KEY (id);
+
+ALTER TABLE ONLY public.candidate_profile_sections
+    ADD CONSTRAINT candidate_profile_sections_pkey PRIMARY KEY (id);
+
+ALTER TABLE ONLY public.candidate_profile_section_items
+    ADD CONSTRAINT candidate_profile_section_items_pkey PRIMARY KEY (id);
 
 CREATE INDEX IF NOT EXISTS ix_candidate_resumes_candidate_profile_id
     ON public.candidate_resumes USING btree (candidate_profile_id, upload_date DESC);
@@ -1473,6 +1518,12 @@ CREATE INDEX IF NOT EXISTS ix_candidate_projects_candidate_profile_id
 CREATE INDEX IF NOT EXISTS ix_candidate_skills_skill_id
     ON public.candidate_skills USING btree (skill_id);
 
+CREATE INDEX IF NOT EXISTS ix_candidate_profile_sections_profile_order
+    ON public.candidate_profile_sections USING btree (candidate_profile_id, display_order);
+
+CREATE INDEX IF NOT EXISTS ix_candidate_profile_section_items_section_order
+    ON public.candidate_profile_section_items USING btree (section_id, display_order);
+
 ALTER TABLE ONLY public.candidate_resumes
     ADD CONSTRAINT candidate_resumes_candidate_profile_id_fkey
     FOREIGN KEY (candidate_profile_id) REFERENCES public.candidate_profiles(id) ON DELETE CASCADE;
@@ -1480,6 +1531,14 @@ ALTER TABLE ONLY public.candidate_resumes
 ALTER TABLE ONLY public.candidate_projects
     ADD CONSTRAINT candidate_projects_candidate_profile_id_fkey
     FOREIGN KEY (candidate_profile_id) REFERENCES public.candidate_profiles(id) ON DELETE CASCADE;
+
+ALTER TABLE ONLY public.candidate_profile_sections
+    ADD CONSTRAINT candidate_profile_sections_candidate_profile_id_fkey
+    FOREIGN KEY (candidate_profile_id) REFERENCES public.candidate_profiles(id) ON DELETE CASCADE;
+
+ALTER TABLE ONLY public.candidate_profile_section_items
+    ADD CONSTRAINT candidate_profile_section_items_section_id_fkey
+    FOREIGN KEY (section_id) REFERENCES public.candidate_profile_sections(id) ON DELETE CASCADE;
 
 INSERT INTO public.candidate_resumes (
     id,
@@ -1549,5 +1608,364 @@ WHERE cp.language_records_json IS NULL
           ON s.id = cs.skill_id
       WHERE cs.candidate_id = cp.id
         AND lower(s.name) = 'english'
+  );
+
+INSERT INTO public.candidate_profile_sections (
+    id,
+    candidate_profile_id,
+    section_key,
+    title,
+    section_type,
+    source,
+    display_order,
+    schema_json,
+    created_at,
+    updated_at
+)
+SELECT
+    gen_random_uuid(),
+    cp.id,
+    'experience',
+    'Experience',
+    'Timeline',
+    'System',
+    100,
+    NULL,
+    CURRENT_TIMESTAMP,
+    CURRENT_TIMESTAMP
+FROM public.candidate_profiles cp
+WHERE cp.experience_entries_json IS NOT NULL
+  AND NOT EXISTS (
+      SELECT 1
+      FROM public.candidate_profile_sections cps
+      WHERE cps.candidate_profile_id = cp.id
+        AND cps.section_key = 'experience'
+  );
+
+INSERT INTO public.candidate_profile_sections (
+    id,
+    candidate_profile_id,
+    section_key,
+    title,
+    section_type,
+    source,
+    display_order,
+    schema_json,
+    created_at,
+    updated_at
+)
+SELECT
+    gen_random_uuid(),
+    cp.id,
+    'education',
+    'Education',
+    'Education',
+    'System',
+    300,
+    NULL,
+    CURRENT_TIMESTAMP,
+    CURRENT_TIMESTAMP
+FROM public.candidate_profiles cp
+WHERE cp.education_records_json IS NOT NULL
+  AND NOT EXISTS (
+      SELECT 1
+      FROM public.candidate_profile_sections cps
+      WHERE cps.candidate_profile_id = cp.id
+        AND cps.section_key = 'education'
+  );
+
+INSERT INTO public.candidate_profile_sections (
+    id,
+    candidate_profile_id,
+    section_key,
+    title,
+    section_type,
+    source,
+    display_order,
+    schema_json,
+    created_at,
+    updated_at
+)
+SELECT
+    gen_random_uuid(),
+    cp.id,
+    'certifications',
+    'Certifications',
+    'Achievements',
+    'System',
+    400,
+    NULL,
+    CURRENT_TIMESTAMP,
+    CURRENT_TIMESTAMP
+FROM public.candidate_profiles cp
+WHERE cp.certification_records_json IS NOT NULL
+  AND NOT EXISTS (
+      SELECT 1
+      FROM public.candidate_profile_sections cps
+      WHERE cps.candidate_profile_id = cp.id
+        AND cps.section_key = 'certifications'
+  );
+
+INSERT INTO public.candidate_profile_sections (
+    id,
+    candidate_profile_id,
+    section_key,
+    title,
+    section_type,
+    source,
+    display_order,
+    schema_json,
+    created_at,
+    updated_at
+)
+SELECT
+    gen_random_uuid(),
+    cp.id,
+    'languages',
+    'Languages',
+    'Attributes',
+    'System',
+    500,
+    NULL,
+    CURRENT_TIMESTAMP,
+    CURRENT_TIMESTAMP
+FROM public.candidate_profiles cp
+WHERE cp.language_records_json IS NOT NULL
+  AND NOT EXISTS (
+      SELECT 1
+      FROM public.candidate_profile_sections cps
+      WHERE cps.candidate_profile_id = cp.id
+        AND cps.section_key = 'languages'
+  );
+
+INSERT INTO public.candidate_profile_sections (
+    id,
+    candidate_profile_id,
+    section_key,
+    title,
+    section_type,
+    source,
+    display_order,
+    schema_json,
+    created_at,
+    updated_at
+)
+SELECT
+    gen_random_uuid(),
+    cp.id,
+    'projects',
+    'Projects',
+    'Portfolio',
+    'System',
+    200,
+    NULL,
+    CURRENT_TIMESTAMP,
+    CURRENT_TIMESTAMP
+FROM public.candidate_profiles cp
+WHERE EXISTS (
+        SELECT 1
+        FROM public.candidate_projects cpr
+        WHERE cpr.candidate_profile_id = cp.id
+    )
+  AND NOT EXISTS (
+      SELECT 1
+      FROM public.candidate_profile_sections cps
+      WHERE cps.candidate_profile_id = cp.id
+        AND cps.section_key = 'projects'
+  );
+
+INSERT INTO public.candidate_profile_section_items (
+    id,
+    section_id,
+    item_type,
+    title,
+    organization,
+    description,
+    start_month,
+    start_year,
+    end_month,
+    end_year,
+    is_current,
+    display_order,
+    tags_json,
+    created_at,
+    updated_at
+)
+SELECT
+    gen_random_uuid(),
+    cps.id,
+    'Project',
+    cpr.name,
+    cpr.role,
+    cpr.description,
+    cpr.start_month,
+    cpr.start_year,
+    cpr.end_month,
+    cpr.end_year,
+    cpr.is_current,
+    ROW_NUMBER() OVER (PARTITION BY cps.id ORDER BY cpr.start_year DESC, cpr.start_month DESC) - 1,
+    cpr.technologies_json,
+    CURRENT_TIMESTAMP,
+    CURRENT_TIMESTAMP
+FROM public.candidate_profile_sections cps
+INNER JOIN public.candidate_projects cpr
+    ON cpr.candidate_profile_id = cps.candidate_profile_id
+WHERE cps.section_key = 'projects'
+  AND NOT EXISTS (
+      SELECT 1
+      FROM public.candidate_profile_section_items cpsi
+      WHERE cpsi.section_id = cps.id
+  );
+
+INSERT INTO public.candidate_profile_section_items (
+    id,
+    section_id,
+    item_type,
+    title,
+    organization,
+    description,
+    start_month,
+    start_year,
+    end_month,
+    end_year,
+    is_current,
+    display_order,
+    created_at,
+    updated_at
+)
+SELECT
+    gen_random_uuid(),
+    cps.id,
+    'Experience',
+    COALESCE(item.value->>'title', 'Experience'),
+    item.value->>'company',
+    NULLIF(array_to_string(ARRAY(
+        SELECT jsonb_array_elements_text(COALESCE(item.value->'bullets', '[]'::jsonb))
+    ), E'\n'), ''),
+    NULLIF(item.value->'period'->>'startMonth', '')::integer,
+    NULLIF(item.value->'period'->>'startYear', '')::integer,
+    NULLIF(item.value->'period'->>'endMonth', '')::integer,
+    NULLIF(item.value->'period'->>'endYear', '')::integer,
+    COALESCE((item.value->'period'->>'isCurrent')::boolean, false),
+    item.ordinality - 1,
+    CURRENT_TIMESTAMP,
+    CURRENT_TIMESTAMP
+FROM public.candidate_profile_sections cps
+INNER JOIN public.candidate_profiles cp
+    ON cp.id = cps.candidate_profile_id
+CROSS JOIN LATERAL jsonb_array_elements(COALESCE(cp.experience_entries_json::jsonb, '[]'::jsonb)) WITH ORDINALITY AS item(value, ordinality)
+WHERE cps.section_key = 'experience'
+  AND NOT EXISTS (
+      SELECT 1
+      FROM public.candidate_profile_section_items cpsi
+      WHERE cpsi.section_id = cps.id
+  );
+
+INSERT INTO public.candidate_profile_section_items (
+    id,
+    section_id,
+    item_type,
+    title,
+    subtitle,
+    description,
+    start_year,
+    end_year,
+    display_order,
+    attributes_json,
+    created_at,
+    updated_at
+)
+SELECT
+    gen_random_uuid(),
+    cps.id,
+    'Education',
+    COALESCE(item.value->>'school', 'Education'),
+    item.value->>'degree',
+    item.value->>'description',
+    NULLIF(item.value->>'startYear', '')::integer,
+    NULLIF(item.value->>'endYear', '')::integer,
+    item.ordinality - 1,
+    json_build_object(
+        'fieldOfStudy', COALESCE(item.value->>'fieldOfStudy', '')
+    )::text,
+    CURRENT_TIMESTAMP,
+    CURRENT_TIMESTAMP
+FROM public.candidate_profile_sections cps
+INNER JOIN public.candidate_profiles cp
+    ON cp.id = cps.candidate_profile_id
+CROSS JOIN LATERAL jsonb_array_elements(COALESCE(cp.education_records_json::jsonb, '[]'::jsonb)) WITH ORDINALITY AS item(value, ordinality)
+WHERE cps.section_key = 'education'
+  AND NOT EXISTS (
+      SELECT 1
+      FROM public.candidate_profile_section_items cpsi
+      WHERE cpsi.section_id = cps.id
+  );
+
+INSERT INTO public.candidate_profile_section_items (
+    id,
+    section_id,
+    item_type,
+    title,
+    organization,
+    date_label,
+    display_order,
+    attributes_json,
+    created_at,
+    updated_at
+)
+SELECT
+    gen_random_uuid(),
+    cps.id,
+    'Certification',
+    COALESCE(item.value->>'name', 'Certification'),
+    item.value->>'issuer',
+    item.value->>'issuedOn',
+    item.ordinality - 1,
+    json_build_object(
+        'expiresOn', COALESCE(item.value->>'expiresOn', ''),
+        'credentialId', COALESCE(item.value->>'credentialId', ''),
+        'credentialUrl', COALESCE(item.value->>'credentialUrl', '')
+    )::text,
+    CURRENT_TIMESTAMP,
+    CURRENT_TIMESTAMP
+FROM public.candidate_profile_sections cps
+INNER JOIN public.candidate_profiles cp
+    ON cp.id = cps.candidate_profile_id
+CROSS JOIN LATERAL jsonb_array_elements(COALESCE(cp.certification_records_json::jsonb, '[]'::jsonb)) WITH ORDINALITY AS item(value, ordinality)
+WHERE cps.section_key = 'certifications'
+  AND NOT EXISTS (
+      SELECT 1
+      FROM public.candidate_profile_section_items cpsi
+      WHERE cpsi.section_id = cps.id
+  );
+
+INSERT INTO public.candidate_profile_section_items (
+    id,
+    section_id,
+    item_type,
+    title,
+    subtitle,
+    display_order,
+    created_at,
+    updated_at
+)
+SELECT
+    gen_random_uuid(),
+    cps.id,
+    'Language',
+    COALESCE(item.value->>'name', 'Language'),
+    item.value->>'proficiency',
+    item.ordinality - 1,
+    CURRENT_TIMESTAMP,
+    CURRENT_TIMESTAMP
+FROM public.candidate_profile_sections cps
+INNER JOIN public.candidate_profiles cp
+    ON cp.id = cps.candidate_profile_id
+CROSS JOIN LATERAL jsonb_array_elements(COALESCE(cp.language_records_json::jsonb, '[]'::jsonb)) WITH ORDINALITY AS item(value, ordinality)
+WHERE cps.section_key = 'languages'
+  AND NOT EXISTS (
+      SELECT 1
+      FROM public.candidate_profile_section_items cpsi
+      WHERE cpsi.section_id = cps.id
   );
 

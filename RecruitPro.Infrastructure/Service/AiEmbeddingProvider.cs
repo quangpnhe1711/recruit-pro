@@ -7,17 +7,17 @@ using RecruitPro.Application.Interfaces;
 
 namespace RecruitPro.Infrastructure.Service;
 
-public class OpenAiEmbeddingProvider : IEmbeddingProvider
+public class AiEmbeddingProvider : IEmbeddingProvider
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly HttpClient _httpClient;
-    private readonly OpenAiSettings _settings;
-    private readonly ILogger<OpenAiEmbeddingProvider> _logger;
+    private readonly AiProviderSettings _settings;
+    private readonly ILogger<AiEmbeddingProvider> _logger;
 
-    public OpenAiEmbeddingProvider(
+    public AiEmbeddingProvider(
         HttpClient httpClient,
-        IOptions<OpenAiSettings> options,
-        ILogger<OpenAiEmbeddingProvider> logger)
+        IOptions<AiProviderSettings> options,
+        ILogger<AiEmbeddingProvider> logger)
     {
         _httpClient = httpClient;
         _settings = options.Value;
@@ -64,7 +64,7 @@ public class OpenAiEmbeddingProvider : IEmbeddingProvider
             {
                 _logger.LogWarning(
                     "Embedding request failed. Provider={Provider}, Model={Model}, StatusCode={StatusCode}, TraceId={TraceId}, Response={Response}",
-                    "OpenAICompatible",
+                    "AiCompatible",
                     _settings.EmbeddingModel,
                     (int)response.StatusCode,
                     traceId,
@@ -137,7 +137,7 @@ public class OpenAiEmbeddingProvider : IEmbeddingProvider
         }
     }
 
-    private static string BuildEmbeddingsEndpoint(OpenAiSettings settings)
+    private static string BuildEmbeddingsEndpoint(AiProviderSettings settings)
     {
         return settings.BaseUrl.TrimEnd('/') + "/embeddings";
     }

@@ -8,23 +8,23 @@ using RecruitPro.Domain.Entities;
 
 namespace RecruitPro.Infrastructure.Service;
 
-public class OpenAiResumeParserProvider : IResumeParsingAiProvider
+public class AiResumeParserProvider : IResumeParsingAiProvider
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly HttpClient _httpClient;
-    private readonly ILogger<OpenAiResumeParserProvider> _logger;
-    private readonly OpenAiSettings _settings;
+    private readonly ILogger<AiResumeParserProvider> _logger;
+    private readonly AiProviderSettings _settings;
 
     /// <summary>
-    /// Initializes a new instance of the OpenAiResumeParserProvider class.
+    /// Initializes a new instance of the AiResumeParserProvider class.
     /// </summary>
     /// <param name="httpClient">The <paramref name="httpClient"/> value.</param>
     /// <param name="options">The <paramref name="options"/> value.</param>
     /// <param name="logger">The <paramref name="logger"/> value.</param>
-    public OpenAiResumeParserProvider(
+    public AiResumeParserProvider(
         HttpClient httpClient,
-        IOptions<OpenAiSettings> options,
-        ILogger<OpenAiResumeParserProvider> logger)
+        IOptions<AiProviderSettings> options,
+        ILogger<AiResumeParserProvider> logger)
     {
         _httpClient = httpClient;
         _logger = logger;
@@ -48,7 +48,7 @@ public class OpenAiResumeParserProvider : IResumeParsingAiProvider
             return new ResumeParsingAiResult
             {
                 UsedAi = false,
-                Provider = "OpenAICompatible",
+                Provider = "AiCompatible",
                 ModelName = _settings.Model,
                 FailureReason = !_settings.Enabled
                     ? "AI parsing is disabled in configuration."
@@ -79,7 +79,7 @@ public class OpenAiResumeParserProvider : IResumeParsingAiProvider
             userPrompt: BuildPrompt(extractedText, skillNames),
             requireJson: true);
 
-        using HttpRequestMessage request = OpenAiCompatibleApiHelper.BuildRequest(_settings, requestBody, JsonOptions);
+        using HttpRequestMessage request = AiCompatibleApiHelper.BuildRequest(_settings, requestBody, JsonOptions);
 
         try
         {
@@ -95,7 +95,7 @@ public class OpenAiResumeParserProvider : IResumeParsingAiProvider
 
                 _logger.LogWarning(
                     "AI resume parser request failed. Provider={Provider}, Model={Model}, StatusCode={StatusCode}, TraceId={TraceId}, Response={Response}",
-                    "OpenAICompatible",
+                    "AiCompatible",
                     _settings.Model,
                     (int)response.StatusCode,
                     traceId,
@@ -103,7 +103,7 @@ public class OpenAiResumeParserProvider : IResumeParsingAiProvider
                 return new ResumeParsingAiResult
                 {
                     UsedAi = false,
-                    Provider = "OpenAICompatible",
+                    Provider = "AiCompatible",
                     ModelName = _settings.Model,
                     FailureReason = $"AI provider returned HTTP {(int)response.StatusCode}.",
                     HttpStatusCode = (int)response.StatusCode,
@@ -113,26 +113,26 @@ public class OpenAiResumeParserProvider : IResumeParsingAiProvider
                 };
             }
 
-            string? outputText = OpenAiCompatibleApiHelper.ExtractOutputText(raw);
+            string? outputText = AiCompatibleApiHelper.ExtractOutputText(raw);
             if (string.IsNullOrWhiteSpace(outputText))
             {
                 return new ResumeParsingAiResult
                 {
                     UsedAi = false,
-                    Provider = "OpenAICompatible",
+                    Provider = "AiCompatible",
                     ModelName = _settings.Model,
                     FailureReason = "AI provider returned no output text."
                 };
             }
 
-            string normalizedOutput = OpenAiCompatibleApiHelper.NormalizeJsonPayload(outputText);
+            string normalizedOutput = AiCompatibleApiHelper.NormalizeJsonPayload(outputText);
             CandidateResumeAiParseDto? parsed = JsonSerializer.Deserialize<CandidateResumeAiParseDto>(normalizedOutput, JsonOptions);
             if (parsed == null)
             {
                 return new ResumeParsingAiResult
                 {
                     UsedAi = false,
-                    Provider = "OpenAICompatible",
+                    Provider = "AiCompatible",
                     ModelName = _settings.Model,
                     FailureReason = "AI provider returned output that could not be deserialized."
                 };
@@ -141,7 +141,7 @@ public class OpenAiResumeParserProvider : IResumeParsingAiProvider
             return new ResumeParsingAiResult
             {
                 UsedAi = true,
-                Provider = "OpenAICompatible",
+                Provider = "AiCompatible",
                 ModelName = _settings.Model,
                 Data = parsed
             };
@@ -152,7 +152,7 @@ public class OpenAiResumeParserProvider : IResumeParsingAiProvider
             return new ResumeParsingAiResult
             {
                 UsedAi = false,
-                Provider = "OpenAICompatible",
+                Provider = "AiCompatible",
                 ModelName = _settings.Model,
                 FailureReason = "AI parsing timed out before a complete response was returned.",
                 IsRetryable = true
@@ -164,7 +164,7 @@ public class OpenAiResumeParserProvider : IResumeParsingAiProvider
             return new ResumeParsingAiResult
             {
                 UsedAi = false,
-                Provider = "OpenAICompatible",
+                Provider = "AiCompatible",
                 ModelName = _settings.Model,
                 FailureReason = exception.Message
             };
@@ -293,7 +293,7 @@ public class OpenAiResumeParserProvider : IResumeParsingAiProvider
     /// <returns>The operation result.</returns>
     private object BuildRequestBody(string systemPrompt, string userPrompt, bool requireJson)
     {
-        if (OpenAiCompatibleApiHelper.UsesChatCompletions(_settings))
+        if (AiCompatibleApiHelper.UsesChatCompletions(_settings))
         {
             return new
             {

@@ -34,6 +34,8 @@ namespace RecruitPro.Infrastructure.Repositories
                     .ThenInclude(candidateSkill => candidateSkill.Skill)
                 .Include(profile => profile.Projects)
                 .Include(profile => profile.Resumes)
+                .Include(profile => profile.Sections.OrderBy(section => section.DisplayOrder))
+                    .ThenInclude(section => section.Items.OrderBy(item => item.DisplayOrder))
                 .FirstOrDefaultAsync(profile => profile.UserId == userId);
         }
 
@@ -41,6 +43,8 @@ namespace RecruitPro.Infrastructure.Repositories
         {
             return _context.CandidateProfiles
                 .Include(profile => profile.User)
+                .Include(profile => profile.Sections)
+                    .ThenInclude(section => section.Items)
                 .FirstOrDefaultAsync(profile => profile.UserId == userId);
         }
 
@@ -53,6 +57,8 @@ namespace RecruitPro.Infrastructure.Repositories
                     .ThenInclude(candidateSkill => candidateSkill.Skill)
                 .Include(profile => profile.Projects)
                 .Include(profile => profile.Resumes)
+                .Include(profile => profile.Sections.OrderBy(section => section.DisplayOrder))
+                    .ThenInclude(section => section.Items.OrderBy(item => item.DisplayOrder))
                 .FirstOrDefaultAsync(profile => profile.Id == candidateId);
         }
 
@@ -64,6 +70,8 @@ namespace RecruitPro.Infrastructure.Repositories
                     .ThenInclude(candidateSkill => candidateSkill.Skill)
                 .Include(profile => profile.Projects)
                 .Include(profile => profile.Resumes)
+                .Include(profile => profile.Sections.OrderBy(section => section.DisplayOrder))
+                    .ThenInclude(section => section.Items.OrderBy(item => item.DisplayOrder))
                 .FirstOrDefaultAsync(profile => profile.Id == candidateId);
         }
 
@@ -75,6 +83,8 @@ namespace RecruitPro.Infrastructure.Repositories
                     .ThenInclude(candidateSkill => candidateSkill.Skill)
                 .Include(profile => profile.Projects)
                 .Include(profile => profile.Resumes)
+                .Include(profile => profile.Sections.OrderBy(section => section.DisplayOrder))
+                    .ThenInclude(section => section.Items.OrderBy(item => item.DisplayOrder))
                 .FirstOrDefaultAsync(profile => profile.Resumes.Any(resume => resume.Id == resumeId));
         }
 
@@ -93,6 +103,8 @@ namespace RecruitPro.Infrastructure.Repositories
                     .ThenInclude(candidateSkill => candidateSkill.Skill)
                 .Include(profile => profile.Projects)
                 .Include(profile => profile.Resumes)
+                .Include(profile => profile.Sections.OrderBy(section => section.DisplayOrder))
+                    .ThenInclude(section => section.Items.OrderBy(item => item.DisplayOrder))
                 .FirstOrDefaultAsync(profile => profile.Id == candidateId);
         }
 
@@ -105,6 +117,8 @@ namespace RecruitPro.Infrastructure.Repositories
                 .Include(profile => profile.Resumes)
                 .Include(profile => profile.CandidateSkills)
                     .ThenInclude(candidateSkill => candidateSkill.Skill)
+                .Include(profile => profile.Sections.OrderBy(section => section.DisplayOrder))
+                    .ThenInclude(section => section.Items.OrderBy(item => item.DisplayOrder))
                 .AsQueryable();
 
             if (!string.IsNullOrWhiteSpace(keyword))
@@ -137,6 +151,8 @@ namespace RecruitPro.Infrastructure.Repositories
                 .Include(profile => profile.CandidateSkills)
                     .ThenInclude(detail => detail.Skill)
                 .Include(profile => profile.Projects)
+                .Include(profile => profile.Sections.OrderBy(section => section.DisplayOrder))
+                    .ThenInclude(section => section.Items.OrderBy(item => item.DisplayOrder))
                 .Where(profile =>
                     !string.IsNullOrWhiteSpace(profile.CandidateEmbeddingVectorJson)
                     || !string.IsNullOrWhiteSpace(profile.CurrentPosition)
@@ -155,6 +171,8 @@ namespace RecruitPro.Infrastructure.Repositories
                 .Include(profile => profile.Resumes)
                 .Include(profile => profile.CandidateSkills)
                     .ThenInclude(candidateSkill => candidateSkill.Skill)
+                .Include(profile => profile.Sections.OrderBy(section => section.DisplayOrder))
+                    .ThenInclude(section => section.Items.OrderBy(item => item.DisplayOrder))
                 .OrderBy(profile => profile.User.FullName)
                 .FirstOrDefaultAsync();
         }
@@ -223,6 +241,63 @@ namespace RecruitPro.Infrastructure.Repositories
             }
 
             await _context.CandidateSkills.AddRangeAsync(skills);
+        }
+
+        public async Task ReplaceSectionsAsync(Guid candidateProfileId, IReadOnlyCollection<CandidateProfileSection> sections)
+        {
+            List<CandidateProfileSection> trackedSections = _context.ChangeTracker
+                .Entries<CandidateProfileSection>()
+                .Where(entry => entry.Entity.CandidateProfileId == candidateProfileId)
+                .Select(entry => entry.Entity)
+                .ToList();
+
+            foreach (CandidateProfileSection trackedSection in trackedSections)
+            {
+                _context.Entry(trackedSection).State = EntityState.Detached;
+            }
+
+            List<CandidateProfileSectionItem> trackedItems = _context.ChangeTracker
+                .Entries<CandidateProfileSectionItem>()
+                .Where(entry => trackedSections.Select(section => section.Id).Contains(entry.Entity.SectionId))
+                .Select(entry => entry.Entity)
+                .ToList();
+
+            foreach (CandidateProfileSectionItem trackedItem in trackedItems)
+            {
+                _context.Entry(trackedItem).State = EntityState.Detached;
+            }
+
+            List<Guid> existingSectionIds = await _context.CandidateProfileSections
+                .Where(section => section.CandidateProfileId == candidateProfileId)
+                .Select(section => section.Id)
+                .ToListAsync();
+
+            if (existingSectionIds.Count > 0)
+            {
+                await _context.CandidateProfileSectionItems
+                    .Where(item => existingSectionIds.Contains(item.SectionId))
+                    .ExecuteDeleteAsync();
+            }
+
+            await _context.CandidateProfileSections
+                .Where(section => section.CandidateProfileId == candidateProfileId)
+                .ExecuteDeleteAsync();
+
+            if (sections.Count == 0)
+            {
+                return;
+            }
+
+            foreach (CandidateProfileSection section in sections)
+            {
+                section.CandidateProfileId = candidateProfileId;
+                foreach (CandidateProfileSectionItem item in section.Items)
+                {
+                    item.SectionId = section.Id;
+                }
+            }
+
+            await _context.CandidateProfileSections.AddRangeAsync(sections);
         }
     }
 }

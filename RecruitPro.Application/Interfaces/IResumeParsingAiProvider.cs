@@ -14,7 +14,7 @@ public interface IResumeParsingAiProvider
 public class ResumeParsingAiResult
 {
     public bool UsedAi { get; set; }
-    public string Provider { get; set; } = "OpenAICompatible";
+    public string Provider { get; set; } = "AiCompatible";
     public string? ModelName { get; set; }
     public string? FailureReason { get; set; }
     public CandidateResumeAiParseDto? Data { get; set; }

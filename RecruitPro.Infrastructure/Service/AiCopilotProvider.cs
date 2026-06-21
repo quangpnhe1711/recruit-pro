@@ -8,23 +8,23 @@ using RecruitPro.Application.Interfaces.IServices;
 
 namespace RecruitPro.Infrastructure.Service;
 
-public class OpenAiCopilotProvider : IAiCopilotProvider
+public class AiCopilotProvider : IAiCopilotProvider
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly HttpClient _httpClient;
-    private readonly ILogger<OpenAiCopilotProvider> _logger;
-    private readonly OpenAiSettings _settings;
+    private readonly ILogger<AiCopilotProvider> _logger;
+    private readonly AiProviderSettings _settings;
 
     /// <summary>
-    /// Initializes a new instance of the OpenAiCopilotProvider class.
+    /// Initializes a new instance of the AiCopilotProvider class.
     /// </summary>
     /// <param name="httpClient">The <paramref name="httpClient"/> value.</param>
     /// <param name="options">The <paramref name="options"/> value.</param>
     /// <param name="logger">The <paramref name="logger"/> value.</param>
-    public OpenAiCopilotProvider(
+    public AiCopilotProvider(
         HttpClient httpClient,
-        IOptions<OpenAiSettings> options,
-        ILogger<OpenAiCopilotProvider> logger)
+        IOptions<AiProviderSettings> options,
+        ILogger<AiCopilotProvider> logger)
     {
         _httpClient = httpClient;
         _logger = logger;
@@ -52,7 +52,7 @@ public class OpenAiCopilotProvider : IAiCopilotProvider
         if (!_settings.Enabled || string.IsNullOrWhiteSpace(_settings.ApiKey))
         {
             _logger.LogInformation(
-                "OpenAI Copilot skipped. Enabled: {Enabled}. ApiKeyPresent: {ApiKeyPresent}.",
+                "AI copilot skipped. Enabled: {Enabled}. ApiKeyPresent: {ApiKeyPresent}.",
                 _settings.Enabled,
                 !string.IsNullOrWhiteSpace(_settings.ApiKey));
             return null;
@@ -73,12 +73,12 @@ public class OpenAiCopilotProvider : IAiCopilotProvider
             userPrompt: BuildPrompt(payload),
             requireJson: true);
 
-        using HttpRequestMessage request = OpenAiCompatibleApiHelper.BuildRequest(_settings, requestBody, JsonOptions);
+        using HttpRequestMessage request = AiCompatibleApiHelper.BuildRequest(_settings, requestBody, JsonOptions);
 
         try
         {
             _logger.LogInformation(
-                "OpenAI Copilot request started. Model: {Model}. CandidatesSent: {CandidateCount}. ConversationId: {ConversationId}.",
+                "AI copilot request started. Model: {Model}. CandidatesSent: {CandidateCount}. ConversationId: {ConversationId}.",
                 _settings.Model,
                 payload.candidates.Count(),
                 conversationId);
@@ -88,27 +88,27 @@ public class OpenAiCopilotProvider : IAiCopilotProvider
 
             if (!response.IsSuccessStatusCode)
             {
-                _logger.LogWarning("OpenAI Copilot request failed with status {StatusCode}: {Response}", response.StatusCode, raw);
+                _logger.LogWarning("AI copilot request failed with status {StatusCode}: {Response}", response.StatusCode, raw);
                 return null;
             }
 
-            string? outputText = OpenAiCompatibleApiHelper.ExtractOutputText(raw);
+            string? outputText = AiCompatibleApiHelper.ExtractOutputText(raw);
             if (string.IsNullOrWhiteSpace(outputText))
             {
                 return null;
             }
 
-            string normalizedOutput = OpenAiCompatibleApiHelper.NormalizeJsonPayload(outputText);
+            string normalizedOutput = AiCompatibleApiHelper.NormalizeJsonPayload(outputText);
             CopilotPromptResponseDto? aiResponse = JsonSerializer.Deserialize<CopilotPromptResponseDto>(normalizedOutput, JsonOptions);
             if (aiResponse is null)
             {
-                _logger.LogWarning("OpenAI Copilot response could not be deserialized for conversation {ConversationId}.", conversationId);
+                _logger.LogWarning("AI copilot response could not be deserialized for conversation {ConversationId}.", conversationId);
                 return null;
             }
 
             aiResponse.ConversationId = conversationId;
             _logger.LogInformation(
-                "OpenAI Copilot request completed. Model: {Model}. ConversationId: {ConversationId}. ResultCount: {ResultCount}.",
+                "AI copilot request completed. Model: {Model}. ConversationId: {ConversationId}. ResultCount: {ResultCount}.",
                 _settings.Model,
                 conversationId,
                 aiResponse.Results.Count);
@@ -116,7 +116,7 @@ public class OpenAiCopilotProvider : IAiCopilotProvider
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "OpenAI Copilot provider failed. Falling back to deterministic ranking.");
+            _logger.LogWarning(ex, "AI copilot provider failed. Falling back to deterministic ranking.");
             return null;
         }
     }
@@ -165,12 +165,12 @@ public class OpenAiCopilotProvider : IAiCopilotProvider
                 """,
             requireJson: false);
 
-        using HttpRequestMessage request = OpenAiCompatibleApiHelper.BuildRequest(_settings, requestBody, JsonOptions);
+        using HttpRequestMessage request = AiCompatibleApiHelper.BuildRequest(_settings, requestBody, JsonOptions);
 
         try
         {
             _logger.LogInformation(
-                "OpenAI Copilot chat reply request started. Model: {Model}. CandidatesSent: {CandidateCount}. ConversationId: {ConversationId}.",
+                "AI copilot chat reply request started. Model: {Model}. CandidatesSent: {CandidateCount}. ConversationId: {ConversationId}.",
                 _settings.Model,
                 payload.candidates.Count(),
                 conversationId);
@@ -179,22 +179,22 @@ public class OpenAiCopilotProvider : IAiCopilotProvider
             string raw = await response.Content.ReadAsStringAsync(cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
-                _logger.LogWarning("OpenAI Copilot chat reply failed with status {StatusCode}: {Response}", response.StatusCode, raw);
+                _logger.LogWarning("AI copilot chat reply failed with status {StatusCode}: {Response}", response.StatusCode, raw);
                 return BuildChatErrorMessage($"AI provider request failed with status {(int)response.StatusCode}.", raw);
             }
 
-            string? outputText = OpenAiCompatibleApiHelper.ExtractOutputText(raw);
+            string? outputText = AiCompatibleApiHelper.ExtractOutputText(raw);
             if (string.IsNullOrWhiteSpace(outputText))
             {
                 _logger.LogWarning(
-                    "OpenAI Copilot chat reply returned no output text. ConversationId: {ConversationId}. RawResponse: {Response}",
+                    "AI copilot chat reply returned no output text. ConversationId: {ConversationId}. RawResponse: {Response}",
                     conversationId,
                     raw);
                 return BuildChatErrorMessage("AI provider returned no message content.", raw);
             }
 
             _logger.LogInformation(
-                "OpenAI Copilot chat reply completed. Model: {Model}. ConversationId: {ConversationId}.",
+                "AI copilot chat reply completed. Model: {Model}. ConversationId: {ConversationId}.",
                 _settings.Model,
                 conversationId);
 
@@ -202,7 +202,7 @@ public class OpenAiCopilotProvider : IAiCopilotProvider
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "OpenAI Copilot chat reply failed.");
+            _logger.LogWarning(ex, "AI copilot chat reply failed.");
             return $"AI provider error: {ex.Message}";
         }
     }
@@ -262,7 +262,7 @@ public class OpenAiCopilotProvider : IAiCopilotProvider
     /// <returns>The operation result.</returns>
     private object BuildRequestBody(string systemPrompt, string userPrompt, bool requireJson)
     {
-        if (OpenAiCompatibleApiHelper.UsesChatCompletions(_settings))
+        if (AiCompatibleApiHelper.UsesChatCompletions(_settings))
         {
             return new
             {

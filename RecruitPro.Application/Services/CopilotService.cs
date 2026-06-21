@@ -21,7 +21,7 @@ public class CopilotService : ICopilotService
     private readonly IResumeTextExtractor _resumeTextExtractor;
     private readonly IAiCopilotProvider _aiCopilotProvider;
     private readonly IUnitOfWork _unitOfWork;
-    private readonly OpenAiSettings _openAiSettings;
+    private readonly AiProviderSettings _aiProviderSettings;
     private readonly IMapper _mapper;
 
     /// <summary>
@@ -32,14 +32,14 @@ public class CopilotService : ICopilotService
     /// <param name="resumeTextExtractor">The <paramref name="resumeTextExtractor"/> value.</param>
     /// <param name="aiCopilotProvider">The <paramref name="aiCopilotProvider"/> value.</param>
     /// <param name="unitOfWork">The <paramref name="unitOfWork"/> value.</param>
-    /// <param name="openAiOptions">The <paramref name="openAiOptions"/> value.</param>
+    /// <param name="aiProviderOptions">The <paramref name="aiProviderOptions"/> value.</param>
     public CopilotService(
         ICopilotRepository copilotRepository,
         IFileStorageService fileStorageService,
         IResumeTextExtractor resumeTextExtractor,
         IAiCopilotProvider aiCopilotProvider,
         IUnitOfWork unitOfWork,
-        IOptions<OpenAiSettings> openAiOptions,
+        IOptions<AiProviderSettings> aiProviderOptions,
         IMapper mapper)
     {
         _copilotRepository = copilotRepository;
@@ -47,7 +47,7 @@ public class CopilotService : ICopilotService
         _resumeTextExtractor = resumeTextExtractor;
         _aiCopilotProvider = aiCopilotProvider;
         _unitOfWork = unitOfWork;
-        _openAiSettings = openAiOptions.Value;
+        _aiProviderSettings = aiProviderOptions.Value;
         _mapper = mapper;
     }
 
@@ -140,7 +140,6 @@ public class CopilotService : ICopilotService
             return ApiResponse<CopilotPromptResponseDto>.NotFound("Job not found");
         }
 
-        pool = await EnrichPoolWithResumeTextAsync(pool);
         bool shouldRunRanking = request.ForceRanking
             && (!string.IsNullOrWhiteSpace(request.Prompt)
                 || request.PriorityCriteria.Count > 0
@@ -148,6 +147,7 @@ public class CopilotService : ICopilotService
 
         if (!shouldRunRanking)
         {
+            pool = await EnrichPoolWithResumeTextAsync(pool);
             string assistantReply = await _aiCopilotProvider.TryCreateChatReplyAsync(pool, request.Prompt, conversationId)
                 ?? "AI copilot returned an empty response.";
 
@@ -235,7 +235,7 @@ public class CopilotService : ICopilotService
             NormalizedRulesJson = JsonSerializer.Serialize(rules),
             TotalCandidates = pool.Candidates.Count,
             ModelName = results.Any(result => result.IsAiGenerated)
-                ? _openAiSettings.Model
+                ? _aiProviderSettings.Model
                 : "deterministic-copilot-v1",
             Results = NormalizeRankingResults(results, pool.Candidates).Select(result => new CopilotRankingResult
             {
@@ -403,8 +403,8 @@ public class CopilotService : ICopilotService
     /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     private async Task<CopilotCandidatePoolDto> EnrichPoolWithResumeTextAsync(CopilotCandidatePoolDto pool)
     {
-        int maxChars = _openAiSettings.MaxResumeCharsPerCandidate > 0
-            ? _openAiSettings.MaxResumeCharsPerCandidate
+        int maxChars = _aiProviderSettings.MaxResumeCharsPerCandidate > 0
+            ? _aiProviderSettings.MaxResumeCharsPerCandidate
             : 6000;
 
         List<CopilotCandidateDto> enrichedCandidates = [];

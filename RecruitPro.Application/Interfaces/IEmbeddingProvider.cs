@@ -8,7 +8,7 @@ public interface IEmbeddingProvider
 public class EmbeddingGenerationResult
 {
     public bool Succeeded { get; set; }
-    public string Provider { get; set; } = "OpenAICompatible";
+    public string Provider { get; set; } = "AiCompatible";
     public string? ModelName { get; set; }
     public string? FailureReason { get; set; }
     public int? HttpStatusCode { get; set; }

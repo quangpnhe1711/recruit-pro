@@ -9,6 +9,7 @@ public class HrCandidateDetailDto
     public List<CandidateEducationDto> Educations { get; set; } = [];
     public List<CandidateCertificationDto> Certifications { get; set; } = [];
     public List<CandidateLanguageDto> Languages { get; set; } = [];
+    public List<CandidateProfileSectionDto> Sections { get; set; } = [];
     public CandidateResumeDto? Resume { get; set; }
     public List<CandidateResumeDto> ResumeHistory { get; set; } = [];
     public List<HrCandidateApplicationHistoryItemDto> ApplicationHistory { get; set; } = [];

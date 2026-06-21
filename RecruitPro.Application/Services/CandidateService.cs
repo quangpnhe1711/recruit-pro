@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using System.IO.Compression;
 using System.Net;
 using System.Net.Mail;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using RecruitPro.Application.Common;
@@ -28,6 +29,7 @@ public class CandidateService : ICandidateService
     private readonly IEmailService _emailService;
     private readonly IResumeTextExtractor _resumeTextExtractor;
     private readonly IResumeParsingAiProvider _resumeParsingAiProvider;
+    private readonly ISemanticDiscoveryService _semanticDiscoveryService;
     private readonly IMapper _mapper;
     private readonly ILogger<CandidateService> _logger;
     private const string CandidateRoleName = "Candidate";
@@ -45,6 +47,7 @@ public class CandidateService : ICandidateService
     private const string ResumeExtractionFailureMessage = "Unable to read the resume content. Please upload a text-based PDF or DOCX file. Image-based or scanned PDF files are not supported.";
     private const string ResumeAiRetryMessage = "Your CV was uploaded successfully, but the AI parser is temporarily unavailable. The system will retry parsing later.";
     private const string ResumeAiFailedMessage = "Your CV was uploaded successfully, but automatic parsing could not be completed right now. You can retry parsing later without uploading again.";
+    private const string ResumeProfileMismatchMessage = "Your new CV does not match the current profile on the system. Please parse and update your profile so it matches the latest CV. If you later apply the parsed data, the system will treat that profile as your official CV.";
     private static readonly Regex PhonePattern = new(@"^0\d{9}$", RegexOptions.Compiled);
     private static readonly Regex EmailExtractorPattern = new(@"(?<email>[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex PhoneExtractorPattern = new(@"(?<phone>(?:\+?84|0)[\s\-.]?(?:\d[\s\-.]?){8,10})", RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -62,6 +65,7 @@ public class CandidateService : ICandidateService
     /// <param name="emailService">The <paramref name="emailService"/> value.</param>
     /// <param name="resumeTextExtractor">The <paramref name="resumeTextExtractor"/> value.</param>
     /// <param name="resumeParsingAiProvider">The <paramref name="resumeParsingAiProvider"/> value.</param>
+    /// <param name="semanticDiscoveryService">The <paramref name="semanticDiscoveryService"/> value.</param>
     /// <param name="mapper">The <paramref name="mapper"/> value.</param>
     /// <param name="logger">The <paramref name="logger"/> value.</param>
     public CandidateService(
@@ -73,6 +77,7 @@ public class CandidateService : ICandidateService
         IEmailService emailService,
         IResumeTextExtractor resumeTextExtractor,
         IResumeParsingAiProvider resumeParsingAiProvider,
+        ISemanticDiscoveryService semanticDiscoveryService,
         IMapper mapper,
         ILogger<CandidateService> logger)
     {
@@ -84,6 +89,7 @@ public class CandidateService : ICandidateService
         _emailService = emailService;
         _resumeTextExtractor = resumeTextExtractor;
         _resumeParsingAiProvider = resumeParsingAiProvider;
+        _semanticDiscoveryService = semanticDiscoveryService;
         _mapper = mapper;
         _logger = logger;
     }
@@ -296,6 +302,7 @@ public class CandidateService : ICandidateService
             Educations = baseProfile.Educations,
             Certifications = baseProfile.Certifications,
             Languages = baseProfile.Languages,
+            Sections = baseProfile.Sections,
             Resume = baseProfile.Resume,
             ResumeHistory = baseProfile.ResumeHistory,
             ApplicationHistory = applicationHistory,
@@ -464,6 +471,7 @@ public class CandidateService : ICandidateService
             {
                 await _unitOfWork.SaveChangesAsync();
                 await _unitOfWork.CommitAsync();
+                await TryRefreshCandidateEmbeddingAsync(profile.Id);
                 return ApiResponse<CandidateProfileResponseDto>.Ok(await MapProfileAsync(profile));
             }
             catch (DbUpdateConcurrencyException exception) when (attempt == 0)
@@ -500,6 +508,7 @@ public class CandidateService : ICandidateService
         await ReplaceCandidateSkillsAsync(profile.Id, requestedSkills);
         await _unitOfWork.SaveChangesAsync();
         await _unitOfWork.CommitAsync();
+        await TryRefreshCandidateEmbeddingAsync(profile.Id);
 
         CandidateProfile refreshedProfile = await GetProfileEntityAsync(userId);
         return ApiResponse<CandidateProfileResponseDto>.Ok(await MapProfileAsync(refreshedProfile));
@@ -736,11 +745,15 @@ public class CandidateService : ICandidateService
         if (aiResult.UsedAi && aiResult.Data != null)
         {
             CandidateResumeParseResponseDto preview = BuildResumeParsePreviewFromAi(aiResult.Data, extractedText, allSkills, profile, aiResult.ModelName);
+            List<string> mismatchWarnings = BuildProfileMismatchWarnings(profile, preview);
             await PersistParsedResumeAsync(profile, preview, aiResult.Data, extractedText, aiResult.ModelName);
             response.ParseStatus = ResumeParseStatusCompleted;
             response.ParseMessage = "Resume uploaded and parsed successfully.";
             response.ParsedAt = profile.ResumeParsedAt;
             response.ParserWarnings = NormalizeParserWarnings(preview.Notes);
+            response.ProfileRefreshRequired = mismatchWarnings.Count > 0;
+            response.ProfileRefreshMessage = mismatchWarnings.Count > 0 ? ResumeProfileMismatchMessage : null;
+            response.ProfileMismatchWarnings = mismatchWarnings;
             return ApiResponse<ResumeUploadResponseDto>.Ok(response, response.ParseMessage);
         }
 
@@ -835,6 +848,7 @@ public class CandidateService : ICandidateService
         List<CandidateEducationDocument> educations = LoadDocuments<CandidateEducationDocument>(profile.EducationRecordsJson);
         List<CandidateCertificationDocument> certifications = LoadDocuments<CandidateCertificationDocument>(profile.CertificationRecordsJson);
         List<CandidateLanguageDocument> languages = LoadDocuments<CandidateLanguageDocument>(profile.LanguageRecordsJson);
+        IReadOnlyList<CandidateSectionSnapshot> sections = CandidateProfileSectionHelper.BuildSections(profile);
         List<CandidateResumeDto> resumeHistory = [];
 
         foreach (CandidateResume candidateResume in profile.Resumes.OrderByDescending(item => item.Version))
@@ -949,6 +963,7 @@ public class CandidateService : ICandidateService
                 Name = item.Name,
                 Proficiency = item.Proficiency
             }).ToList(),
+            Sections = sections.Select(MapSectionSnapshot).ToList(),
             Resume = resume,
             ResumeHistory = resumeHistory,
             ResumeParsing = new CandidateResumeParsingStatusDto
@@ -972,6 +987,7 @@ public class CandidateService : ICandidateService
         await _unitOfWork.BeginTransactionAsync();
         await _unitOfWork.SaveChangesAsync();
         await _unitOfWork.CommitAsync();
+        await TryRefreshCandidateEmbeddingAsync(profile.Id);
     }
 
     /// <summary>
@@ -1021,6 +1037,15 @@ public class CandidateService : ICandidateService
         {
             profile.LanguageRecordsJson = SerializeDocuments(request.Languages.Select(MapLanguageRequest).ToList());
         }
+
+        if (request.Sections != null)
+        {
+            await ReplaceCandidateSectionsAsync(profile.Id, request.Sections);
+        }
+        else
+        {
+            await SyncLegacySectionsAsync(profile);
+        }
     }
 
     /// <summary>
@@ -1038,6 +1063,394 @@ public class CandidateService : ICandidateService
             .ToList();
 
         await _candidateRepository.ReplaceProjectsAsync(candidateProfileId, projects);
+    }
+
+    private static CandidateProfileSectionDto MapSectionSnapshot(CandidateSectionSnapshot section)
+    {
+        return new CandidateProfileSectionDto
+        {
+            Id = section.Id == Guid.Empty ? string.Empty : section.Id.ToString(),
+            SectionKey = section.SectionKey,
+            Title = section.Title,
+            SectionType = section.SectionType,
+            Source = section.Source,
+            DisplayOrder = section.DisplayOrder,
+            Schema = DeserializeDictionary(section.SchemaJson),
+            Items = section.Items.Select(item => new CandidateProfileSectionItemDto
+            {
+                Id = item.Id == Guid.Empty ? string.Empty : item.Id.ToString(),
+                ItemType = item.ItemType,
+                Title = item.Title,
+                Subtitle = item.Subtitle,
+                Organization = item.Organization,
+                Location = item.Location,
+                Description = item.Description,
+                DateLabel = item.DateLabel,
+                StartMonth = item.StartMonth,
+                StartYear = item.StartYear,
+                EndMonth = item.EndMonth,
+                EndYear = item.EndYear,
+                IsCurrent = item.IsCurrent,
+                DisplayOrder = item.DisplayOrder,
+                Tags = item.Tags,
+                Attributes = item.Attributes
+            }).ToList()
+        };
+    }
+
+    private List<CandidateProfileSection> BuildDefaultSectionsFromLegacyProfile(CandidateProfile profile)
+    {
+        return CandidateProfileSectionHelper.BuildSections(profile)
+            .Where(section => string.IsNullOrWhiteSpace(section.Source) || !section.Source.Equals("User", StringComparison.OrdinalIgnoreCase))
+            .Select(MapSectionSnapshotToEntity)
+            .ToList();
+    }
+
+    private static CandidateProfileSection MapSectionRequest(CandidateProfileSectionUpsertRequest request)
+    {
+        return new CandidateProfileSection
+        {
+            Id = Guid.TryParse(request.Id, out Guid sectionId) ? sectionId : Guid.NewGuid(),
+            SectionKey = TextNormalizationHelper.NormalizeOptionalText(request.SectionKey),
+            Title = request.Title.Trim(),
+            SectionType = string.IsNullOrWhiteSpace(request.SectionType) ? "Custom" : request.SectionType.Trim(),
+            Source = string.IsNullOrWhiteSpace(request.Source) ? "User" : request.Source.Trim(),
+            DisplayOrder = request.DisplayOrder,
+            SchemaJson = SerializeDictionary(request.Schema),
+            Items = request.Items
+                .OrderBy(item => item.DisplayOrder)
+                .Select(MapSectionItemRequest)
+                .ToList(),
+            UpdatedAt = DbDateTime.Now
+        };
+    }
+
+    private static CandidateProfileSectionItem MapSectionItemRequest(CandidateProfileSectionItemUpsertRequest request)
+    {
+        return new CandidateProfileSectionItem
+        {
+            Id = Guid.TryParse(request.Id, out Guid itemId) ? itemId : Guid.NewGuid(),
+            ItemType = string.IsNullOrWhiteSpace(request.ItemType) ? "Entry" : request.ItemType.Trim(),
+            Title = request.Title.Trim(),
+            Subtitle = TextNormalizationHelper.NormalizeOptionalText(request.Subtitle),
+            Organization = TextNormalizationHelper.NormalizeOptionalText(request.Organization),
+            Location = TextNormalizationHelper.NormalizeOptionalText(request.Location),
+            Description = TextNormalizationHelper.NormalizeOptionalText(request.Description),
+            DateLabel = TextNormalizationHelper.NormalizeOptionalText(request.DateLabel),
+            StartMonth = request.StartMonth,
+            StartYear = request.StartYear,
+            EndMonth = request.IsCurrent ? null : request.EndMonth,
+            EndYear = request.IsCurrent ? null : request.EndYear,
+            IsCurrent = request.IsCurrent,
+            DisplayOrder = request.DisplayOrder,
+            TagsJson = SerializeStringList(request.Tags),
+            AttributesJson = SerializeDictionary(request.Attributes),
+            UpdatedAt = DbDateTime.Now
+        };
+    }
+
+    private static CandidateProfileSection MapSectionSnapshotToEntity(CandidateSectionSnapshot snapshot)
+    {
+        return new CandidateProfileSection
+        {
+            Id = snapshot.Id == Guid.Empty ? Guid.NewGuid() : snapshot.Id,
+            SectionKey = snapshot.SectionKey,
+            Title = snapshot.Title,
+            SectionType = snapshot.SectionType,
+            Source = string.IsNullOrWhiteSpace(snapshot.Source) ? "System" : snapshot.Source,
+            DisplayOrder = snapshot.DisplayOrder,
+            SchemaJson = snapshot.SchemaJson,
+            CreatedAt = DbDateTime.Now,
+            UpdatedAt = DbDateTime.Now,
+            Items = snapshot.Items.Select(item => new CandidateProfileSectionItem
+            {
+                Id = item.Id == Guid.Empty ? Guid.NewGuid() : item.Id,
+                ItemType = item.ItemType,
+                Title = item.Title,
+                Subtitle = item.Subtitle,
+                Organization = item.Organization,
+                Location = item.Location,
+                Description = item.Description,
+                DateLabel = item.DateLabel,
+                StartMonth = item.StartMonth,
+                StartYear = item.StartYear,
+                EndMonth = item.IsCurrent ? null : item.EndMonth,
+                EndYear = item.IsCurrent ? null : item.EndYear,
+                IsCurrent = item.IsCurrent,
+                DisplayOrder = item.DisplayOrder,
+                TagsJson = SerializeStringList(item.Tags),
+                AttributesJson = SerializeDictionary(item.Attributes),
+                CreatedAt = DbDateTime.Now,
+                UpdatedAt = DbDateTime.Now
+            }).ToList()
+        };
+    }
+
+    private static CandidateProfileSection CloneSection(CandidateProfileSection section)
+    {
+        return new CandidateProfileSection
+        {
+            Id = section.Id == Guid.Empty ? Guid.NewGuid() : section.Id,
+            CandidateProfileId = section.CandidateProfileId,
+            SectionKey = section.SectionKey,
+            Title = section.Title,
+            SectionType = section.SectionType,
+            Source = section.Source,
+            DisplayOrder = section.DisplayOrder,
+            SchemaJson = section.SchemaJson,
+            CreatedAt = section.CreatedAt ?? DbDateTime.Now,
+            UpdatedAt = DbDateTime.Now,
+            Items = section.Items
+                .OrderBy(item => item.DisplayOrder)
+                .Select(item => new CandidateProfileSectionItem
+                {
+                    Id = item.Id == Guid.Empty ? Guid.NewGuid() : item.Id,
+                    ItemType = item.ItemType,
+                    Title = item.Title,
+                    Subtitle = item.Subtitle,
+                    Organization = item.Organization,
+                    Location = item.Location,
+                    Description = item.Description,
+                    DateLabel = item.DateLabel,
+                    StartMonth = item.StartMonth,
+                    StartYear = item.StartYear,
+                    EndMonth = item.EndMonth,
+                    EndYear = item.EndYear,
+                    IsCurrent = item.IsCurrent,
+                    DisplayOrder = item.DisplayOrder,
+                    TagsJson = item.TagsJson,
+                    AttributesJson = item.AttributesJson,
+                    CreatedAt = item.CreatedAt ?? DbDateTime.Now,
+                    UpdatedAt = DbDateTime.Now
+                })
+                .ToList()
+        };
+    }
+
+    private static CandidateProfileSection MapSectionDtoToEntity(CandidateProfileSectionDto section)
+    {
+        return new CandidateProfileSection
+        {
+            Id = Guid.TryParse(section.Id, out Guid sectionId) ? sectionId : Guid.NewGuid(),
+            SectionKey = section.SectionKey,
+            Title = section.Title,
+            SectionType = section.SectionType,
+            Source = section.Source,
+            DisplayOrder = section.DisplayOrder,
+            SchemaJson = SerializeDictionary(section.Schema),
+            CreatedAt = DbDateTime.Now,
+            UpdatedAt = DbDateTime.Now,
+            Items = section.Items
+                .OrderBy(item => item.DisplayOrder)
+                .Select(item => new CandidateProfileSectionItem
+                {
+                    Id = Guid.TryParse(item.Id, out Guid itemId) ? itemId : Guid.NewGuid(),
+                    ItemType = item.ItemType,
+                    Title = item.Title,
+                    Subtitle = item.Subtitle,
+                    Organization = item.Organization,
+                    Location = item.Location,
+                    Description = item.Description,
+                    DateLabel = item.DateLabel,
+                    StartMonth = item.StartMonth,
+                    StartYear = item.StartYear,
+                    EndMonth = item.IsCurrent ? null : item.EndMonth,
+                    EndYear = item.IsCurrent ? null : item.EndYear,
+                    IsCurrent = item.IsCurrent,
+                    DisplayOrder = item.DisplayOrder,
+                    TagsJson = SerializeStringList(item.Tags),
+                    AttributesJson = SerializeDictionary(item.Attributes),
+                    CreatedAt = DbDateTime.Now,
+                    UpdatedAt = DbDateTime.Now
+                })
+                .ToList()
+        };
+    }
+
+    private static List<CandidateProfileSectionDto> BuildSectionsFromParsedPreview(
+        IReadOnlyList<CandidateExperienceDto> experiences,
+        IReadOnlyList<CandidateProjectDto> projects,
+        IReadOnlyList<CandidateEducationDto> educations,
+        IReadOnlyList<CandidateCertificationDto> certifications,
+        IReadOnlyList<CandidateLanguageDto> languages,
+        IReadOnlyList<CandidateResumeAiAwardDto> awards,
+        IReadOnlyList<CandidateResumeAiActivityDto> activities)
+    {
+        List<CandidateProfileSectionDto> sections = [];
+
+        void AddSection(CandidateProfileSectionDto section)
+        {
+            if (section.Items.Count > 0)
+            {
+                sections.Add(section);
+            }
+        }
+
+        AddSection(new CandidateProfileSectionDto
+        {
+            SectionKey = "experience",
+            Title = "Experience",
+            SectionType = "Timeline",
+            Source = "Parser",
+            DisplayOrder = 100,
+            Items = experiences.Select((entry, index) => new CandidateProfileSectionItemDto
+            {
+                Id = entry.Id,
+                ItemType = "Experience",
+                Title = entry.Title,
+                Organization = entry.Company,
+                Description = entry.Bullets.Count == 0 ? null : string.Join(Environment.NewLine, entry.Bullets),
+                StartMonth = entry.Period.StartMonth,
+                StartYear = entry.Period.StartYear,
+                EndMonth = entry.Period.EndMonth,
+                EndYear = entry.Period.EndYear,
+                IsCurrent = entry.Period.IsCurrent,
+                DisplayOrder = index
+            }).ToList()
+        });
+
+        AddSection(new CandidateProfileSectionDto
+        {
+            SectionKey = "projects",
+            Title = "Projects",
+            SectionType = "Portfolio",
+            Source = "Parser",
+            DisplayOrder = 200,
+            Items = projects.Select((project, index) => new CandidateProfileSectionItemDto
+            {
+                Id = project.Id,
+                ItemType = "Project",
+                Title = project.Name,
+                Subtitle = project.Role,
+                Description = project.Description,
+                StartMonth = project.Period.StartMonth,
+                StartYear = project.Period.StartYear,
+                EndMonth = project.Period.EndMonth,
+                EndYear = project.Period.EndYear,
+                IsCurrent = project.Period.IsCurrent,
+                DisplayOrder = index,
+                Tags = project.Technologies
+            }).ToList()
+        });
+
+        AddSection(new CandidateProfileSectionDto
+        {
+            SectionKey = "education",
+            Title = "Education",
+            SectionType = "Education",
+            Source = "Parser",
+            DisplayOrder = 300,
+            Items = educations.Select((education, index) => new CandidateProfileSectionItemDto
+            {
+                Id = education.Id,
+                ItemType = "Education",
+                Title = education.School,
+                Subtitle = education.Degree,
+                Description = education.Description,
+                StartYear = education.StartYear,
+                EndYear = education.EndYear,
+                DisplayOrder = index,
+                Attributes = new Dictionary<string, string>
+                {
+                    ["fieldOfStudy"] = education.FieldOfStudy ?? string.Empty
+                }
+            }).ToList()
+        });
+
+        AddSection(new CandidateProfileSectionDto
+        {
+            SectionKey = "certifications",
+            Title = "Certifications",
+            SectionType = "Achievements",
+            Source = "Parser",
+            DisplayOrder = 400,
+            Items = certifications.Select((certification, index) => new CandidateProfileSectionItemDto
+            {
+                Id = certification.Id,
+                ItemType = "Certification",
+                Title = certification.Name,
+                Organization = certification.Issuer,
+                DateLabel = certification.IssuedOn?.ToString("yyyy-MM-dd"),
+                DisplayOrder = index,
+                Attributes = new Dictionary<string, string>
+                {
+                    ["expiresOn"] = certification.ExpiresOn?.ToString("yyyy-MM-dd") ?? string.Empty,
+                    ["credentialId"] = certification.CredentialId ?? string.Empty,
+                    ["credentialUrl"] = certification.CredentialUrl ?? string.Empty
+                }
+            }).ToList()
+        });
+
+        AddSection(new CandidateProfileSectionDto
+        {
+            SectionKey = "languages",
+            Title = "Languages",
+            SectionType = "Attributes",
+            Source = "Parser",
+            DisplayOrder = 500,
+            Items = languages.Select((language, index) => new CandidateProfileSectionItemDto
+            {
+                Id = language.Id,
+                ItemType = "Language",
+                Title = language.Name,
+                Subtitle = language.Proficiency,
+                DisplayOrder = index
+            }).ToList()
+        });
+
+        AddSection(new CandidateProfileSectionDto
+        {
+            SectionKey = "awards",
+            Title = "Vinh danh",
+            SectionType = "Achievements",
+            Source = "Parser",
+            DisplayOrder = 600,
+            Items = awards.Select((award, index) => new CandidateProfileSectionItemDto
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                ItemType = "Award",
+                Title = award.Name,
+                Organization = award.Issuer,
+                Description = award.Description,
+                StartYear = award.Year,
+                DisplayOrder = index
+            }).ToList()
+        });
+
+        AddSection(new CandidateProfileSectionDto
+        {
+            SectionKey = "activities",
+            Title = "Hoạt động",
+            SectionType = "Activities",
+            Source = "Parser",
+            DisplayOrder = 700,
+            Items = activities.Select((activity, index) => new CandidateProfileSectionItemDto
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                ItemType = "Activity",
+                Title = activity.Organization,
+                Subtitle = activity.Role,
+                Description = activity.Description,
+                StartYear = activity.StartYear,
+                EndYear = activity.EndYear,
+                DisplayOrder = index
+            }).ToList()
+        });
+
+        return sections;
+    }
+
+    private static bool IsManagedLegacySectionKey(string? sectionKey)
+    {
+        return sectionKey?.Trim().ToLowerInvariant() switch
+        {
+            "experience" => true,
+            "projects" => true,
+            "education" => true,
+            "certifications" => true,
+            "languages" => true,
+            _ => false
+        };
     }
 
     /// <summary>
@@ -1310,7 +1723,6 @@ public class CandidateService : ICandidateService
         await _unitOfWork.BeginTransactionAsync();
         try
         {
-            await ApplyParsedResumeToProfileAsync(profile, preview);
             profile.ParsedResumeJson = JsonSerializer.Serialize(rawAiData);
             profile.ResumeExtractedText = extractedText;
             profile.ResumeParseStatus = ResumeParseStatusCompleted;
@@ -1323,6 +1735,7 @@ public class CandidateService : ICandidateService
             await _userRepository.UpdateAsync(profile.User);
             await _unitOfWork.SaveChangesAsync();
             await _unitOfWork.CommitAsync();
+            await TryRefreshCandidateEmbeddingAsync(profile.Id);
         }
         catch
         {
@@ -1360,17 +1773,32 @@ public class CandidateService : ICandidateService
         }
     }
 
+    private async Task TryRefreshCandidateEmbeddingAsync(Guid candidateProfileId)
+    {
+        try
+        {
+            await _semanticDiscoveryService.RefreshCandidateEmbeddingAsync(candidateProfileId);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(
+                exception,
+                "Candidate embedding refresh failed after profile update for candidate profile {CandidateProfileId}.",
+                candidateProfileId);
+        }
+    }
+
     private async Task ApplyParsedResumeToProfileAsync(CandidateProfile profile, CandidateResumeParseResponseDto preview)
     {
         profile.User.FullName = string.IsNullOrWhiteSpace(preview.Profile.Name) ? profile.User.FullName : preview.Profile.Name.Trim();
         profile.User.Email = string.IsNullOrWhiteSpace(preview.Profile.Email) ? profile.User.Email : preview.Profile.Email.Trim();
-        profile.User.Phone = string.IsNullOrWhiteSpace(preview.Profile.Phone) ? profile.User.Phone : preview.Profile.Phone.Trim();
+        profile.User.Phone = string.IsNullOrWhiteSpace(preview.Profile.Phone) ? string.Empty : preview.Profile.Phone.Trim();
         profile.User.UpdatedAt = DbDateTime.Now;
-        profile.CurrentPosition = TextNormalizationHelper.NormalizeOptionalText(preview.Profile.Headline) ?? profile.CurrentPosition;
-        profile.Address = TextNormalizationHelper.NormalizeOptionalText(preview.Profile.Location) ?? profile.Address;
-        profile.Bio = TextNormalizationHelper.NormalizeOptionalText(preview.Profile.Bio) ?? profile.Bio;
-        profile.GithubUrl = TextNormalizationHelper.NormalizeOptionalText(preview.Profile.Github) ?? profile.GithubUrl;
-        profile.LinkedinUrl = TextNormalizationHelper.NormalizeOptionalText(preview.Profile.Linkedin) ?? profile.LinkedinUrl;
+        profile.CurrentPosition = TextNormalizationHelper.NormalizeOptionalText(preview.Profile.Headline);
+        profile.Address = TextNormalizationHelper.NormalizeOptionalText(preview.Profile.Location);
+        profile.Bio = TextNormalizationHelper.NormalizeOptionalText(preview.Profile.Bio);
+        profile.GithubUrl = TextNormalizationHelper.NormalizeOptionalText(preview.Profile.Github);
+        profile.LinkedinUrl = TextNormalizationHelper.NormalizeOptionalText(preview.Profile.Linkedin);
         profile.ExperienceYears = CalculateExperienceYears(preview.ExperienceEntries);
         profile.ExperienceEntriesJson = SerializeDocuments(preview.ExperienceEntries.Select(MapExperienceDto).ToList());
         profile.EducationRecordsJson = SerializeDocuments(preview.Educations.Select(MapEducationDto).ToList());
@@ -1402,6 +1830,133 @@ public class CandidateService : ICandidateService
                 YearsOfExperience = skill.YearsOfExperience
             })
             .ToList());
+
+        if (preview.Sections.Count > 0)
+        {
+            await _candidateRepository.ReplaceSectionsAsync(
+                profile.Id,
+                preview.Sections.Select(MapSectionDtoToEntity).ToList());
+        }
+        else
+        {
+            await SyncLegacySectionsAsync(profile);
+        }
+    }
+
+    private List<string> BuildProfileMismatchWarnings(CandidateProfile profile, CandidateResumeParseResponseDto preview)
+    {
+        List<string> warnings = [];
+
+        if (!string.Equals(
+                NormalizeComparableText(profile.CurrentPosition),
+                NormalizeComparableText(preview.Profile.Headline),
+                StringComparison.Ordinal))
+        {
+            warnings.Add("Career headline or current position on the system does not match the new CV.");
+        }
+
+        HashSet<string> currentSkills = profile.CandidateSkills
+            .Where(skill => skill.Skill != null && !string.IsNullOrWhiteSpace(skill.Skill.Name))
+            .Select(skill => NormalizeComparableText(skill.Skill.Name))
+            .ToHashSet(StringComparer.Ordinal);
+        HashSet<string> parsedSkills = preview.Skills
+            .Where(skill => !string.IsNullOrWhiteSpace(skill.Label))
+            .Select(skill => NormalizeComparableText(skill.Label))
+            .ToHashSet(StringComparer.Ordinal);
+
+        if (!currentSkills.SetEquals(parsedSkills))
+        {
+            warnings.Add("Skills in the current profile do not match the skills recognized from the new CV.");
+        }
+
+        string currentNarrative = NormalizeComparableText(CandidateProfileSectionHelper.BuildStructuredNarrative(profile));
+        string previewNarrative = NormalizeComparableText(BuildPreviewStructuredNarrative(preview));
+        if (!string.Equals(currentNarrative, previewNarrative, StringComparison.Ordinal))
+        {
+            warnings.Add("Experience, education, projects, or custom CV sections differ from the current profile.");
+        }
+
+        return warnings;
+    }
+
+    private static string BuildPreviewStructuredNarrative(CandidateResumeParseResponseDto preview)
+    {
+        if (preview.Sections.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        StringBuilder builder = new();
+        foreach (CandidateProfileSectionDto section in preview.Sections.OrderBy(section => section.DisplayOrder))
+        {
+            builder.AppendLine(section.Title);
+            foreach (CandidateProfileSectionItemDto item in section.Items.OrderBy(item => item.DisplayOrder))
+            {
+                List<string> parts =
+                [
+                    item.Title,
+                    item.Subtitle,
+                    item.Organization,
+                    item.Location,
+                    item.DateLabel,
+                    item.Description
+                ];
+
+                if (item.Tags.Count > 0)
+                {
+                    parts.Add(string.Join(", ", item.Tags));
+                }
+
+                builder.AppendLine(string.Join(" | ", parts.Where(value => !string.IsNullOrWhiteSpace(value))));
+            }
+
+            builder.AppendLine();
+        }
+
+        return builder.ToString();
+    }
+
+    private static string NormalizeComparableText(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        string normalized = Regex.Replace(value.Trim().ToLowerInvariant(), @"\s+", " ");
+        return normalized;
+    }
+
+    private async Task ReplaceCandidateSectionsAsync(
+        Guid candidateProfileId,
+        IEnumerable<CandidateProfileSectionUpsertRequest> requestedSections)
+    {
+        List<CandidateProfileSection> sections = requestedSections
+            .OrderBy(section => section.DisplayOrder)
+            .Select(MapSectionRequest)
+            .ToList();
+
+        await _candidateRepository.ReplaceSectionsAsync(candidateProfileId, sections);
+    }
+
+    private async Task SyncLegacySectionsAsync(CandidateProfile profile)
+    {
+        List<CandidateProfileSection> sections = BuildDefaultSectionsFromLegacyProfile(profile);
+        if (profile.Sections.Count > 0)
+        {
+            List<CandidateProfileSection> customSections = profile.Sections
+                .Where(section => string.IsNullOrWhiteSpace(section.SectionKey) || !IsManagedLegacySectionKey(section.SectionKey))
+                .Select(CloneSection)
+                .ToList();
+
+            sections.AddRange(customSections);
+            sections = sections
+                .OrderBy(section => section.DisplayOrder)
+                .ToList();
+        }
+
+        await _candidateRepository.ReplaceSectionsAsync(profile.Id, sections);
+        profile.Sections = sections;
     }
 
     private static int? CalculateExperienceYears(IEnumerable<CandidateExperienceDto> experiences)
@@ -1506,6 +2061,53 @@ public class CandidateService : ICandidateService
         return LoadDocuments<string>(jsonString)
             .Where(value => !string.IsNullOrWhiteSpace(value))
             .ToList();
+    }
+
+    private static string? SerializeStringList(IEnumerable<string>? values)
+    {
+        if (values == null)
+        {
+            return null;
+        }
+
+        List<string> normalized = values
+            .Select(value => value?.Trim())
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Cast<string>()
+            .ToList();
+
+        return normalized.Count == 0 ? null : JsonSerializer.Serialize(normalized);
+    }
+
+    private static string? SerializeDictionary(Dictionary<string, string>? values)
+    {
+        if (values == null || values.Count == 0)
+        {
+            return null;
+        }
+
+        Dictionary<string, string> normalized = values
+            .Where(item => !string.IsNullOrWhiteSpace(item.Key) && !string.IsNullOrWhiteSpace(item.Value))
+            .ToDictionary(item => item.Key.Trim(), item => item.Value.Trim(), StringComparer.OrdinalIgnoreCase);
+
+        return normalized.Count == 0 ? null : JsonSerializer.Serialize(normalized);
+    }
+
+    private static Dictionary<string, string> DeserializeDictionary(string? jsonString)
+    {
+        if (string.IsNullOrWhiteSpace(jsonString))
+        {
+            return [];
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<Dictionary<string, string>>(jsonString) ?? [];
+        }
+        catch
+        {
+            return [];
+        }
     }
 
     /// <summary>
@@ -1775,6 +2377,7 @@ public class CandidateService : ICandidateService
             Educations = educations,
             Certifications = certifications,
             Languages = languages,
+            Sections = BuildSectionsFromParsedPreview(experiences, projects, educations, certifications, languages, [], []),
             Notes = notes,
             ExtractedTextPreview = string.Join(Environment.NewLine, lines.Take(40))
         };
@@ -1918,6 +2521,89 @@ public class CandidateService : ICandidateService
                 .Where(item => !string.IsNullOrWhiteSpace(item.Name))
                 .DistinctBy(item => item.Name.ToLowerInvariant())
                 .ToList(),
+            Sections = BuildSectionsFromParsedPreview(
+                aiPreview.ExperienceEntries
+                    .Select(item => new CandidateExperienceDto
+                    {
+                        Id = Guid.NewGuid().ToString("N"),
+                        Title = string.IsNullOrWhiteSpace(item.Title) ? "Experience" : item.Title.Trim(),
+                        Company = string.IsNullOrWhiteSpace(item.Company) ? "Not specified" : item.Company.Trim(),
+                        Period = new CandidateExperiencePeriodDto
+                        {
+                            StartMonth = item.StartMonth ?? 1,
+                            StartYear = item.StartYear ?? DateTime.UtcNow.Year,
+                            EndMonth = item.IsCurrent ? null : item.EndMonth,
+                            EndYear = item.IsCurrent ? null : item.EndYear,
+                            IsCurrent = item.IsCurrent
+                        },
+                        Bullets = item.Bullets
+                            .Select(value => value.Trim())
+                            .Where(value => !string.IsNullOrWhiteSpace(value))
+                            .ToList()
+                    })
+                    .Where(item => !string.IsNullOrWhiteSpace(item.Title))
+                    .ToList(),
+                aiPreview.Projects
+                    .Select(item => new CandidateProjectDto
+                    {
+                        Id = Guid.NewGuid().ToString(),
+                        Name = string.IsNullOrWhiteSpace(item.Name) ? "Project" : item.Name.Trim(),
+                        Role = TextNormalizationHelper.NormalizeOptionalText(item.Role),
+                        Description = TextNormalizationHelper.NormalizeOptionalText(item.Description),
+                        Technologies = item.Technologies
+                            .Select(value => value.Trim())
+                            .Where(value => !string.IsNullOrWhiteSpace(value))
+                            .Distinct(StringComparer.OrdinalIgnoreCase)
+                            .ToList(),
+                        Period = new CandidateExperiencePeriodDto
+                        {
+                            StartMonth = item.StartMonth ?? 1,
+                            StartYear = item.StartYear ?? DateTime.UtcNow.Year,
+                            EndMonth = item.IsCurrent ? null : item.EndMonth,
+                            EndYear = item.IsCurrent ? null : item.EndYear,
+                            IsCurrent = item.IsCurrent
+                        }
+                    })
+                    .Where(item => !string.IsNullOrWhiteSpace(item.Name))
+                    .ToList(),
+                aiPreview.Educations
+                    .Select(item => new CandidateEducationDto
+                    {
+                        Id = Guid.NewGuid().ToString("N"),
+                        School = item.School.Trim(),
+                        Degree = item.Degree.Trim(),
+                        FieldOfStudy = TextNormalizationHelper.NormalizeOptionalText(item.FieldOfStudy),
+                        StartYear = item.StartYear,
+                        EndYear = item.EndYear,
+                        Description = TextNormalizationHelper.NormalizeOptionalText(item.Description)
+                    })
+                    .Where(item => !string.IsNullOrWhiteSpace(item.School) && !string.IsNullOrWhiteSpace(item.Degree))
+                    .ToList(),
+                aiPreview.Certifications
+                    .Select(item => new CandidateCertificationDto
+                    {
+                        Id = Guid.NewGuid().ToString("N"),
+                        Name = item.Name.Trim(),
+                        Issuer = TextNormalizationHelper.NormalizeOptionalText(item.Issuer),
+                        IssuedOn = item.IssuedOn,
+                        ExpiresOn = item.ExpiresOn,
+                        CredentialId = TextNormalizationHelper.NormalizeOptionalText(item.CredentialId),
+                        CredentialUrl = TextNormalizationHelper.NormalizeOptionalText(item.CredentialUrl)
+                    })
+                    .Where(item => !string.IsNullOrWhiteSpace(item.Name))
+                    .ToList(),
+                aiPreview.Languages
+                    .Select(item => new CandidateLanguageDto
+                    {
+                        Id = Guid.NewGuid().ToString("N"),
+                        Name = item.Name.Trim(),
+                        Proficiency = string.IsNullOrWhiteSpace(item.Proficiency) ? "Unspecified" : item.Proficiency.Trim()
+                    })
+                    .Where(item => !string.IsNullOrWhiteSpace(item.Name))
+                    .DistinctBy(item => item.Name.ToLowerInvariant())
+                    .ToList(),
+                aiPreview.Awards,
+                aiPreview.Activities),
             Notes = aiPreview.ParserWarnings.Count > 0
                 ? aiPreview.ParserWarnings
                 : ["AI parser extracted structured data from the resume. Please verify before saving."],

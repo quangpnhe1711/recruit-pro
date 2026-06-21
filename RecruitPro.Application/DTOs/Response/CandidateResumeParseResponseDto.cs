@@ -13,6 +13,7 @@ public class CandidateResumeParseResponseDto
     public List<CandidateEducationDto> Educations { get; set; } = [];
     public List<CandidateCertificationDto> Certifications { get; set; } = [];
     public List<CandidateLanguageDto> Languages { get; set; } = [];
+    public List<CandidateProfileSectionDto> Sections { get; set; } = [];
     public List<string> Notes { get; set; } = [];
     public string ExtractedTextPreview { get; set; } = string.Empty;
 }

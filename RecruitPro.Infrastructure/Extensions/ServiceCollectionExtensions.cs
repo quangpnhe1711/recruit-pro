@@ -30,19 +30,19 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IResumeTextExtractor, PdfResumeTextExtractor>();
         services.AddSingleton<IApplicationSemanticProcessingQueue, InMemoryApplicationSemanticProcessingQueue>();
         services.AddSingleton<IEmbeddingCache, InMemoryEmbeddingCache>();
-        services.AddHttpClient<IResumeParsingAiProvider, OpenAiResumeParserProvider>((serviceProvider, client) =>
+        services.AddHttpClient<IResumeParsingAiProvider, AiResumeParserProvider>((serviceProvider, client) =>
         {
-            OpenAiSettings settings = serviceProvider.GetRequiredService<IOptions<OpenAiSettings>>().Value;
+            AiProviderSettings settings = serviceProvider.GetRequiredService<IOptions<AiProviderSettings>>().Value;
             client.Timeout = TimeSpan.FromSeconds(Math.Max(30, settings.RequestTimeoutSeconds));
         });
-        services.AddHttpClient<IEmbeddingProvider, OpenAiEmbeddingProvider>((serviceProvider, client) =>
+        services.AddHttpClient<IEmbeddingProvider, AiEmbeddingProvider>((serviceProvider, client) =>
         {
-            OpenAiSettings settings = serviceProvider.GetRequiredService<IOptions<OpenAiSettings>>().Value;
+            AiProviderSettings settings = serviceProvider.GetRequiredService<IOptions<AiProviderSettings>>().Value;
             client.Timeout = TimeSpan.FromSeconds(Math.Max(30, settings.RequestTimeoutSeconds));
         });
-        services.AddHttpClient<IAiCopilotProvider, OpenAiCopilotProvider>((serviceProvider, client) =>
+        services.AddHttpClient<IAiCopilotProvider, AiCopilotProvider>((serviceProvider, client) =>
         {
-            OpenAiSettings settings = serviceProvider.GetRequiredService<IOptions<OpenAiSettings>>().Value;
+            AiProviderSettings settings = serviceProvider.GetRequiredService<IOptions<AiProviderSettings>>().Value;
             client.Timeout = TimeSpan.FromSeconds(Math.Max(30, settings.RequestTimeoutSeconds));
         });
         services.AddSingleton<IMinioClient>(serviceProvider =>

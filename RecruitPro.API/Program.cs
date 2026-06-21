@@ -31,9 +31,9 @@ builder.Services.AddSwaggerGen();
 
 Console.WriteLine("ENV = " + builder.Environment.EnvironmentName);
 Console.WriteLine("CONN = " + builder.Configuration.GetConnectionString("Mycnn"));
-Console.WriteLine("OpenAI Enabled = " + builder.Configuration.GetValue<bool>("OpenAi:Enabled"));
-Console.WriteLine("OpenAI Model = " + (builder.Configuration["OpenAi:Model"] ?? "gpt-4.1-mini"));
-Console.WriteLine("OpenAI ApiKey Present = " + (!string.IsNullOrWhiteSpace(builder.Configuration["OpenAi:ApiKey"])));
+Console.WriteLine("AI Provider Enabled = " + builder.Configuration.GetValue<bool>("AiProvider:Enabled"));
+Console.WriteLine("AI Provider Model = " + (builder.Configuration["AiProvider:Model"] ?? "gemini-2.0-flash"));
+Console.WriteLine("AI Provider ApiKey Present = " + (!string.IsNullOrWhiteSpace(builder.Configuration["AiProvider:ApiKey"])));
 
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("Mycnn"))
@@ -46,8 +46,8 @@ builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("Jwt"))
 // config minio settings
 builder.Services.Configure<MinioSettings>(builder.Configuration.GetSection("MinioSettings"));
 
-// config OpenAI settings
-builder.Services.Configure<OpenAiSettings>(builder.Configuration.GetSection("OpenAi"));
+// config AI provider settings
+builder.Services.Configure<AiProviderSettings>(builder.Configuration.GetSection("AiProvider"));
 
 // cors config
 string[] allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()

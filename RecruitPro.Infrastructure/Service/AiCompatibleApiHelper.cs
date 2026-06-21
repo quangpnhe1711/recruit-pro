@@ -5,13 +5,13 @@ using RecruitPro.Application.Configurations;
 
 namespace RecruitPro.Infrastructure.Service;
 
-internal static class OpenAiCompatibleApiHelper
+internal static class AiCompatibleApiHelper
 {
-    private const string OpenAiResponsesSuffix = "/responses";
-    private const string OpenAiChatCompletionsSuffix = "/chat/completions";
+    private const string ResponsesSuffix = "/responses";
+    private const string ChatCompletionsSuffix = "/chat/completions";
 
     public static HttpRequestMessage BuildRequest(
-        OpenAiSettings settings,
+        AiProviderSettings settings,
         object requestBody,
         JsonSerializerOptions jsonOptions)
     {
@@ -24,15 +24,15 @@ internal static class OpenAiCompatibleApiHelper
         return request;
     }
 
-    public static string BuildEndpoint(OpenAiSettings settings)
+    public static string BuildEndpoint(AiProviderSettings settings)
     {
         string baseUrl = settings.BaseUrl.TrimEnd('/');
         return UsesChatCompletions(settings)
-            ? $"{baseUrl}{OpenAiChatCompletionsSuffix}"
-            : $"{baseUrl}{OpenAiResponsesSuffix}";
+            ? $"{baseUrl}{ChatCompletionsSuffix}"
+            : $"{baseUrl}{ResponsesSuffix}";
     }
 
-    public static bool UsesChatCompletions(OpenAiSettings settings)
+    public static bool UsesChatCompletions(AiProviderSettings settings)
     {
         return settings.BaseUrl.Contains("generativelanguage.googleapis.com", StringComparison.OrdinalIgnoreCase)
             || settings.BaseUrl.EndsWith("/openai", StringComparison.OrdinalIgnoreCase);

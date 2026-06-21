@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using RecruitPro.Application.Common;
 using RecruitPro.Application.DTOs.Response.Copilot;
 using RecruitPro.Application.Interfaces.IRepositories;
 using RecruitPro.Domain.Constants;
@@ -56,28 +57,49 @@ public class CopilotRepository : ICopilotRepository
             return null;
         }
 
-        List<CopilotCandidateDto> candidates = await _context.Applications
+        List<RecruitPro.Domain.Entities.Application> applications = await _context.Applications
             .AsNoTracking()
             .Where(application => application.JobId == jobId)
             .OrderByDescending(application => application.AppliedAt)
-            .Select(application => new CopilotCandidateDto
+            .Include(application => application.User)
+                .ThenInclude(user => user.CandidateProfile)
+                    .ThenInclude(profile => profile.CandidateSkills)
+                        .ThenInclude(candidateSkill => candidateSkill.Skill)
+            .Include(application => application.User)
+                .ThenInclude(user => user.CandidateProfile)
+                    .ThenInclude(profile => profile.Projects)
+            .Include(application => application.User)
+                .ThenInclude(user => user.CandidateProfile)
+                    .ThenInclude(profile => profile.Sections)
+                        .ThenInclude(section => section.Items)
+            .Include(application => application.User)
+                .ThenInclude(user => user.CandidateProfile)
+                    .ThenInclude(profile => profile.Resumes)
+            .ToListAsync();
+
+        List<CopilotCandidateDto> candidates = applications.Select(application =>
+        {
+            CandidateProfile? profile = application.User.CandidateProfile;
+            CandidateResume? currentResume = profile?.Resumes
+                .OrderByDescending(item => item.Version)
+                .FirstOrDefault(item => item.IsCurrent);
+
+            return new CopilotCandidateDto
             {
                 CandidateUserId = application.UserId,
                 ApplicationId = application.Id,
                 FullName = application.User.FullName,
-                Education = application.User.CandidateProfile != null ? application.User.CandidateProfile.Education : null,
-                ExperienceYears = application.User.CandidateProfile != null && application.User.CandidateProfile.ExperienceYears.HasValue
-                    ? application.User.CandidateProfile.ExperienceYears.Value
-                    : 0,
-                Skills = application.User.CandidateProfile != null
-                    ? application.User.CandidateProfile.CandidateSkills.Select(skill => skill.Skill.Name).OrderBy(name => name).ToList()
-                    : new List<string>(),
-                CvSummary = application.User.CandidateProfile != null
-                    ? (application.User.CandidateProfile.Bio ?? application.User.CandidateProfile.CurrentPosition ?? string.Empty)
-                    : string.Empty,
-                ResumeUrl = application.User.CandidateProfile != null ? application.User.CandidateProfile.ResumeUrl : null
-            })
-            .ToListAsync();
+                Education = profile?.EducationRecordsJson ?? profile?.Education,
+                ExperienceYears = profile?.ExperienceYears ?? 0,
+                Skills = profile?.CandidateSkills
+                    .Where(skill => skill.Skill != null)
+                    .Select(skill => skill.Skill.Name)
+                    .OrderBy(name => name)
+                    .ToList() ?? [],
+                CvSummary = profile == null ? string.Empty : CandidateProfileSectionHelper.BuildStructuredNarrative(profile),
+                ResumeUrl = currentResume?.StorageKey
+            };
+        }).ToList();
 
         return new CopilotCandidatePoolDto
         {

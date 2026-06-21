@@ -31,6 +31,10 @@ public partial class AppDbContext : DbContext
 
     public virtual DbSet<CandidateResume> CandidateResumes { get; set; }
 
+    public virtual DbSet<CandidateProfileSection> CandidateProfileSections { get; set; }
+
+    public virtual DbSet<CandidateProfileSectionItem> CandidateProfileSectionItems { get; set; }
+
     public virtual DbSet<CandidateSkill> CandidateSkills { get; set; }
 
     public virtual DbSet<CopilotCandidateTag> CopilotCandidateTags { get; set; }
@@ -290,9 +294,111 @@ public partial class AppDbContext : DbContext
                 .HasForeignKey(p => p.CandidateProfileId)
                 .HasConstraintName("candidate_resumes_candidate_profile_id_fkey");
 
+            entity.HasMany(d => d.Sections).WithOne(p => p.CandidateProfile)
+                .HasForeignKey(p => p.CandidateProfileId)
+                .HasConstraintName("candidate_profile_sections_candidate_profile_id_fkey");
+
             entity.HasMany(d => d.CandidateSkills).WithOne(p => p.Candidate)
                 .HasForeignKey(p => p.CandidateId)
                 .HasConstraintName("candidate_skills_candidate_id_fkey");
+        });
+
+        modelBuilder.Entity<CandidateProfileSection>(entity =>
+        {
+            entity.HasKey(e => e.Id).HasName("candidate_profile_sections_pkey");
+
+            entity.ToTable("candidate_profile_sections");
+
+            entity.HasIndex(e => new { e.CandidateProfileId, e.DisplayOrder }, "ix_candidate_profile_sections_profile_order");
+
+            entity.Property(e => e.Id)
+                .HasDefaultValueSql("gen_random_uuid()")
+                .HasColumnName("id");
+            entity.Property(e => e.CandidateProfileId).HasColumnName("candidate_profile_id");
+            entity.Property(e => e.SectionKey)
+                .HasMaxLength(100)
+                .HasColumnName("section_key");
+            entity.Property(e => e.Title)
+                .HasMaxLength(200)
+                .HasColumnName("title");
+            entity.Property(e => e.SectionType)
+                .HasMaxLength(50)
+                .HasDefaultValue("Custom")
+                .HasColumnName("section_type");
+            entity.Property(e => e.Source)
+                .HasMaxLength(30)
+                .HasDefaultValue("User")
+                .HasColumnName("source");
+            entity.Property(e => e.DisplayOrder).HasColumnName("display_order");
+            entity.Property(e => e.SchemaJson)
+                .HasColumnType("jsonb")
+                .HasColumnName("schema_json");
+            entity.Property(e => e.CreatedAt)
+                .HasDefaultValueSql("CURRENT_TIMESTAMP")
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("created_at");
+            entity.Property(e => e.UpdatedAt)
+                .HasDefaultValueSql("CURRENT_TIMESTAMP")
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("updated_at");
+        });
+
+        modelBuilder.Entity<CandidateProfileSectionItem>(entity =>
+        {
+            entity.HasKey(e => e.Id).HasName("candidate_profile_section_items_pkey");
+
+            entity.ToTable("candidate_profile_section_items");
+
+            entity.HasIndex(e => new { e.SectionId, e.DisplayOrder }, "ix_candidate_profile_section_items_section_order");
+
+            entity.Property(e => e.Id)
+                .HasDefaultValueSql("gen_random_uuid()")
+                .HasColumnName("id");
+            entity.Property(e => e.SectionId).HasColumnName("section_id");
+            entity.Property(e => e.ItemType)
+                .HasMaxLength(50)
+                .HasDefaultValue("Entry")
+                .HasColumnName("item_type");
+            entity.Property(e => e.Title)
+                .HasMaxLength(255)
+                .HasColumnName("title");
+            entity.Property(e => e.Subtitle)
+                .HasMaxLength(255)
+                .HasColumnName("subtitle");
+            entity.Property(e => e.Organization)
+                .HasMaxLength(255)
+                .HasColumnName("organization");
+            entity.Property(e => e.Location).HasColumnName("location");
+            entity.Property(e => e.Description).HasColumnName("description");
+            entity.Property(e => e.DateLabel)
+                .HasMaxLength(120)
+                .HasColumnName("date_label");
+            entity.Property(e => e.StartMonth).HasColumnName("start_month");
+            entity.Property(e => e.StartYear).HasColumnName("start_year");
+            entity.Property(e => e.EndMonth).HasColumnName("end_month");
+            entity.Property(e => e.EndYear).HasColumnName("end_year");
+            entity.Property(e => e.IsCurrent)
+                .HasDefaultValue(false)
+                .HasColumnName("is_current");
+            entity.Property(e => e.DisplayOrder).HasColumnName("display_order");
+            entity.Property(e => e.TagsJson)
+                .HasColumnType("jsonb")
+                .HasColumnName("tags_json");
+            entity.Property(e => e.AttributesJson)
+                .HasColumnType("jsonb")
+                .HasColumnName("attributes_json");
+            entity.Property(e => e.CreatedAt)
+                .HasDefaultValueSql("CURRENT_TIMESTAMP")
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("created_at");
+            entity.Property(e => e.UpdatedAt)
+                .HasDefaultValueSql("CURRENT_TIMESTAMP")
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("updated_at");
+
+            entity.HasOne(d => d.Section).WithMany(p => p.Items)
+                .HasForeignKey(d => d.SectionId)
+                .HasConstraintName("candidate_profile_section_items_section_id_fkey");
         });
 
         modelBuilder.Entity<CandidateProject>(entity =>

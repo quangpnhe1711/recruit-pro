@@ -19,6 +19,7 @@ public class JobService : IJobService
     private readonly IApplicationRepository _applicationRepository;
     private readonly ISkillRepository _skillRepository;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly ISemanticDiscoveryService _semanticDiscoveryService;
     private readonly IMapper _mapper;
 
     /// <summary>
@@ -28,18 +29,21 @@ public class JobService : IJobService
     /// <param name="applicationRepository">The <paramref name="applicationRepository"/> value.</param>
     /// <param name="skillRepository">The <paramref name="skillRepository"/> value.</param>
     /// <param name="unitOfWork">The <paramref name="unitOfWork"/> value.</param>
+    /// <param name="semanticDiscoveryService">The <paramref name="semanticDiscoveryService"/> value.</param>
     /// <param name="mapper">The <paramref name="mapper"/> value.</param>
     public JobService(
         IJobRepository jobRepository,
         IApplicationRepository applicationRepository,
         ISkillRepository skillRepository,
         IUnitOfWork unitOfWork,
+        ISemanticDiscoveryService semanticDiscoveryService,
         IMapper mapper)
     {
         _jobRepository = jobRepository;
         _applicationRepository = applicationRepository;
         _skillRepository = skillRepository;
         _unitOfWork = unitOfWork;
+        _semanticDiscoveryService = semanticDiscoveryService;
         _mapper = mapper;
     }
 
@@ -239,6 +243,7 @@ public class JobService : IJobService
         job.Status = newStatus;
         await _jobRepository.UpdateAsync(job);
         await _unitOfWork.SaveChangesAsync();
+        await TryRefreshJobEmbeddingAsync(job.Id);
 
         return ApiResponse<JobDetailResponseDto>.Ok(MapLegacyJobDetail(job));
     }
@@ -499,6 +504,7 @@ public class JobService : IJobService
 
         await _jobRepository.AddAsync(job);
         await _unitOfWork.SaveChangesAsync();
+        await TryRefreshJobEmbeddingAsync(job.Id);
 
         return ApiResponse<HrCreateJobResponseDto>.Created(new HrCreateJobResponseDto
         {
@@ -616,6 +622,7 @@ public class JobService : IJobService
 
         await _jobRepository.UpdateAsync(job);
         await _unitOfWork.SaveChangesAsync();
+        await TryRefreshJobEmbeddingAsync(job.Id);
 
         return ApiResponse<HrJobStatusResponseDto>.Ok(new HrJobStatusResponseDto
         {
@@ -689,6 +696,17 @@ public class JobService : IJobService
         }
 
         return job;
+    }
+
+    private async Task TryRefreshJobEmbeddingAsync(Guid jobId)
+    {
+        try
+        {
+            await _semanticDiscoveryService.RefreshJobEmbeddingAsync(jobId);
+        }
+        catch
+        {
+        }
     }
 
     private static JobListItemDto MapJobListItem(Job job)

@@ -11,4 +11,7 @@ public class ResumeUploadResponseDto
     public string? ParseMessage { get; set; }
     public DateTime? ParsedAt { get; set; }
     public List<string> ParserWarnings { get; set; } = [];
+    public bool ProfileRefreshRequired { get; set; }
+    public string? ProfileRefreshMessage { get; set; }
+    public List<string> ProfileMismatchWarnings { get; set; } = [];
 }

@@ -230,6 +230,16 @@ public class SemanticDiscoveryService : ISemanticDiscoveryService
             ranked.OrderByDescending(item => ExtractScoreFromMeta(item.Meta)).Take(Math.Max(take, 1)).ToList());
     }
 
+    public async Task RefreshCandidateEmbeddingAsync(Guid candidateProfileId)
+    {
+        _ = await EnsureCandidateVectorAsync(candidateProfileId);
+    }
+
+    public async Task RefreshJobEmbeddingAsync(Guid jobId)
+    {
+        _ = await EnsureJobVectorAsync(jobId);
+    }
+
     private async Task<IReadOnlyList<double>> BuildTransientEmbeddingAsync(string text)
     {
         EmbeddingGenerationResult result = await _embeddingProvider.GenerateEmbeddingAsync(text);
@@ -469,6 +479,7 @@ public class SemanticDiscoveryService : ISemanticDiscoveryService
         AppendSection(builder, "Certifications", FlattenJsonArray(profile.CertificationRecordsJson, ["name", "issuer"]));
         AppendSection(builder, "Languages", FlattenJsonArray(profile.LanguageRecordsJson, ["name", "proficiency"]));
         AppendSection(builder, "Keywords", ExtractKeywordsFromParsedResume(profile.ParsedResumeJson));
+        AppendSection(builder, "Structured Sections", CandidateProfileSectionHelper.BuildStructuredNarrative(profile));
         return builder.ToString().Trim();
     }
 

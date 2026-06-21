@@ -245,6 +245,7 @@ public sealed class CandidateServiceUnitTests
             emailService ?? Mock.Of<IEmailService>(),
             resumeTextExtractor ?? Mock.Of<IResumeTextExtractor>(),
             resumeParsingAiProvider ?? Mock.Of<IResumeParsingAiProvider>(),
+            Mock.Of<ISemanticDiscoveryService>(),
             TestMapperFactory.Create(),
             Mock.Of<ILogger<CandidateService>>());
     }
@@ -265,7 +266,7 @@ public sealed class CopilotServiceUnitTests
             Mock.Of<IResumeTextExtractor>(),
             Mock.Of<IAiCopilotProvider>(),
             Mock.Of<IUnitOfWork>(),
-            Options.Create(new OpenAiSettings()),
+            Options.Create(new AiProviderSettings()),
             TestMapperFactory.Create());
 
         var response = await service.GetJobsAsync();
@@ -290,7 +291,7 @@ public sealed class CopilotServiceUnitTests
             Mock.Of<IResumeTextExtractor>(),
             Mock.Of<IAiCopilotProvider>(),
             Mock.Of<IUnitOfWork>(),
-            Options.Create(new OpenAiSettings()),
+            Options.Create(new AiProviderSettings()),
             TestMapperFactory.Create());
 
         var response = await service.CreateConversationAsync(new CreateCopilotConversationRequest { JobId = jobId }, userId);
@@ -395,6 +396,7 @@ public sealed class JobServiceUnitTests
             Mock.Of<IApplicationRepository>(),
             Mock.Of<ISkillRepository>(),
             Mock.Of<IUnitOfWork>(),
+            Mock.Of<ISemanticDiscoveryService>(),
             TestMapperFactory.Create());
 
         var response = await service.GetFiltersAsync();
@@ -412,6 +414,7 @@ public sealed class JobServiceUnitTests
             Mock.Of<IApplicationRepository>(),
             Mock.Of<ISkillRepository>(),
             Mock.Of<IUnitOfWork>(),
+            Mock.Of<ISemanticDiscoveryService>(),
             TestMapperFactory.Create());
 
         var response = await service.DeleteJobAsync("bad-id");
