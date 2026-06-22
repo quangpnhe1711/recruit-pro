@@ -47,7 +47,7 @@ public class CandidateService : ICandidateService
     private const string ResumeExtractionFailureMessage = "Unable to read the resume content. Please upload a text-based PDF or DOCX file. Image-based or scanned PDF files are not supported.";
     private const string ResumeAiRetryMessage = "Your CV was uploaded successfully, but the AI parser is temporarily unavailable. The system will retry parsing later.";
     private const string ResumeAiFailedMessage = "Your CV was uploaded successfully, but automatic parsing could not be completed right now. You can retry parsing later without uploading again.";
-    private const string ResumeProfileMismatchMessage = "Your new CV does not match the current profile on the system. Please parse and update your profile so it matches the latest CV. If you later apply the parsed data, the system will treat that profile as your official CV.";
+    private const string ResumeProfileMismatchMessage = "Your new CV does not match the current profile on the system. Please parse and update your profile so it matches the latest CV. If you later apply the parsed data, the system will treat that profile as your official CV";
     private static readonly Regex PhonePattern = new(@"^0\d{9}$", RegexOptions.Compiled);
     private static readonly Regex EmailExtractorPattern = new(@"(?<email>[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex PhoneExtractorPattern = new(@"(?<phone>(?:\+?84|0)[\s\-.]?(?:\d[\s\-.]?){8,10})", RegexOptions.Compiled | RegexOptions.IgnoreCase);
