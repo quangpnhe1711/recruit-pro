@@ -15,7 +15,7 @@ public class ResumeController : ControllerBase
         _candidateService = candidateService;
     }
 
-    [Authorize(Roles = "Candidate,HR,Manager")]
+    [Authorize]
     [HttpGet("api/resumes/{resumeId}/preview")]
     public async Task<IActionResult> PreviewResume(string resumeId)
     {
@@ -35,7 +35,7 @@ public class ResumeController : ControllerBase
     /// <summary>
     /// Streams a private resume file as an attachment.
     /// </summary>
-    [Authorize(Roles = "Candidate,HR,Manager")]
+    [Authorize]
     [HttpGet("api/resumes/{resumeId}/download")]
     public async Task<IActionResult> DownloadResume(string resumeId)
     {
