@@ -79,7 +79,7 @@ public class ApplicationService : IApplicationService
             {
                 ResumeId = currentResume.Id.ToString(),
                 FileName = currentResume.FileName,
-                FileUrl = await _fileStorage.GetPresignedUrlAsync(currentResume.StorageKey),
+                FileUrl = $"/api/resumes/{currentResume.Id}/preview",
                 UploadedAt = currentResume.UploadDate
             };
         }
@@ -536,9 +536,8 @@ public class ApplicationService : IApplicationService
             return ApiResponse<ResumeFileResponseDto>.NotFound("Resume not found.");
         }
 
-        string presignedUrl = await _fileStorage.GetPresignedUrlAsync(resume.StorageKey);
         _logger.LogInformation(
-            "Generated resume download URL for application {ApplicationId} and candidate {CandidateId}.",
+            "Resolved internal resume preview URL for application {ApplicationId} and candidate {CandidateId}.",
             application.Id,
             application.UserId);
 
@@ -546,7 +545,7 @@ public class ApplicationService : IApplicationService
         {
             ResumeId = resume.Id.ToString(),
             FileName = resume.FileName,
-            FileUrl = presignedUrl
+            FileUrl = $"/api/resumes/{resume.Id}/preview"
         });
     }
 
