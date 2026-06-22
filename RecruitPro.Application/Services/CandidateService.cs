@@ -919,6 +919,35 @@ public class CandidateService : ICandidateService
         });
     }
 
+    public async Task<ResumeStreamResponseDto?> GetResumeStreamAsync(string resumeId, Guid requesterId, bool canViewAll)
+    {
+        if (!Guid.TryParse(resumeId, out Guid resumeGuid))
+        {
+            return null;
+        }
+
+        CandidateProfile? profile = await _candidateRepository.GetByResumeIdAsync(resumeGuid);
+        CandidateResume? resume = profile?.Resumes.FirstOrDefault(item => item.Id == resumeGuid);
+        if (profile == null || resume == null)
+        {
+            return null;
+        }
+
+        if (!canViewAll && profile.UserId != requesterId)
+        {
+            return null;
+        }
+
+        Stream content = await _fileStorage.DownloadFileAsync(resume.StorageKey);
+        return new ResumeStreamResponseDto
+        {
+            ResumeId = resume.Id.ToString(),
+            FileName = resume.FileName,
+            ContentType = ResolveResumeContentType(resume.FileName),
+            Content = content
+        };
+    }
+
     /// <summary>
     /// Retrieves profile entity.
     /// </summary>
@@ -978,7 +1007,7 @@ public class CandidateService : ICandidateService
             {
                 Id = profile.Id.ToString(),
                 FileName = StoredFileNameHelper.ExtractDisplayFileName(profile.ResumeUrl),
-                FileUrl = await _fileStorage.GetPresignedUrlAsync(profile.ResumeUrl),
+                FileUrl = string.Empty,
                 UploadedAt = profile.User.UpdatedAt ?? profile.User.CreatedAt ?? DbDateTime.Now,
                 Version = 1,
                 IsCurrent = true
@@ -2153,10 +2182,22 @@ public class CandidateService : ICandidateService
         {
             Id = candidateResume.Id.ToString(),
             FileName = candidateResume.FileName,
-            FileUrl = await _fileStorage.GetPresignedUrlAsync(candidateResume.StorageKey),
+            FileUrl = $"/api/resumes/{candidateResume.Id}/preview",
             UploadedAt = candidateResume.UploadDate,
             Version = candidateResume.Version,
             IsCurrent = candidateResume.IsCurrent
+        };
+    }
+
+    private static string ResolveResumeContentType(string fileName)
+    {
+        return Path.GetExtension(fileName).Trim().ToLowerInvariant() switch
+        {
+            ".pdf" => "application/pdf",
+            ".doc" => "application/msword",
+            ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            ".txt" => "text/plain",
+            _ => "application/octet-stream"
         };
     }
 

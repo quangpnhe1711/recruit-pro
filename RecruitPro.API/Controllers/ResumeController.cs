@@ -1,4 +1,6 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using RecruitPro.API.Extensions;
 using RecruitPro.Application.Interfaces.IServices;
 
 namespace RecruitPro.API.Controllers;
@@ -13,13 +15,39 @@ public class ResumeController : ControllerBase
         _candidateService = candidateService;
     }
 
+    [Authorize(Roles = "Candidate,HR,Manager")]
+    [HttpGet("api/resumes/{resumeId}/preview")]
+    public async Task<IActionResult> PreviewResume(string resumeId)
+    {
+        var result = await _candidateService.GetResumeStreamAsync(
+            resumeId,
+            User.GetCurrentUserId(),
+            User.IsInRole("HR") || User.IsInRole("Manager"));
+        if (result == null)
+        {
+            return NotFound(new { message = "Resume not found." });
+        }
+
+        Response.Headers.ContentDisposition = $"inline; filename=\"{result.FileName}\"";
+        return File(result.Content, result.ContentType);
+    }
+
     /// <summary>
-    /// Generates a temporary download URL for a private resume file.
+    /// Streams a private resume file as an attachment.
     /// </summary>
+    [Authorize(Roles = "Candidate,HR,Manager")]
     [HttpGet("api/resumes/{resumeId}/download")]
     public async Task<IActionResult> DownloadResume(string resumeId)
     {
-        var result = await _candidateService.GetResumeDownloadUrlAsync(resumeId);
-        return StatusCode(result.StatusCode, result);
+        var result = await _candidateService.GetResumeStreamAsync(
+            resumeId,
+            User.GetCurrentUserId(),
+            User.IsInRole("HR") || User.IsInRole("Manager"));
+        if (result == null)
+        {
+            return NotFound(new { message = "Resume not found." });
+        }
+
+        return File(result.Content, result.ContentType, result.FileName);
     }
 }
