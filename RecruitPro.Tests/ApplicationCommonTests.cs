@@ -19,6 +19,18 @@ public sealed class ApplicationCommonTests
     }
 
     [Fact]
+    public void NormalizeOptionalText_RemovesNullBytes_WhenPresent()
+    {
+        TextNormalizationHelper.NormalizeOptionalText("  hello\0world  ").Should().Be("helloworld");
+    }
+
+    [Fact]
+    public void RemoveInvalidDatabaseCharacters_StripsNullBytes()
+    {
+        TextNormalizationHelper.RemoveInvalidDatabaseCharacters("a\0b\0c").Should().Be("abc");
+    }
+
+    [Fact]
     public void ExtractDisplayFileName_ReturnsEmpty_ForBlankInput()
     {
         StoredFileNameHelper.ExtractDisplayFileName(null).Should().BeEmpty();

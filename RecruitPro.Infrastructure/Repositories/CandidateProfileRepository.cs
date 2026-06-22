@@ -196,6 +196,17 @@ namespace RecruitPro.Infrastructure.Repositories
 
         public async Task ReplaceProjectsAsync(Guid candidateProfileId, IReadOnlyCollection<CandidateProject> projects)
         {
+            List<CandidateProject> trackedProjects = _context.ChangeTracker
+                .Entries<CandidateProject>()
+                .Where(entry => entry.Entity.CandidateProfileId == candidateProfileId)
+                .Select(entry => entry.Entity)
+                .ToList();
+
+            foreach (CandidateProject trackedProject in trackedProjects)
+            {
+                _context.Entry(trackedProject).State = EntityState.Detached;
+            }
+
             await _context.CandidateProjects
                 .Where(project => project.CandidateProfileId == candidateProfileId)
                 .ExecuteDeleteAsync();

@@ -226,6 +226,126 @@ public sealed class CandidateServiceUnitTests
         response.Message.Should().Be("Resume not found.");
     }
 
+    [Fact]
+    public async Task ParseResumeAsync_WhenAiOmitsPhone_DoesNotFallbackToExistingProfilePhone()
+    {
+        Guid userId = Guid.NewGuid();
+        var profile = new CandidateProfile
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            User = new User
+            {
+                Id = userId,
+                FullName = "Old Name",
+                Email = "old@example.com",
+                Phone = "12123123"
+            },
+            CurrentPosition = "Old Headline",
+            Address = "Old Address",
+            Bio = "Old Bio",
+            GithubUrl = "https://github.com/old",
+            LinkedinUrl = "https://linkedin.com/in/old"
+        };
+
+        var repository = new Mock<ICandidateProfileRepository>();
+        repository.Setup(value => value.GetByUserIdAsync(userId)).ReturnsAsync(profile);
+
+        var skillRepository = new Mock<ISkillRepository>();
+        skillRepository.Setup(value => value.GetAllAsync()).ReturnsAsync([]);
+
+        var extractor = new Mock<IResumeTextExtractor>();
+        extractor.Setup(value => value.ExtractTextAsync(It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("John Doe\nBackend Developer\njohn@example.com\nThis is a sample resume content long enough to parse.");
+
+        var aiProvider = new Mock<IResumeParsingAiProvider>();
+        aiProvider.Setup(value => value.TryParseResumeAsync(It.IsAny<string>(), It.IsAny<IReadOnlyList<Skill>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ResumeParsingAiResult
+            {
+                UsedAi = true,
+                ModelName = "test-model",
+                Data = new CandidateResumeAiParseDto
+                {
+                    Profile = new CandidateResumeAiProfileDto
+                    {
+                        Name = "John Doe",
+                        Headline = "Backend Developer",
+                        Email = "john@example.com",
+                        Phone = null
+                    }
+                }
+            });
+
+        var service = CreateCandidateService(
+            candidateRepository: repository.Object,
+            skillRepository: skillRepository.Object,
+            resumeTextExtractor: extractor.Object,
+            resumeParsingAiProvider: aiProvider.Object);
+
+        await using MemoryStream stream = new("dummy pdf content"u8.ToArray());
+        var response = await service.ParseResumeAsync(userId, stream, "resume.pdf", "application/pdf");
+
+        response.Success.Should().BeTrue();
+        response.Data.Should().NotBeNull();
+        response.Data!.Profile.Phone.Should().BeEmpty();
+        response.Data.Profile.Email.Should().Be("john@example.com");
+    }
+
+    [Fact]
+    public async Task ParseResumeAsync_WhenHeuristicOmitsPhone_DoesNotFallbackToExistingProfilePhone()
+    {
+        Guid userId = Guid.NewGuid();
+        var profile = new CandidateProfile
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            User = new User
+            {
+                Id = userId,
+                FullName = "Old Name",
+                Email = "old@example.com",
+                Phone = "12123123"
+            },
+            CurrentPosition = "Old Headline",
+            Address = "Old Address",
+            Bio = "Old Bio",
+            GithubUrl = "https://github.com/old",
+            LinkedinUrl = "https://linkedin.com/in/old"
+        };
+
+        var repository = new Mock<ICandidateProfileRepository>();
+        repository.Setup(value => value.GetByUserIdAsync(userId)).ReturnsAsync(profile);
+
+        var skillRepository = new Mock<ISkillRepository>();
+        skillRepository.Setup(value => value.GetAllAsync()).ReturnsAsync([]);
+
+        var extractor = new Mock<IResumeTextExtractor>();
+        extractor.Setup(value => value.ExtractTextAsync(It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("John Doe\nBackend Developer\njohn@example.com\nSummary section with enough content to pass parsing threshold and still no phone number.");
+
+        var aiProvider = new Mock<IResumeParsingAiProvider>();
+        aiProvider.Setup(value => value.TryParseResumeAsync(It.IsAny<string>(), It.IsAny<IReadOnlyList<Skill>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ResumeParsingAiResult
+            {
+                UsedAi = false,
+                FailureReason = "AI unavailable"
+            });
+
+        var service = CreateCandidateService(
+            candidateRepository: repository.Object,
+            skillRepository: skillRepository.Object,
+            resumeTextExtractor: extractor.Object,
+            resumeParsingAiProvider: aiProvider.Object);
+
+        await using MemoryStream stream = new("dummy pdf content"u8.ToArray());
+        var response = await service.ParseResumeAsync(userId, stream, "resume.pdf", "application/pdf");
+
+        response.Success.Should().BeTrue();
+        response.Data.Should().NotBeNull();
+        response.Data!.Profile.Phone.Should().BeEmpty();
+        response.Data.Profile.Email.Should().Be("john@example.com");
+    }
+
     private static CandidateService CreateCandidateService(
         ICandidateProfileRepository? candidateRepository = null,
         IUserRepository? userRepository = null,

@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
+using System.Text.Json;
 using RecruitPro.API.Extensions;
 using RecruitPro.Application.DTOs.Request.Candidate;
 using RecruitPro.Application.Interfaces.IServices;
@@ -47,6 +48,29 @@ public class CandidateController : ControllerBase
     public async Task<IActionResult> UpdateProfile([FromBody] UpdateCandidateProfileRequest request)
     {
         var result = await _candidateService.UpdateProfileAsync(User.GetCurrentUserId(), request);
+        return StatusCode(result.StatusCode, result);
+    }
+
+    [HttpPost("api/candidate/profile/save")]
+    [Authorize(Roles = "Candidate")]
+    public async Task<IActionResult> SaveProfile([FromForm] string payload, IFormFile? resume)
+    {
+        UpdateCandidateProfileRequest? request = JsonSerializer.Deserialize<UpdateCandidateProfileRequest>(
+            payload,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+        if (request == null)
+        {
+            return BadRequest("Invalid profile payload.");
+        }
+
+        await using Stream? stream = resume?.OpenReadStream();
+        var result = await _candidateService.SaveProfileAsync(
+            User.GetCurrentUserId(),
+            request,
+            stream,
+            resume?.FileName,
+            resume?.ContentType);
         return StatusCode(result.StatusCode, result);
     }
 

@@ -488,6 +488,126 @@ public class CandidateService : ICandidateService
         throw new InvalidOperationException("Candidate profile update failed after retry.");
     }
 
+    public async Task<ApiResponse<CandidateProfileResponseDto>> SaveProfileAsync(
+        Guid userId,
+        UpdateCandidateProfileRequest request,
+        Stream? resumeStream,
+        string? resumeFileName,
+        string? resumeContentType = null)
+    {
+        if (resumeStream == null || string.IsNullOrWhiteSpace(resumeFileName))
+        {
+            return await UpdateProfileAsync(userId, request);
+        }
+
+        try
+        {
+            ValidateSupportedResumeFile(resumeFileName);
+        }
+        catch (NotSupportedException exception)
+        {
+            return ApiResponse<CandidateProfileResponseDto>.BadRequest(exception.Message);
+        }
+
+        await using MemoryStream bufferedResume = await CopyToMemoryAsync(resumeStream);
+        CandidateProfile profile = await GetProfileEntityAsync(userId);
+        await ApplyProfileUpdateAsync(profile, request);
+
+        DateTime uploadedAt = DbDateTime.Now;
+        string objectName = $"resumes/{userId}/{Guid.NewGuid()}_{Path.GetFileName(resumeFileName)}";
+        bufferedResume.Position = 0;
+        string uploadedObjectKey = await _fileStorage.UploadFileAsync(
+            bufferedResume,
+            objectName,
+            resumeContentType ?? "application/octet-stream");
+
+        foreach (CandidateResume existingResume in profile.Resumes)
+        {
+            existingResume.IsCurrent = false;
+        }
+
+        int nextVersion = profile.Resumes.Count == 0 ? 1 : profile.Resumes.Max(resume => resume.Version) + 1;
+        CandidateResume candidateResume = new()
+        {
+            CandidateProfileId = profile.Id,
+            FileName = Path.GetFileName(resumeFileName),
+            StorageKey = uploadedObjectKey,
+            UploadDate = uploadedAt,
+            Version = nextVersion,
+            IsCurrent = true
+        };
+
+        profile.Resumes.Add(candidateResume);
+        profile.ResumeUrl = uploadedObjectKey;
+        profile.User.UpdatedAt = uploadedAt;
+        profile.ResumeParseStatus = ResumeParseStatusParsing;
+        profile.ResumeParseError = null;
+        profile.ResumeParseModel = null;
+        profile.ResumeParsedAt = null;
+        profile.ResumeParserWarningsJson = SerializeDocuments(new List<string>());
+        profile.ResumeExtractedText = null;
+
+        await _unitOfWork.BeginTransactionAsync();
+        try
+        {
+            await _candidateRepository.UpdateAsync(profile);
+            await _userRepository.UpdateAsync(profile.User);
+            await _unitOfWork.SaveChangesAsync();
+            await _unitOfWork.CommitAsync();
+        }
+        catch
+        {
+            await _unitOfWork.RollbackAsync();
+            await _fileStorage.DeleteFileAsync(uploadedObjectKey);
+            throw;
+        }
+
+        IReadOnlyList<Skill> allSkills = await _skillRepository.GetAllAsync();
+        string extractedText;
+        try
+        {
+            bufferedResume.Position = 0;
+            extractedText = NormalizeResumeText(await ExtractResumeTextAsync(bufferedResume, resumeFileName));
+        }
+        catch (Exception exception) when (exception is not NotSupportedException)
+        {
+            _logger.LogError(exception, "Resume extraction failed after save for user {UserId} and file {FileName}.", userId, resumeFileName);
+            await PersistResumeParsingFailureAsync(profile, ResumeParseStatusTextExtractionFailed, ResumeExtractionFailureMessage, null, []);
+            CandidateProfile refreshedProfile = await GetProfileEntityAsync(userId);
+            return ApiResponse<CandidateProfileResponseDto>.Ok(await MapProfileAsync(refreshedProfile), ResumeExtractionFailureMessage);
+        }
+
+        if (!HasUsableResumeText(extractedText))
+        {
+            await PersistResumeParsingFailureAsync(profile, ResumeParseStatusTextExtractionFailed, ResumeExtractionFailureMessage, extractedText, []);
+            CandidateProfile refreshedProfile = await GetProfileEntityAsync(userId);
+            return ApiResponse<CandidateProfileResponseDto>.Ok(await MapProfileAsync(refreshedProfile), ResumeExtractionFailureMessage);
+        }
+
+        ResumeParsingAiResult aiResult = await _resumeParsingAiProvider.TryParseResumeAsync(extractedText, allSkills);
+        if (aiResult.UsedAi && aiResult.Data != null)
+        {
+            CandidateResumeParseResponseDto preview = BuildResumeParsePreviewFromAi(aiResult.Data, extractedText, allSkills, profile, aiResult.ModelName);
+            await PersistParsedResumeAsync(profile, preview, aiResult.Data, extractedText, aiResult.ModelName);
+        }
+        else
+        {
+            CandidateResumeParseResponseDto fallbackPreview = BuildResumeParsePreview(extractedText, allSkills, profile);
+            if (aiResult.IsRetryable)
+            {
+                LogRetryableAiFailure(aiResult);
+                await PersistResumeParsingFailureAsync(profile, ResumeParseStatusRetryPending, aiResult.FailureReason, extractedText, fallbackPreview.Notes, aiResult.ModelName);
+            }
+            else
+            {
+                await PersistResumeParsingFailureAsync(profile, ResumeParseStatusFailed, aiResult.FailureReason, extractedText, fallbackPreview.Notes, aiResult.ModelName);
+            }
+        }
+
+        CandidateProfile finalProfile = await GetProfileEntityAsync(userId);
+        return ApiResponse<CandidateProfileResponseDto>.Ok(await MapProfileAsync(finalProfile));
+    }
+
     /// <summary>
     /// Updates skills.
     /// </summary>
@@ -745,15 +865,11 @@ public class CandidateService : ICandidateService
         if (aiResult.UsedAi && aiResult.Data != null)
         {
             CandidateResumeParseResponseDto preview = BuildResumeParsePreviewFromAi(aiResult.Data, extractedText, allSkills, profile, aiResult.ModelName);
-            List<string> mismatchWarnings = BuildProfileMismatchWarnings(profile, preview);
             await PersistParsedResumeAsync(profile, preview, aiResult.Data, extractedText, aiResult.ModelName);
             response.ParseStatus = ResumeParseStatusCompleted;
             response.ParseMessage = "Resume uploaded and parsed successfully.";
             response.ParsedAt = profile.ResumeParsedAt;
             response.ParserWarnings = NormalizeParserWarnings(preview.Notes);
-            response.ProfileRefreshRequired = mismatchWarnings.Count > 0;
-            response.ProfileRefreshMessage = mismatchWarnings.Count > 0 ? ResumeProfileMismatchMessage : null;
-            response.ProfileMismatchWarnings = mismatchWarnings;
             return ApiResponse<ResumeUploadResponseDto>.Ok(response, response.ParseMessage);
         }
 
@@ -1790,9 +1906,9 @@ public class CandidateService : ICandidateService
 
     private async Task ApplyParsedResumeToProfileAsync(CandidateProfile profile, CandidateResumeParseResponseDto preview)
     {
-        profile.User.FullName = string.IsNullOrWhiteSpace(preview.Profile.Name) ? profile.User.FullName : preview.Profile.Name.Trim();
-        profile.User.Email = string.IsNullOrWhiteSpace(preview.Profile.Email) ? profile.User.Email : preview.Profile.Email.Trim();
-        profile.User.Phone = string.IsNullOrWhiteSpace(preview.Profile.Phone) ? string.Empty : preview.Profile.Phone.Trim();
+        profile.User.FullName = string.IsNullOrWhiteSpace(preview.Profile.Name) ? profile.User.FullName : TextNormalizationHelper.NormalizeOptionalText(preview.Profile.Name) ?? profile.User.FullName;
+        profile.User.Email = string.IsNullOrWhiteSpace(preview.Profile.Email) ? profile.User.Email : TextNormalizationHelper.NormalizeOptionalText(preview.Profile.Email) ?? profile.User.Email;
+        profile.User.Phone = string.IsNullOrWhiteSpace(preview.Profile.Phone) ? string.Empty : TextNormalizationHelper.NormalizeOptionalText(preview.Profile.Phone) ?? string.Empty;
         profile.User.UpdatedAt = DbDateTime.Now;
         profile.CurrentPosition = TextNormalizationHelper.NormalizeOptionalText(preview.Profile.Headline);
         profile.Address = TextNormalizationHelper.NormalizeOptionalText(preview.Profile.Location);
@@ -1841,90 +1957,6 @@ public class CandidateService : ICandidateService
         {
             await SyncLegacySectionsAsync(profile);
         }
-    }
-
-    private List<string> BuildProfileMismatchWarnings(CandidateProfile profile, CandidateResumeParseResponseDto preview)
-    {
-        List<string> warnings = [];
-
-        if (!string.Equals(
-                NormalizeComparableText(profile.CurrentPosition),
-                NormalizeComparableText(preview.Profile.Headline),
-                StringComparison.Ordinal))
-        {
-            warnings.Add("Career headline or current position on the system does not match the new CV.");
-        }
-
-        HashSet<string> currentSkills = profile.CandidateSkills
-            .Where(skill => skill.Skill != null && !string.IsNullOrWhiteSpace(skill.Skill.Name))
-            .Select(skill => NormalizeComparableText(skill.Skill.Name))
-            .ToHashSet(StringComparer.Ordinal);
-        HashSet<string> parsedSkills = preview.Skills
-            .Where(skill => !string.IsNullOrWhiteSpace(skill.Label))
-            .Select(skill => NormalizeComparableText(skill.Label))
-            .ToHashSet(StringComparer.Ordinal);
-
-        if (!currentSkills.SetEquals(parsedSkills))
-        {
-            warnings.Add("Skills in the current profile do not match the skills recognized from the new CV.");
-        }
-
-        string currentNarrative = NormalizeComparableText(CandidateProfileSectionHelper.BuildStructuredNarrative(profile));
-        string previewNarrative = NormalizeComparableText(BuildPreviewStructuredNarrative(preview));
-        if (!string.Equals(currentNarrative, previewNarrative, StringComparison.Ordinal))
-        {
-            warnings.Add("Experience, education, projects, or custom CV sections differ from the current profile.");
-        }
-
-        return warnings;
-    }
-
-    private static string BuildPreviewStructuredNarrative(CandidateResumeParseResponseDto preview)
-    {
-        if (preview.Sections.Count == 0)
-        {
-            return string.Empty;
-        }
-
-        StringBuilder builder = new();
-        foreach (CandidateProfileSectionDto section in preview.Sections.OrderBy(section => section.DisplayOrder))
-        {
-            builder.AppendLine(section.Title);
-            foreach (CandidateProfileSectionItemDto item in section.Items.OrderBy(item => item.DisplayOrder))
-            {
-                List<string> parts =
-                [
-                    item.Title,
-                    item.Subtitle,
-                    item.Organization,
-                    item.Location,
-                    item.DateLabel,
-                    item.Description
-                ];
-
-                if (item.Tags.Count > 0)
-                {
-                    parts.Add(string.Join(", ", item.Tags));
-                }
-
-                builder.AppendLine(string.Join(" | ", parts.Where(value => !string.IsNullOrWhiteSpace(value))));
-            }
-
-            builder.AppendLine();
-        }
-
-        return builder.ToString();
-    }
-
-    private static string NormalizeComparableText(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return string.Empty;
-        }
-
-        string normalized = Regex.Replace(value.Trim().ToLowerInvariant(), @"\s+", " ");
-        return normalized;
     }
 
     private async Task ReplaceCandidateSectionsAsync(
@@ -2299,14 +2331,14 @@ public class CandidateService : ICandidateService
             .ToList();
         Dictionary<string, List<string>> sections = ExtractResumeSections(lines);
 
-        string email = ExtractEmail(normalizedText) ?? profile.User.Email;
-        string phone = ExtractPhone(normalizedText) ?? profile.User.Phone ?? string.Empty;
-        string github = ExtractUrl(normalizedText, "github.com") ?? profile.GithubUrl ?? string.Empty;
-        string linkedin = ExtractUrl(normalizedText, "linkedin.com") ?? profile.LinkedinUrl ?? string.Empty;
-        string name = ExtractCandidateName(lines) ?? profile.User.FullName;
-        string headline = ExtractHeadline(lines, name) ?? profile.CurrentPosition ?? string.Empty;
-        string location = ExtractLocation(lines) ?? profile.Address ?? string.Empty;
-        string bio = ExtractSummary(sections) ?? profile.Bio ?? string.Empty;
+        string email = ExtractEmail(normalizedText) ?? string.Empty;
+        string phone = ExtractPhone(normalizedText) ?? string.Empty;
+        string github = ExtractUrl(normalizedText, "github.com") ?? string.Empty;
+        string linkedin = ExtractUrl(normalizedText, "linkedin.com") ?? string.Empty;
+        string name = ExtractCandidateName(lines) ?? string.Empty;
+        string headline = ExtractHeadline(lines, name) ?? string.Empty;
+        string location = ExtractLocation(lines) ?? string.Empty;
+        string bio = ExtractSummary(sections) ?? string.Empty;
 
         List<CandidateSkillViewDto> parsedSkills = MatchSkills(normalizedText, allSkills)
             .Select(skill => new CandidateSkillViewDto
@@ -2431,14 +2463,14 @@ public class CandidateService : ICandidateService
             ModelName = modelName,
             Profile = new CandidateResumeParseProfileDto
             {
-                Name = aiPreview.Profile.Name ?? profile.User.FullName,
-                Headline = aiPreview.Profile.Headline ?? profile.CurrentPosition ?? string.Empty,
-                Email = aiPreview.Profile.Email ?? profile.User.Email,
-                Phone = aiPreview.Profile.Phone ?? profile.User.Phone ?? string.Empty,
-                Location = aiPreview.Profile.Location ?? profile.Address ?? string.Empty,
-                Bio = aiPreview.Profile.Summary ?? profile.Bio ?? string.Empty,
-                Github = aiPreview.Profile.Github ?? profile.GithubUrl ?? string.Empty,
-                Linkedin = aiPreview.Profile.Linkedin ?? profile.LinkedinUrl ?? string.Empty
+                Name = aiPreview.Profile.Name ?? string.Empty,
+                Headline = aiPreview.Profile.Headline ?? string.Empty,
+                Email = aiPreview.Profile.Email ?? string.Empty,
+                Phone = aiPreview.Profile.Phone ?? string.Empty,
+                Location = aiPreview.Profile.Location ?? string.Empty,
+                Bio = aiPreview.Profile.Summary ?? string.Empty,
+                Github = aiPreview.Profile.Github ?? string.Empty,
+                Linkedin = aiPreview.Profile.Linkedin ?? string.Empty
             },
             Skills = parsedSkills,
             ExperienceEntries = aiPreview.ExperienceEntries
@@ -2618,7 +2650,8 @@ public class CandidateService : ICandidateService
     /// <returns>The resulting string value.</returns>
     private static string NormalizeResumeText(string text)
     {
-        string normalized = text.Replace("\r\n", "\n").Replace('\r', '\n');
+        string normalized = TextNormalizationHelper.RemoveInvalidDatabaseCharacters(text);
+        normalized = normalized.Replace("\r\n", "\n").Replace('\r', '\n');
         normalized = Regex.Replace(normalized, @"[ \t]+", " ");
         normalized = Regex.Replace(normalized, @"\n{3,}", "\n\n");
         return normalized.Trim();
