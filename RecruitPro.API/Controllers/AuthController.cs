@@ -20,7 +20,7 @@ namespace RecruitPro.API.Controllers
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginRequest request)
         {
-            var result = await _authService.LoginAsync(request);
+            var result = await _authService.LoginAsync(request.Username, request.Password);
             return StatusCode(result.StatusCode, result);
         }
 

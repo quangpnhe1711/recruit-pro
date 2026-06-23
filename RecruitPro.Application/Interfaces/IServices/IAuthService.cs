@@ -10,10 +10,10 @@ namespace RecruitPro.Application.Interfaces.IServices
 {
     public interface IAuthService
     {
-        Task<ApiResponse<LoginResponseDto>> LoginAsync(LoginRequest request);
+        Task<ApiResponse<LoginResponseDto>> LoginAsync(string username, string password);
         Task<ApiResponse<LoginResponseDto>> CandidateLoginAsync(string username, string password);
-        Task<ApiResponse<LoginResponseDto>> InternalLoginAsync(string employeeIdOrEmail, string password);
+        Task<ApiResponse<LoginResponseDto>> InternalLoginAsync(string username, string password);
         Task<ApiResponse<string>> ForgotCandidatePasswordAsync(string email);
-        Task<ApiResponse<string>> ForgotInternalPasswordAsync(string employeeIdOrEmail);
+        Task<ApiResponse<string>> ForgotInternalPasswordAsync(string identifier);
     }
 }

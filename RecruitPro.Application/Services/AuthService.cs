@@ -42,9 +42,9 @@ namespace RecruitPro.Application.Services
         /// </summary>
         /// <param name="request">The <paramref name="request"/> value.</param>
         /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
-        public Task<ApiResponse<LoginResponseDto>> LoginAsync(LoginRequest request)
+        public Task<ApiResponse<LoginResponseDto>> LoginAsync(string username, string password)
         {
-            return LoginCoreAsync(request.Email, request.Password, null);
+            return LoginCoreAsync(username, password, null);
         }
 
         /// <summary>
@@ -61,12 +61,12 @@ namespace RecruitPro.Application.Services
         /// <summary>
         /// Executes the internal login operation.
         /// </summary>
-        /// <param name="employeeIdOrEmail">The <paramref name="employeeIdOrEmail"/> value.</param>
+        /// <param name="username">The <paramref name="username"/> value.</param>
         /// <param name="password">The <paramref name="password"/> value.</param>
         /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
-        public Task<ApiResponse<LoginResponseDto>> InternalLoginAsync(string employeeIdOrEmail, string password)
+        public Task<ApiResponse<LoginResponseDto>> InternalLoginAsync(string username, string password)
         {
-            return LoginCoreAsync(employeeIdOrEmail, password, role => !role.Equals("Candidate", StringComparison.OrdinalIgnoreCase));
+            return LoginCoreAsync(username, password, role => !role.Equals("Candidate", StringComparison.OrdinalIgnoreCase));
         }
 
         /// <summary>
@@ -82,11 +82,11 @@ namespace RecruitPro.Application.Services
         /// <summary>
         /// Executes the forgot internal password operation.
         /// </summary>
-        /// <param name="employeeIdOrEmail">The <paramref name="employeeIdOrEmail"/> value.</param>
+        /// <param name="identifier">The <paramref name="identifier"/> value.</param>
         /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
-        public Task<ApiResponse<string>> ForgotInternalPasswordAsync(string employeeIdOrEmail)
+        public Task<ApiResponse<string>> ForgotInternalPasswordAsync(string identifier)
         {
-            return ResetPasswordAsync(employeeIdOrEmail, role => !role.Equals("Candidate", StringComparison.OrdinalIgnoreCase), InternalLoginUrl);
+            return ResetPasswordAsync(identifier, role => !role.Equals("Candidate", StringComparison.OrdinalIgnoreCase), InternalLoginUrl);
         }
 
         /// <summary>
@@ -109,8 +109,8 @@ namespace RecruitPro.Application.Services
             {
                 throw new UnauthorizeException(candidateLogin
                     ? "Username hoặc mật khẩu không đúng."
-                    : "Email hoặc mật khẩu không đúng.");
-            }
+                    : "Username hoặc mật khẩu không đúng.");
+        }
 
             var roles = user.UserRoles.Select(x => x.Role.Name).ToList();
             if (roleRule != null && !roles.Any(roleRule))
