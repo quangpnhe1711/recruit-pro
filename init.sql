@@ -305,7 +305,12 @@ CREATE TABLE public.notifications (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     user_id uuid NOT NULL,
     title character varying(255),
+    body text,
     content text,
+    event_code character varying(100),
+    data_json jsonb,
+    entity_type character varying(100),
+    entity_id uuid,
     type character varying(50),
     is_read boolean DEFAULT false,
     created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP
@@ -530,6 +535,7 @@ INSERT INTO public.permissions VALUES ('cdda07cb-20f5-4b82-9842-dfd65057c425', '
 
 INSERT INTO public.roles VALUES ('ef574bf3-08e1-4f25-932c-2d83ed8afd88', 'Candidate', 'Candidate role');
 INSERT INTO public.roles VALUES ('e28e9442-682d-4e1a-b11f-663af56eb730', 'HR', 'HR role');
+INSERT INTO public.roles VALUES ('7a5b2c6d-1e2f-4a3b-9c8d-112233445566', 'HeadDepartment', 'Head department role');
 INSERT INTO public.roles VALUES ('5f5350dc-a77f-4a68-88f8-69e27116aa8f', 'Manager', 'Manager role');
 INSERT INTO public.roles VALUES ('0137e9bc-7ee4-463c-b760-1580ac17cdb6', 'SystemAdmin', 'System administrator role');
 
@@ -553,6 +559,10 @@ INSERT INTO public.role_permissions VALUES ('e28e9442-682d-4e1a-b11f-663af56eb73
 INSERT INTO public.role_permissions VALUES ('e28e9442-682d-4e1a-b11f-663af56eb730', '4d8b48b2-6fc8-4f68-9d9d-3c84e6621f87', '2026-05-27 09:22:45.423186+07');
 INSERT INTO public.role_permissions VALUES ('e28e9442-682d-4e1a-b11f-663af56eb730', 'b0a5f45f-53f3-4e09-9b7c-9d713135fe91', '2026-05-27 09:22:45.423186+07');
 INSERT INTO public.role_permissions VALUES ('e28e9442-682d-4e1a-b11f-663af56eb730', '99ea073d-fb48-45cc-9e5a-e07c43a0b8fa', '2026-05-27 09:22:45.423186+07');
+INSERT INTO public.role_permissions VALUES ('7a5b2c6d-1e2f-4a3b-9c8d-112233445566', '7d33a32f-737a-4d94-9271-3ce4bba57659', '2026-06-23 09:00:00+07');
+INSERT INTO public.role_permissions VALUES ('7a5b2c6d-1e2f-4a3b-9c8d-112233445566', '4d8b48b2-6fc8-4f68-9d9d-3c84e6621f87', '2026-06-23 09:00:00+07');
+INSERT INTO public.role_permissions VALUES ('7a5b2c6d-1e2f-4a3b-9c8d-112233445566', 'b0a5f45f-53f3-4e09-9b7c-9d713135fe91', '2026-06-23 09:00:00+07');
+INSERT INTO public.role_permissions VALUES ('7a5b2c6d-1e2f-4a3b-9c8d-112233445566', '99ea073d-fb48-45cc-9e5a-e07c43a0b8fa', '2026-06-23 09:00:00+07');
 INSERT INTO public.role_permissions VALUES ('5f5350dc-a77f-4a68-88f8-69e27116aa8f', 'f0515aef-c29c-42d6-add4-9ef95b92da6d', '2026-05-27 09:22:58.875748+07');
 INSERT INTO public.role_permissions VALUES ('5f5350dc-a77f-4a68-88f8-69e27116aa8f', 'eabc0d36-032d-4eb2-81f7-6d9a50c82b42', '2026-05-27 09:22:58.875748+07');
 INSERT INTO public.role_permissions VALUES ('5f5350dc-a77f-4a68-88f8-69e27116aa8f', 'b33f762b-1a44-4292-9b88-1ce34f5387e8', '2026-05-27 09:22:58.875748+07');
@@ -674,6 +684,7 @@ INSERT INTO public.users VALUES ('10000000-0000-4000-8000-000000000110', 'yennhi
 INSERT INTO public.user_roles VALUES ('4071353e-5816-4746-a8b6-c0bc3113c44d', 'ef574bf3-08e1-4f25-932c-2d83ed8afd88', '2026-05-27 09:23:18.932331');
 INSERT INTO public.user_roles VALUES ('e781ccd9-e6f8-4ce1-b15d-e142f8977a4e', 'e28e9442-682d-4e1a-b11f-663af56eb730', '2026-05-27 09:23:18.932331');
 INSERT INTO public.user_roles VALUES ('721b1851-349a-48aa-acae-feed1c1843ed', '5f5350dc-a77f-4a68-88f8-69e27116aa8f', '2026-05-27 09:23:18.932331');
+INSERT INTO public.user_roles VALUES ('721b1851-349a-48aa-acae-feed1c1843ed', '7a5b2c6d-1e2f-4a3b-9c8d-112233445566', '2026-06-23 09:00:00');
 INSERT INTO public.user_roles VALUES ('92e1a5c1-d3bd-4512-b1df-c6d69d4a41e0', '0137e9bc-7ee4-463c-b760-1580ac17cdb6', '2026-05-27 09:23:18.932331');
 INSERT INTO public.user_roles VALUES ('d8f2b5c8-44f7-4f8d-8c4a-5a1f4c2e1001', 'ef574bf3-08e1-4f25-932c-2d83ed8afd88', '2026-05-28 09:00:00');
 INSERT INTO public.user_roles VALUES ('a1b2c3d4-e5f6-4701-9802-abcdefabcdef', 'ef574bf3-08e1-4f25-932c-2d83ed8afd88', '2026-05-28 09:05:00');
@@ -1978,4 +1989,156 @@ WHERE cps.section_key = 'languages'
       FROM public.candidate_profile_section_items cpsi
       WHERE cpsi.section_id = cps.id
   );
+
+--
+-- Notification module phase 3 patch
+-- Keeps init.sql aligned with richer notification metadata and settings.
+--
+
+ALTER TABLE public.notifications
+    ADD COLUMN IF NOT EXISTS body text,
+    ADD COLUMN IF NOT EXISTS event_code character varying(100),
+    ADD COLUMN IF NOT EXISTS data_json jsonb,
+    ADD COLUMN IF NOT EXISTS entity_type character varying(100),
+    ADD COLUMN IF NOT EXISTS entity_id uuid;
+
+UPDATE public.notifications
+SET body = COALESCE(body, content)
+WHERE body IS NULL;
+
+CREATE TABLE IF NOT EXISTS public.notification_events (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    code character varying(100) NOT NULL,
+    module_code character varying(100) NOT NULL,
+    name character varying(255) NOT NULL,
+    description text,
+    title_template character varying(255) NOT NULL,
+    body_template text,
+    default_in_app_enabled boolean DEFAULT true NOT NULL,
+    default_email_enabled boolean DEFAULT false NOT NULL,
+    is_required boolean DEFAULT false NOT NULL,
+    sort_order integer DEFAULT 0 NOT NULL
+);
+
+ALTER TABLE public.notification_events OWNER TO postgres;
+
+CREATE TABLE IF NOT EXISTS public.user_notification_settings (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    user_id uuid NOT NULL,
+    event_code character varying(100) NOT NULL,
+    in_app_enabled boolean DEFAULT true NOT NULL,
+    email_enabled boolean DEFAULT false NOT NULL,
+    updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+ALTER TABLE public.user_notification_settings OWNER TO postgres;
+
+ALTER TABLE ONLY public.notification_events
+    ADD CONSTRAINT notification_events_pkey PRIMARY KEY (id);
+
+ALTER TABLE ONLY public.notification_events
+    ADD CONSTRAINT notification_events_code_key UNIQUE (code);
+
+ALTER TABLE ONLY public.user_notification_settings
+    ADD CONSTRAINT user_notification_settings_pkey PRIMARY KEY (id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_user_notification_settings_user_event
+    ON public.user_notification_settings USING btree (user_id, event_code);
+
+CREATE INDEX IF NOT EXISTS ix_notifications_user_created_at
+    ON public.notifications USING btree (user_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS ix_notifications_event_code
+    ON public.notifications USING btree (event_code);
+
+ALTER TABLE ONLY public.user_notification_settings
+    ADD CONSTRAINT user_notification_settings_user_id_fkey
+    FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+ALTER TABLE ONLY public.user_notification_settings
+    ADD CONSTRAINT user_notification_settings_event_code_fkey
+    FOREIGN KEY (event_code) REFERENCES public.notification_events(code) ON DELETE CASCADE;
+
+INSERT INTO public.notification_events (
+    id,
+    code,
+    module_code,
+    name,
+    description,
+    title_template,
+    body_template,
+    default_in_app_enabled,
+    default_email_enabled,
+    is_required,
+    sort_order
+)
+SELECT *
+FROM (
+    VALUES
+        ('11111111-1111-4111-8111-111111111111'::uuid, 'new_application_received', 'application', 'New application received', 'Candidate submitted an application', 'Ứng viên mới ứng tuyển vào {jobTitle}', '{candidateName} vừa ứng tuyển vào vị trí {jobTitle}.', true, false, true, 10),
+        ('22222222-2222-4222-8222-222222222222'::uuid, 'application_status_changed', 'application', 'Application status changed', 'Application status updated by recruiter or manager', 'Trạng thái hồ sơ đã được cập nhật', 'Hồ sơ của bạn cho vị trí {jobTitle} đã chuyển sang trạng thái {newStatus}.', true, false, true, 20),
+        ('33333333-3333-4333-8333-333333333333'::uuid, 'interview_scheduled', 'interview', 'Interview scheduled', 'Interview was scheduled for a candidate', 'Bạn có lịch phỏng vấn mới', 'Lịch phỏng vấn cho vị trí {jobTitle} được đặt vào {scheduledAt}.', true, false, true, 30),
+        ('44444444-4444-4444-8444-444444444444'::uuid, 'candidate_score_ready', 'candidate', 'Candidate score ready', 'AI scoring finished for a candidate', 'Điểm đánh giá ứng viên đã sẵn sàng', 'Hệ thống đã hoàn tất đánh giá ứng viên {candidateName} cho vị trí {jobTitle}.', true, false, true, 40)
+) AS seed_data (
+    id,
+    code,
+    module_code,
+    name,
+    description,
+    title_template,
+    body_template,
+    default_in_app_enabled,
+    default_email_enabled,
+    is_required,
+    sort_order
+)
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM public.notification_events existing
+    WHERE existing.code = seed_data.code
+);
+
+INSERT INTO public.roles (id, name, description)
+SELECT
+    '7a5b2c6d-1e2f-4a3b-9c8d-112233445566'::uuid,
+    'HeadDepartment',
+    'Head department role'
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM public.roles
+    WHERE name = 'HeadDepartment'
+);
+
+INSERT INTO public.role_permissions (role_id, permission_id, assigned_at)
+SELECT role_id, permission_id, assigned_at
+FROM (
+    VALUES
+        ('7a5b2c6d-1e2f-4a3b-9c8d-112233445566'::uuid, '7d33a32f-737a-4d94-9271-3ce4bba57659'::uuid, '2026-06-23 09:00:00+07'::timestamp with time zone),
+        ('7a5b2c6d-1e2f-4a3b-9c8d-112233445566'::uuid, '4d8b48b2-6fc8-4f68-9d9d-3c84e6621f87'::uuid, '2026-06-23 09:00:00+07'::timestamp with time zone),
+        ('7a5b2c6d-1e2f-4a3b-9c8d-112233445566'::uuid, 'b0a5f45f-53f3-4e09-9b7c-9d713135fe91'::uuid, '2026-06-23 09:00:00+07'::timestamp with time zone),
+        ('7a5b2c6d-1e2f-4a3b-9c8d-112233445566'::uuid, '99ea073d-fb48-45cc-9e5a-e07c43a0b8fa'::uuid, '2026-06-23 09:00:00+07'::timestamp with time zone)
+) AS seed_data(role_id, permission_id, assigned_at)
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM public.role_permissions existing
+    WHERE existing.role_id = seed_data.role_id
+      AND existing.permission_id = seed_data.permission_id
+);
+
+INSERT INTO public.user_roles (user_id, role_id, assigned_at)
+SELECT
+    '721b1851-349a-48aa-acae-feed1c1843ed'::uuid,
+    '7a5b2c6d-1e2f-4a3b-9c8d-112233445566'::uuid,
+    '2026-06-23 09:00:00'::timestamp without time zone
+WHERE EXISTS (
+    SELECT 1
+    FROM public.users
+    WHERE id = '721b1851-349a-48aa-acae-feed1c1843ed'::uuid
+)
+AND NOT EXISTS (
+    SELECT 1
+    FROM public.user_roles
+    WHERE user_id = '721b1851-349a-48aa-acae-feed1c1843ed'::uuid
+      AND role_id = '7a5b2c6d-1e2f-4a3b-9c8d-112233445566'::uuid
+);
 

@@ -2,6 +2,7 @@ using RecruitPro.Application.Common;
 using RecruitPro.Application.DTOs.Response;
 using RecruitPro.Application.Interfaces.IRepositories;
 using RecruitPro.Application.Interfaces.IServices;
+using System.Text.Json;
 
 namespace RecruitPro.Application.Services;
 
@@ -71,12 +72,30 @@ public class NotificationService : INotificationService
 
     private static NotificationDto MapNotification(Domain.Entities.Notification notification)
     {
+        object? data = null;
+        if (!string.IsNullOrWhiteSpace(notification.DataJson))
+        {
+            try
+            {
+                data = JsonSerializer.Deserialize<JsonElement>(notification.DataJson);
+            }
+            catch
+            {
+                data = notification.DataJson;
+            }
+        }
+
         return new NotificationDto
         {
             Id = notification.Id,
             UserId = notification.UserId,
+            EventCode = notification.EventCode ?? string.Empty,
             Title = notification.Title ?? string.Empty,
-            Content = notification.Content ?? string.Empty,
+            Body = notification.Body ?? notification.Content ?? string.Empty,
+            Type = notification.Type ?? string.Empty,
+            Data = data,
+            EntityType = notification.EntityType,
+            EntityId = notification.EntityId,
             IsRead = notification.IsRead == true,
             CreatedAt = notification.CreatedAt ?? DateTime.UtcNow
         };

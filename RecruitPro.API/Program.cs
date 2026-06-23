@@ -1,4 +1,5 @@
 using RecruitPro.Application.Interfaces;
+using RecruitPro.Application.Interfaces.IServices;
 using RecruitPro.Infrastructure.Repositories;
 using RecruitPro.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -7,7 +8,9 @@ using RecruitPro.API.Extensions;
 using RecruitPro.Infrastructure.Extensions;
 using RecruitPro.Application.Extensions;
 using RecruitPro.API.Filters;
+using RecruitPro.API.Hubs;
 using RecruitPro.API.Middlewares;
+using RecruitPro.API.Realtime;
 using System;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -21,6 +24,8 @@ builder.Services.AddControllers(options =>
 {
     options.Filters.Add<ValidationActionFilter>();
 });
+builder.Services.AddSignalR();
+builder.Services.AddScoped<INotificationRealtimeSender, SignalRNotificationSender>();
 
 // Add FluentValidation
 builder.Services.AddApplicationValidators();
@@ -99,6 +104,7 @@ app.UseAuthorization();
 app.MapGet("/", () => Results.Ok("RecruitPro API Running"));
 
 app.MapControllers();
+app.MapHub<NotificationHub>("/hubs/notifications");
 
 app.Run();
 

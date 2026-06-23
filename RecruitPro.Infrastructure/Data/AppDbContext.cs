@@ -771,17 +771,31 @@ public partial class AppDbContext : DbContext
             entity.Property(e => e.Id)
                 .HasDefaultValueSql("gen_random_uuid()")
                 .HasColumnName("id");
+            entity.Property(e => e.Body).HasColumnName("body");
             entity.Property(e => e.Content).HasColumnName("content");
             entity.Property(e => e.CreatedAt)
                 .HasDefaultValueSql("CURRENT_TIMESTAMP")
                 .HasColumnType("timestamp without time zone")
                 .HasColumnName("created_at");
+            entity.Property(e => e.DataJson)
+                .HasColumnType("jsonb")
+                .HasColumnName("data_json");
+            entity.Property(e => e.EntityId).HasColumnName("entity_id");
+            entity.Property(e => e.EntityType)
+                .HasMaxLength(100)
+                .HasColumnName("entity_type");
+            entity.Property(e => e.EventCode)
+                .HasMaxLength(100)
+                .HasColumnName("event_code");
             entity.Property(e => e.IsRead)
                 .HasDefaultValue(false)
                 .HasColumnName("is_read");
             entity.Property(e => e.Title)
                 .HasMaxLength(255)
                 .HasColumnName("title");
+            entity.Property(e => e.Type)
+                .HasMaxLength(50)
+                .HasColumnName("type");
             entity.Property(e => e.UserId).HasColumnName("user_id");
 
             entity.HasOne(d => d.User).WithMany(p => p.Notifications)
