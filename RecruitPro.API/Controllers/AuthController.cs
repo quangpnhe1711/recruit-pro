@@ -34,7 +34,7 @@ namespace RecruitPro.API.Controllers
         [HttpPost("internal/login")]
         public async Task<IActionResult> InternalLogin([FromBody] InternalLoginRequest request)
         {
-            var result = await _authService.InternalLoginAsync(request.EmployeeIdOrEmail, request.Password);
+            var result = await _authService.InternalLoginAsync(request.Username, request.Password);
             return StatusCode(result.StatusCode, result);
         }
 

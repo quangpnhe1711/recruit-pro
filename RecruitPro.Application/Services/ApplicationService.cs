@@ -1297,14 +1297,14 @@ public class ApplicationService : IApplicationService
     {
         return application.Status switch
         {
-            ApplicationStatus.Applied => "Applied",
-            ApplicationStatus.Screening => "Screening",
-            ApplicationStatus.ManagerReview => "Manager Review",
-            ApplicationStatus.Interview => "Interview",
-            ApplicationStatus.Offer => "Offer",
-            ApplicationStatus.Hired => "Hired",
-            ApplicationStatus.Rejected => "Rejected",
-            ApplicationStatus.OfferDeclined => "Offer Declined",
+            ApplicationStatus.Applied => "Đã ứng tuyển",
+            ApplicationStatus.Screening => "Đang sàng lọc hồ sơ",
+            ApplicationStatus.ManagerReview => "Đang đánh giá",
+            ApplicationStatus.Interview => "Đã lên lịch phỏng vấn",
+            ApplicationStatus.Offer => "Đã gửi đề nghị tuyển dụng",
+            ApplicationStatus.Hired => "Đã tuyển dụng",
+            ApplicationStatus.Rejected => "Không phù hợp",
+            ApplicationStatus.OfferDeclined => "Đã từ chối đề nghị",
             _ => application.Status.ToString()
         };
     }
@@ -1318,15 +1318,32 @@ public class ApplicationService : IApplicationService
     {
         return application.Status switch
         {
-            ApplicationStatus.Applied => "HR will move your profile into screening shortly.",
-            ApplicationStatus.Screening => "HR is reviewing your CV.",
-            ApplicationStatus.ManagerReview => "Waiting for hiring manager review.",
-            ApplicationStatus.Interview => "Prepare for your interview process.",
-            ApplicationStatus.Offer => "Review the offer and accept or decline it.",
-            ApplicationStatus.Hired => "You have accepted the offer.",
-            ApplicationStatus.Rejected => "This application has been closed.",
-            ApplicationStatus.OfferDeclined => "You declined the offer for this role.",
-            _ => "Awaiting review"
+            ApplicationStatus.Applied =>
+                "Hồ sơ của bạn đã được ghi nhận và đang chờ xem xét.",
+
+            ApplicationStatus.Screening =>
+                "Hồ sơ của bạn đang được đội ngũ tuyển dụng đánh giá.",
+
+            ApplicationStatus.ManagerReview =>
+                "Hồ sơ của bạn đang được quản lý tuyển dụng xem xét.",
+
+            ApplicationStatus.Interview =>
+                "Bạn đã được chọn vào vòng phỏng vấn. Vui lòng theo dõi thông báo để cập nhật lịch phỏng vấn.",
+
+            ApplicationStatus.Offer =>
+                "Bạn đã nhận được đề nghị tuyển dụng. Vui lòng xem chi tiết và phản hồi trong thời gian quy định.",
+
+            ApplicationStatus.Hired =>
+                "Chúc mừng! Bạn đã chấp nhận đề nghị tuyển dụng và hoàn tất quy trình ứng tuyển.",
+
+            ApplicationStatus.Rejected =>
+                "Quy trình ứng tuyển cho vị trí này đã kết thúc. Cảm ơn bạn đã quan tâm đến cơ hội việc làm tại công ty.",
+
+            ApplicationStatus.OfferDeclined =>
+                "Bạn đã từ chối đề nghị tuyển dụng cho vị trí này.",
+
+            _ =>
+                "Trạng thái hồ sơ đang được cập nhật."
         };
     }
 
