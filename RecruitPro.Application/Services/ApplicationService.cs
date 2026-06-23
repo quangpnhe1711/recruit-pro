@@ -26,6 +26,7 @@ public class ApplicationService : IApplicationService
     private readonly IUnitOfWork _unitOfWork;
     private readonly IFileStorageService _fileStorage;
     private readonly IApplicationSemanticProcessingQueue _semanticProcessingQueue;
+    private readonly INotificationEventService _notificationEventService;
     private readonly ILogger<ApplicationService> _logger;
 
     /// <summary>
@@ -46,6 +47,7 @@ public class ApplicationService : IApplicationService
         IUnitOfWork unitOfWork,
         IFileStorageService fileStorage,
         IApplicationSemanticProcessingQueue semanticProcessingQueue,
+        INotificationEventService notificationEventService,
         ILogger<ApplicationService> logger)
     {
         _applicationRepository = applicationRepository;
@@ -55,6 +57,7 @@ public class ApplicationService : IApplicationService
         _unitOfWork = unitOfWork;
         _fileStorage = fileStorage;
         _semanticProcessingQueue = semanticProcessingQueue;
+        _notificationEventService = notificationEventService;
         _logger = logger;
     }
 
@@ -154,11 +157,14 @@ public class ApplicationService : IApplicationService
             ScoreStatus = ScoreStatusPendingSemantic,
             ScoredAt = DbDateTime.Now
         };
+        application.User = profile.User;
+        application.Job = job;
 
         await _unitOfWork.BeginTransactionAsync();
         await _applicationRepository.AddAsync(application);
         await _unitOfWork.SaveChangesAsync();
         await _unitOfWork.CommitAsync();
+        await _notificationEventService.PublishNewApplicationReceivedAsync(application);
         await _semanticProcessingQueue.EnqueueAsync(application.Id);
 
         return ApiResponse<ApplyJobResponseDto>.Created(new ApplyJobResponseDto
@@ -292,7 +298,7 @@ public class ApplicationService : IApplicationService
         await _applicationRepository.UpdateAsync(application);
         await _unitOfWork.SaveChangesAsync();
         await _unitOfWork.CommitAsync();
-        return ApiResponse<string>.Ok("Application withdrawn successfully", "Application withdrawn successfully");
+        return ApiResponse<string>.Ok("Đã rút đơn ứng tuyển.", "Đã rút đơn ứng tuyển.");
     }
 
     /// <summary>
@@ -330,7 +336,7 @@ public class ApplicationService : IApplicationService
         await _unitOfWork.SaveChangesAsync();
         await _unitOfWork.CommitAsync();
 
-        return ApiResponse<string>.Ok("Offer accepted successfully", "Offer accepted successfully");
+        return ApiResponse<string>.Ok("Đã nhận offer.", "Đã nhận offer.");
     }
 
     /// <summary>
@@ -363,7 +369,7 @@ public class ApplicationService : IApplicationService
         await _unitOfWork.SaveChangesAsync();
         await _unitOfWork.CommitAsync();
 
-        return ApiResponse<string>.Ok("Offer declined successfully", "Offer declined successfully");
+        return ApiResponse<string>.Ok("Đã từ chối offer.", "Đã từ chối offer.");
     }
 
     /// <summary>
@@ -440,13 +446,13 @@ public class ApplicationService : IApplicationService
     {
         if (!Guid.TryParse(applicationId, out Guid applicationGuid))
         {
-            return ApiResponse<ApplicationReviewDetailDto>.NotFound("Application not found.");
+            return ApiResponse<ApplicationReviewDetailDto>.NotFound("Không tìm thấy hồ sơ ứng tuyển.");
         }
 
         Domain.Entities.Application? application = await _applicationRepository.GetByIdAsync(applicationGuid);
         if (application == null)
         {
-            return ApiResponse<ApplicationReviewDetailDto>.NotFound("Application not found.");
+            return ApiResponse<ApplicationReviewDetailDto>.NotFound("Không tìm thấy hồ sơ ứng tuyển.");
         }
 
         return ApiResponse<ApplicationReviewDetailDto>.Ok(MapApplicationToReviewDetailDto(application));
@@ -466,13 +472,13 @@ public class ApplicationService : IApplicationService
     {
         if (!Guid.TryParse(applicationId, out Guid applicationGuid))
         {
-            return ApiResponse<ApplicationReviewDetailDto>.NotFound("Application not found.");
+            return ApiResponse<ApplicationReviewDetailDto>.NotFound("Không tìm thấy hồ sơ ứng tuyển.");
         }
 
         Domain.Entities.Application? application = await _applicationRepository.GetTrackedByIdAsync(applicationGuid);
         if (application == null)
         {
-            return ApiResponse<ApplicationReviewDetailDto>.NotFound("Application not found.");
+            return ApiResponse<ApplicationReviewDetailDto>.NotFound("Không tìm thấy hồ sơ ứng tuyển.");
         }
 
         ApplicationStatus? targetStatus = ParseApplicationStatus(request.TargetStatus);
@@ -487,6 +493,7 @@ public class ApplicationService : IApplicationService
                 $"Invalid transition from {application.Status} to {targetStatus.Value}.");
         }
 
+        ApplicationStatus previousStatus = application.Status;
         application.Status = targetStatus.Value;
 
         if (reviewerId.HasValue)
@@ -498,11 +505,12 @@ public class ApplicationService : IApplicationService
         await _applicationRepository.UpdateAsync(application);
         await _unitOfWork.SaveChangesAsync();
         await _unitOfWork.CommitAsync();
+        await _notificationEventService.PublishApplicationStatusChangedAsync(application, previousStatus);
 
         Domain.Entities.Application? refreshedApplication = await _applicationRepository.GetByIdAsync(applicationGuid);
         if (refreshedApplication == null)
         {
-            return ApiResponse<ApplicationReviewDetailDto>.NotFound("Application not found.");
+            return ApiResponse<ApplicationReviewDetailDto>.NotFound("Không tìm thấy hồ sơ ứng tuyển.");
         }
 
         string message = $"Application moved to {targetStatus.Value}.";
@@ -519,13 +527,13 @@ public class ApplicationService : IApplicationService
     {
         if (!Guid.TryParse(applicationId, out Guid applicationGuid))
         {
-            return ApiResponse<ResumeFileResponseDto>.NotFound("Application not found.");
+            return ApiResponse<ResumeFileResponseDto>.NotFound("Không tìm thấy hồ sơ ứng tuyển.");
         }
 
         Domain.Entities.Application? application = await _applicationRepository.GetByIdAsync(applicationGuid);
         if (application == null)
         {
-            return ApiResponse<ResumeFileResponseDto>.NotFound("Application not found.");
+            return ApiResponse<ResumeFileResponseDto>.NotFound("Không tìm thấy hồ sơ ứng tuyển.");
         }
 
         CandidateResume? resume = application.User.CandidateProfile == null
@@ -533,7 +541,7 @@ public class ApplicationService : IApplicationService
             : GetCurrentResume(application.User.CandidateProfile);
         if (resume == null)
         {
-            return ApiResponse<ResumeFileResponseDto>.NotFound("Resume not found.");
+            return ApiResponse<ResumeFileResponseDto>.NotFound("Không tìm thấy CV.");
         }
 
         _logger.LogInformation(
@@ -559,13 +567,13 @@ public class ApplicationService : IApplicationService
     {
         if (!Guid.TryParse(applicationId, out Guid applicationGuid))
         {
-            return ApiResponse<string>.NotFound("Application not found.");
+            return ApiResponse<string>.NotFound("Không tìm thấy hồ sơ ứng tuyển.");
         }
 
         Domain.Entities.Application? application = await _applicationRepository.GetByIdAsync(applicationGuid);
         if (application == null)
         {
-            return ApiResponse<string>.NotFound("Application not found.");
+            return ApiResponse<string>.NotFound("Không tìm thấy hồ sơ ứng tuyển.");
         }
 
         string recipient = application.User.Email;
@@ -575,7 +583,7 @@ public class ApplicationService : IApplicationService
             ? $"Prepared {normalizedTemplate} email for {recipient} regarding {application.Job.Title}."
             : request.Body.Trim();
 
-        return ApiResponse<string>.Ok($"{effectiveSubject}: {effectiveBody}", $"Email prepared for {recipient}");
+        return ApiResponse<string>.Ok($"{effectiveSubject}: {effectiveBody}", $"Đã soạn email cho {recipient}");
     }
 
     /// <summary>
@@ -695,13 +703,13 @@ public class ApplicationService : IApplicationService
         CandidateProfile profile = await GetProfileEntityAsync(userId);
         if (!Guid.TryParse(applicationId, out Guid applicationGuid))
         {
-            throw new NotFoundException("Application not found.");
+            throw new NotFoundException("Không tìm thấy hồ sơ ứng tuyển.");
         }
 
         Domain.Entities.Application? application = await _applicationRepository.GetTrackedByIdAsync(applicationGuid);
         if (application == null || application.UserId != profile.UserId)
         {
-            throw new NotFoundException("Application not found.");
+            throw new NotFoundException("Không tìm thấy hồ sơ ứng tuyển.");
         }
 
         return application;
@@ -744,6 +752,7 @@ public class ApplicationService : IApplicationService
             ReviewedBy = application.ReviewedByNavigation == null ? null : new UserDto
             {
                 Id = application.ReviewedByNavigation.Id,
+                Username = application.ReviewedByNavigation.Username,
                 FullName = application.ReviewedByNavigation.FullName,
                 Email = application.ReviewedByNavigation.Email,
                 AvatarUrl = application.ReviewedByNavigation.AvatarUrl,
@@ -946,6 +955,7 @@ public class ApplicationService : IApplicationService
             ReviewedBy = application.ReviewedByNavigation == null ? null : new UserDto
             {
                 Id = application.ReviewedByNavigation.Id,
+                Username = application.ReviewedByNavigation.Username,
                 FullName = application.ReviewedByNavigation.FullName,
                 Email = application.ReviewedByNavigation.Email,
                 AvatarUrl = application.ReviewedByNavigation.AvatarUrl,

@@ -103,7 +103,7 @@ public sealed class ApplicationServiceUnitTests
         {
             Id = Guid.NewGuid(),
             UserId = userId,
-            User = new User { Id = userId, FullName = "Candidate", Email = "candidate@test.com" }
+            User = new User { Id = userId, Username = "candidate.user", FullName = "Candidate", Email = "candidate@test.com" }
         };
 
         jobRepository.Setup(repository => repository.GetByIdAsync(jobId)).ReturnsAsync(job);
@@ -149,6 +149,7 @@ public sealed class AuthServiceUnitTests
         var user = new User
         {
             Id = Guid.NewGuid(),
+            Username = "candidate.user",
             Email = "candidate@test.com",
             FullName = "Candidate User",
             PasswordHash = BCrypt.Net.BCrypt.HashPassword("Pass@123"),
@@ -161,7 +162,7 @@ public sealed class AuthServiceUnitTests
             ]
         };
 
-        userRepository.Setup(repository => repository.GetByEmailAsync(user.Email)).ReturnsAsync(user);
+        userRepository.Setup(repository => repository.GetByUsernameAsync(user.Username)).ReturnsAsync(user);
         jwtService.Setup(service => service.GenerateToken(user, "Access")).Returns("access-token");
         jwtService.Setup(service => service.GenerateToken(user, "Refresh")).Returns("refresh-token");
 
@@ -172,7 +173,7 @@ public sealed class AuthServiceUnitTests
             Mock.Of<IUnitOfWork>(),
             mapper);
 
-        var response = await service.CandidateLoginAsync(user.Email, "Pass@123");
+        var response = await service.CandidateLoginAsync(user.Username, "Pass@123");
 
         response.Success.Should().BeTrue();
         response.Data!.AccessToken.Should().Be("access-token");
@@ -438,7 +439,7 @@ public sealed class DashboardServiceUnitTests
                 Id = Guid.NewGuid(),
                 AppliedAt = new DateTime(2026, 1, 1),
                 Status = ApplicationStatus.Applied,
-                User = new User { FullName = "Candidate" },
+                User = new User { Username = "candidate.user", FullName = "Candidate", Email = "candidate@test.com" },
                 Job = new Job { Title = "Backend" }
             }
         ]);
@@ -617,7 +618,7 @@ public sealed class OfferServiceUnitTests
         {
             Id = applicationId,
             Status = ApplicationStatus.Offer,
-            User = new User { FullName = "Candidate", Email = "candidate@test.com" },
+            User = new User { Username = "candidate.user", FullName = "Candidate", Email = "candidate@test.com" },
             Job = new Job { Title = "Backend", Department = new Department { Name = "Engineering" }, EmploymentType = EmploymentType.FullTime }
         };
 

@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using RecruitPro.Application.Common;
 using RecruitPro.Application.Interfaces;
 using RecruitPro.Application.Interfaces.IRepositories;
+using RecruitPro.Application.Interfaces.IServices;
 using RecruitPro.Domain.Entities;
 
 namespace RecruitPro.Application.Services;
@@ -23,6 +24,7 @@ public class ApplicationSemanticScoringService : IApplicationSemanticScoringServ
     private readonly IEmbeddingProvider _embeddingProvider;
     private readonly IEmbeddingCache _embeddingCache;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly INotificationEventService _notificationEventService;
     private readonly ILogger<ApplicationSemanticScoringService> _logger;
 
     public ApplicationSemanticScoringService(
@@ -30,12 +32,14 @@ public class ApplicationSemanticScoringService : IApplicationSemanticScoringServ
         IEmbeddingProvider embeddingProvider,
         IEmbeddingCache embeddingCache,
         IUnitOfWork unitOfWork,
+        INotificationEventService notificationEventService,
         ILogger<ApplicationSemanticScoringService> logger)
     {
         _applicationRepository = applicationRepository;
         _embeddingProvider = embeddingProvider;
         _embeddingCache = embeddingCache;
         _unitOfWork = unitOfWork;
+        _notificationEventService = notificationEventService;
         _logger = logger;
     }
 
@@ -70,6 +74,10 @@ public class ApplicationSemanticScoringService : IApplicationSemanticScoringServ
         try
         {
             await _unitOfWork.BeginTransactionAsync();
+            bool shouldPublishScoreReady = !string.Equals(
+                application.ScoreStatus,
+                ScoreStatusSemanticCompleted,
+                StringComparison.OrdinalIgnoreCase);
 
             IReadOnlyList<double> candidateVector = await ResolveCandidateEmbeddingAsync(profile, candidateText, candidateHash, cancellationToken);
             IReadOnlyList<double> jobVector = await ResolveJobEmbeddingAsync(job, jobText, jobHash, cancellationToken);
@@ -88,6 +96,10 @@ public class ApplicationSemanticScoringService : IApplicationSemanticScoringServ
             await _applicationRepository.UpdateAsync(application);
             await _unitOfWork.SaveChangesAsync();
             await _unitOfWork.CommitAsync();
+            if (shouldPublishScoreReady)
+            {
+                await _notificationEventService.PublishCandidateScoreReadyAsync(application);
+            }
 
             _logger.LogInformation(
                 "Semantic scoring completed for application {ApplicationId}. RuleScore={RuleScore}, SemanticScore={SemanticScore}, FinalScore={FinalScore}",

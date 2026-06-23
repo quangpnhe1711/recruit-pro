@@ -25,7 +25,7 @@ public class ResumeController : ControllerBase
             User.IsInRole("HR") || User.IsInRole("Manager"));
         if (result == null)
         {
-            return NotFound(new { message = "Resume not found." });
+            return NotFound(new { message = "Không tìm thấy CV." });
         }
 
         Response.Headers.ContentDisposition = $"inline; filename=\"{result.FileName}\"";
@@ -45,7 +45,7 @@ public class ResumeController : ControllerBase
             User.IsInRole("HR") || User.IsInRole("Manager"));
         if (result == null)
         {
-            return NotFound(new { message = "Resume not found." });
+            return NotFound(new { message = "Không tìm thấy CV." });
         }
 
         return File(result.Content, result.ContentType, result.FileName);

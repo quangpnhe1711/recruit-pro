@@ -10,7 +10,12 @@ namespace RecruitPro.Application.DTOs.Request.Candidate
     public class UserInfoDto
     {
         [Required]
-        [StringLength(100, ErrorMessage = "Full name cannot exceed 100 characters")]
+        [StringLength(50, MinimumLength = 4, ErrorMessage = "Username phải có từ 4 đến 50 ký tự.")]
+        [RegularExpression(@"^[a-zA-Z0-9._-]+$", ErrorMessage = "Username chỉ được chứa chữ cái, số, dấu chấm, gạch dưới hoặc gạch ngang.")]
+        public string Username { get; set; } = string.Empty;
+
+        [Required]
+        [StringLength(100, ErrorMessage = "Họ tên không quá 100 ký tự.")]
         public string FullName { get; set; }
 
         [Required]
@@ -18,7 +23,7 @@ namespace RecruitPro.Application.DTOs.Request.Candidate
         public string Email { get; set; }
 
         [RegularExpression(@"^0\d{9}$",
-        ErrorMessage = "Phone number must contain 10 digits and start with 0")]
+        ErrorMessage = "Số điện thoại phải có 10 số và bắt đầu bằng 0.")]
         public string Phone { get; set; }
 
         [Required]

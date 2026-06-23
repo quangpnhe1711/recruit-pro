@@ -975,6 +975,7 @@ public partial class AppDbContext : DbContext
             entity.ToTable("users");
 
             entity.HasIndex(e => e.Email, "users_email_key").IsUnique();
+            entity.HasIndex(e => e.Username, "users_username_key").IsUnique();
 
             entity.Property(e => e.Id)
                 .HasDefaultValueSql("gen_random_uuid()")
@@ -994,6 +995,9 @@ public partial class AppDbContext : DbContext
             entity.Property(e => e.Phone)
                 .HasMaxLength(20)
                 .HasColumnName("phone");
+            entity.Property(e => e.Username)
+                .HasMaxLength(50)
+                .HasColumnName("username");
             entity.Property(e => e.UpdatedAt)
                 .HasDefaultValueSql("CURRENT_TIMESTAMP")
                 .HasColumnType("timestamp without time zone")

@@ -48,7 +48,7 @@ public class OfferService : IOfferService
         Domain.Entities.Application? application = await GetApplicationAsync(applicationId);
         if (application == null)
         {
-            return ApiResponse<ApplicationOfferEditorDto>.NotFound("Application not found.");
+            return ApiResponse<ApplicationOfferEditorDto>.NotFound("Không tìm thấy hồ sơ ứng tuyển.");
         }
 
         ApplicationOffer? offer = await _offerRepository.GetByApplicationIdAsync(application.Id);
@@ -65,7 +65,7 @@ public class OfferService : IOfferService
     public async Task<ApiResponse<ApplicationOfferEditorDto>> SaveDraftAsync(string applicationId, Guid? actorId, UpsertApplicationOfferRequest request)
     {
         _ = actorId;
-        return await UpsertOfferAsync(applicationId, actorId, request, OfferStatus.Draft, "Offer draft saved successfully.");
+        return await UpsertOfferAsync(applicationId, actorId, request, OfferStatus.Draft, "Đã lưu nháp offer.");
     }
 
     /// <summary>
@@ -78,7 +78,7 @@ public class OfferService : IOfferService
     public async Task<ApiResponse<ApplicationOfferEditorDto>> SendOfferAsync(string applicationId, Guid? actorId, UpsertApplicationOfferRequest request)
     {
         _ = actorId;
-        return await UpsertOfferAsync(applicationId, actorId, request, OfferStatus.Sent, "Offer sent successfully.");
+        return await UpsertOfferAsync(applicationId, actorId, request, OfferStatus.Sent, "Gửi offer thành công.");
     }
 
     /// <summary>
@@ -101,12 +101,12 @@ public class OfferService : IOfferService
         Domain.Entities.Application? application = await GetApplicationAsync(applicationId, tracked: true);
         if (application == null)
         {
-            return ApiResponse<ApplicationOfferEditorDto>.NotFound("Application not found.");
+            return ApiResponse<ApplicationOfferEditorDto>.NotFound("Không tìm thấy hồ sơ ứng tuyển.");
         }
 
         if (!ApplicationStatusWorkflow.CanPrepareOffer(application.Status))
         {
-            return ApiResponse<ApplicationOfferEditorDto>.BadRequest("Only offer-stage applications can have an offer prepared.");
+            return ApiResponse<ApplicationOfferEditorDto>.BadRequest("Chỉ hồ sơ ở bước offer mới có thể soạn offer.");
         }
 
         ApplicationOffer? offer = await _offerRepository.GetTrackedByApplicationIdAsync(application.Id);
@@ -114,13 +114,13 @@ public class OfferService : IOfferService
 
         if (!await CurrencyExistsAsync(request.CurrencyCode))
         {
-            return ApiResponse<ApplicationOfferEditorDto>.BadRequest("Selected currency is not available.");
+            return ApiResponse<ApplicationOfferEditorDto>.BadRequest("Loại tiền tệ đã chọn không hợp lệ.");
         }
 
         if (!string.IsNullOrWhiteSpace(request.OfferTemplateId) &&
             !Guid.TryParse(request.OfferTemplateId, out Guid offerTemplateId))
         {
-            return ApiResponse<ApplicationOfferEditorDto>.BadRequest("Offer template is invalid.");
+            return ApiResponse<ApplicationOfferEditorDto>.BadRequest("Mẫu offer không hợp lệ.");
         }
 
         Guid? reportingManagerId = null;
@@ -128,7 +128,7 @@ public class OfferService : IOfferService
         {
             if (!Guid.TryParse(request.ReportingManagerId, out Guid parsedManagerId))
             {
-                return ApiResponse<ApplicationOfferEditorDto>.BadRequest("Reporting manager is invalid.");
+                return ApiResponse<ApplicationOfferEditorDto>.BadRequest("Người quản lý báo cáo không hợp lệ.");
             }
 
             reportingManagerId = parsedManagerId;
@@ -141,12 +141,12 @@ public class OfferService : IOfferService
         {
             if (!Guid.TryParse(rawId, out Guid benefitId))
             {
-                return ApiResponse<ApplicationOfferEditorDto>.BadRequest("One or more selected benefits are invalid.");
+                return ApiResponse<ApplicationOfferEditorDto>.BadRequest("Có phúc lợi không hợp lệ.");
             }
 
              if (!availableBenefitIds.Contains(benefitId))
             {
-                return ApiResponse<ApplicationOfferEditorDto>.BadRequest("One or more selected benefits are not available.");
+                return ApiResponse<ApplicationOfferEditorDto>.BadRequest("Có phúc lợi hiện không khả dụng.");
             }
 
             benefitIds.Add(benefitId);
@@ -203,7 +203,7 @@ public class OfferService : IOfferService
 
         if (refreshedApplication == null || refreshedOffer == null)
         {
-            return ApiResponse<ApplicationOfferEditorDto>.NotFound("Offer data could not be reloaded.");
+            return ApiResponse<ApplicationOfferEditorDto>.NotFound("Không tải lại được dữ liệu offer.");
         }
 
         return ApiResponse<ApplicationOfferEditorDto>.Ok(

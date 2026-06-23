@@ -10,8 +10,14 @@ namespace RecruitPro.Application.Interfaces.IRepositories
     public interface IUserRepository
     {
         Task<User?> GetByEmailAsync(string email);
+        Task<User?> GetByUsernameAsync(string username);
+        Task<User?> GetByEmailOrUsernameAsync(string identifier);
         Task<User?> GetTrackedByEmailAsync(string email);
+        Task<User?> GetTrackedByEmailOrUsernameAsync(string identifier);
         Task<IReadOnlySet<string>> GetExistingEmailsAsync(IEnumerable<string> emails);
+        Task<IReadOnlySet<string>> GetExistingUsernamesAsync(IEnumerable<string> usernames);
+        Task<bool> ExistsByEmailAsync(string email, Guid? excludedUserId = null);
+        Task<bool> ExistsByUsernameAsync(string username, Guid? excludedUserId = null);
 
         Task<User?> GetByIdAsync(Guid id);
 

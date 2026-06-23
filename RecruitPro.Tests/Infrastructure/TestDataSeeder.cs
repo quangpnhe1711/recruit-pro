@@ -39,6 +39,7 @@ public static class TestDataSeeder
         User candidate = new()
         {
             Id = CandidateUserId,
+            Username = "candidate.user",
             Email = "candidate@recruitpro.test",
             FullName = "Candidate User",
             PasswordHash = BCrypt.Net.BCrypt.HashPassword("Pass@123"),
@@ -50,6 +51,7 @@ public static class TestDataSeeder
         User hr = new()
         {
             Id = HrUserId,
+            Username = "hr.user",
             Email = "hr@recruitpro.test",
             FullName = "HR User",
             PasswordHash = BCrypt.Net.BCrypt.HashPassword("Pass@123"),
@@ -61,6 +63,7 @@ public static class TestDataSeeder
         User manager = new()
         {
             Id = ManagerUserId,
+            Username = "manager.user",
             Email = "manager@recruitpro.test",
             FullName = "Manager User",
             PasswordHash = BCrypt.Net.BCrypt.HashPassword("Pass@123"),

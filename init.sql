@@ -422,6 +422,7 @@ ALTER TABLE public.user_roles OWNER TO postgres;
 
 CREATE TABLE public.users (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
+    username character varying(50) NOT NULL,
     email character varying(255) NOT NULL,
     password_hash text NOT NULL,
     full_name character varying(255) NOT NULL,
@@ -1083,6 +1084,15 @@ ALTER TABLE ONLY public.user_roles
 
 ALTER TABLE ONLY public.users
     ADD CONSTRAINT users_email_key UNIQUE (email);
+
+
+--
+-- TOC entry 1082 (class 2606 OID 16528)
+-- Name: users users_username_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.users
+    ADD CONSTRAINT users_username_key UNIQUE (username);
 
 
 --

@@ -32,7 +32,7 @@ public sealed class ApiIntegrationTests : IClassFixture<PostgresTestFixture>, IA
     {
         HttpResponseMessage response = await _client.PostAsJsonAsync("/api/auth/candidate/login", new
         {
-            email = "candidate@recruitpro.test",
+            username = "candidate.user",
             password = "Pass@123"
         });
 

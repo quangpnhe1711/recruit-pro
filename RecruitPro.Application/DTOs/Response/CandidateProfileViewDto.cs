@@ -3,6 +3,7 @@ namespace RecruitPro.Application.DTOs.Response;
 public class CandidateProfileViewDto
 {
     public string Id { get; set; } = string.Empty;
+    public string Username { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public string? AvatarUrl { get; set; }
     public string Headline { get; set; } = string.Empty;

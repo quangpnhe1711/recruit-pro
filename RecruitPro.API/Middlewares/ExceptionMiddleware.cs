@@ -66,7 +66,7 @@ namespace RecruitPro.API.Middlewares
                         group => group.Key,
                         group => group.Select(error => error.ErrorMessage).Distinct().ToArray());
 
-                response = ApiResponse<object>.ValidationError("Validation failed.", errors);
+                response = ApiResponse<object>.ValidationError("Dữ liệu không hợp lệ.", errors);
             }
             else
             {

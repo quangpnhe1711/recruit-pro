@@ -16,6 +16,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IInterviewService, InterviewService>();
         services.AddScoped<IJobService, JobService>();
         services.AddScoped<IManagerAnalyticsService, ManagerAnalyticsService>();
+        services.AddScoped<INotificationService, NotificationService>();
+        services.AddScoped<INotificationEventService, NotificationEventService>();
         services.AddScoped<ICopilotService, CopilotService>();
         services.AddScoped<IOfferService, OfferService>();
         services.AddScoped<IApplicationSemanticScoringService, ApplicationSemanticScoringService>();

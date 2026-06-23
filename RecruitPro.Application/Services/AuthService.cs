@@ -50,12 +50,12 @@ namespace RecruitPro.Application.Services
         /// <summary>
         /// Executes the candidate login operation.
         /// </summary>
-        /// <param name="email">The <paramref name="email"/> value.</param>
+        /// <param name="username">The <paramref name="username"/> value.</param>
         /// <param name="password">The <paramref name="password"/> value.</param>
         /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
-        public Task<ApiResponse<LoginResponseDto>> CandidateLoginAsync(string email, string password)
+        public Task<ApiResponse<LoginResponseDto>> CandidateLoginAsync(string username, string password)
         {
-            return LoginCoreAsync(email, password, role => role.Equals("Candidate", StringComparison.OrdinalIgnoreCase));
+            return LoginCoreAsync(username, password, role => role.Equals("Candidate", StringComparison.OrdinalIgnoreCase), candidateLogin: true);
         }
 
         /// <summary>
@@ -92,24 +92,30 @@ namespace RecruitPro.Application.Services
         /// <summary>
         /// Logs in core.
         /// </summary>
-        /// <param name="email">The <paramref name="email"/> value.</param>
+        /// <param name="identifier">The <paramref name="identifier"/> value.</param>
         /// <param name="password">The <paramref name="password"/> value.</param>
         /// <param name="roleRule">The <paramref name="roleRule"/> value.</param>
+        /// <param name="candidateLogin">Whether the candidate login flow should require username lookup.</param>
         /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
         /// <exception cref="UnauthorizeException">Thrown when the operation fails validation or encounters an invalid state.</exception>
-        private async Task<ApiResponse<LoginResponseDto>> LoginCoreAsync(string email, string password, Func<string, bool>? roleRule)
+        private async Task<ApiResponse<LoginResponseDto>> LoginCoreAsync(string identifier, string password, Func<string, bool>? roleRule, bool candidateLogin = false)
         {
-            User? user = await _userRepository.GetByEmailAsync(email);
+            string normalizedIdentifier = identifier.Trim();
+            User? user = candidateLogin
+                ? await _userRepository.GetByUsernameAsync(normalizedIdentifier)
+                : await _userRepository.GetByEmailOrUsernameAsync(normalizedIdentifier);
 
             if (user == null || !BCrypt.Net.BCrypt.Verify(password, user.PasswordHash))
             {
-                throw new UnauthorizeException("Invalid email or password.");
+                throw new UnauthorizeException(candidateLogin
+                    ? "Username hoặc mật khẩu không đúng."
+                    : "Email hoặc mật khẩu không đúng.");
             }
 
             var roles = user.UserRoles.Select(x => x.Role.Name).ToList();
             if (roleRule != null && !roles.Any(roleRule))
             {
-                throw new UnauthorizeException("User does not have permission to access this portal.");
+                throw new UnauthorizeException("Tài khoản không có quyền truy cập cổng này.");
             }
 
             var accessToken = _jwtService.GenerateToken(user, "Access");
@@ -139,16 +145,16 @@ namespace RecruitPro.Application.Services
                 return ApiResponse<string>.BadRequest("Identifier is required.");
             }
 
-            User? user = await _userRepository.GetTrackedByEmailAsync(normalizedIdentifier);
+            User? user = await _userRepository.GetTrackedByEmailOrUsernameAsync(normalizedIdentifier);
             if (user == null)
             {
-                return ApiResponse<string>.Ok("If the account exists, a temporary password has been issued.");
+                return ApiResponse<string>.Ok("Nếu tài khoản tồn tại, mật khẩu tạm đã được cấp.");
             }
 
             List<string> roles = user.UserRoles.Select(x => x.Role.Name).ToList();
             if (!roles.Any(roleRule))
             {
-                return ApiResponse<string>.Ok("If the account exists, a temporary password has been issued.");
+                return ApiResponse<string>.Ok("Nếu tài khoản tồn tại, mật khẩu tạm đã được cấp.");
             }
 
             string temporaryPassword = CredentialUtility.GenerateTemporaryPassword();
@@ -159,7 +165,7 @@ namespace RecruitPro.Application.Services
             await _unitOfWork.SaveChangesAsync();
             await _emailService.SendPasswordResetAsync(user.Email, user.FullName, temporaryPassword, loginUrl);
 
-            return ApiResponse<string>.Ok("If the account exists, a temporary password has been issued.");
+            return ApiResponse<string>.Ok("Nếu tài khoản tồn tại, mật khẩu tạm đã được cấp.");
         }
 
     }

@@ -10,7 +10,7 @@ public static class ClaimsPrincipalExtensions
         string userId = user.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
             ?? user.FindFirst("sub")?.Value
             ?? user.FindFirst(ClaimTypes.NameIdentifier)?.Value
-            ?? throw new UnauthorizedAccessException("Missing user id claim.");
+            ?? throw new UnauthorizedAccessException("Thiếu thông tin định danh người dùng.");
 
         return Guid.Parse(userId);
     }

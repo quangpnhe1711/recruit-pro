@@ -25,7 +25,7 @@ public sealed class ServiceIntegrationTests : IClassFixture<PostgresTestFixture>
         using IServiceScope scope = _factory.Services.CreateScope();
         IAuthService service = scope.ServiceProvider.GetRequiredService<IAuthService>();
 
-        var response = await service.CandidateLoginAsync("candidate@recruitpro.test", "Pass@123");
+        var response = await service.CandidateLoginAsync("candidate.user", "Pass@123");
 
         response.Success.Should().BeTrue();
         response.Data.Should().NotBeNull();
@@ -40,7 +40,7 @@ public sealed class ServiceIntegrationTests : IClassFixture<PostgresTestFixture>
         using IServiceScope scope = _factory.Services.CreateScope();
         IAuthService service = scope.ServiceProvider.GetRequiredService<IAuthService>();
 
-        Func<Task> act = () => service.InternalLoginAsync("candidate@recruitpro.test", "Pass@123");
+        Func<Task> act = () => service.InternalLoginAsync("candidate.user", "Pass@123");
 
         await act.Should().ThrowAsync<UnauthorizeException>()
             .WithMessage("User does not have permission to access this portal.");

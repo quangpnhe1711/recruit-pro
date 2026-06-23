@@ -29,6 +29,26 @@ namespace RecruitPro.Infrastructure.Repositories
                 .FirstOrDefaultAsync(u => u.Email == email);
         }
 
+        public Task<User?> GetByUsernameAsync(string username)
+        {
+            return _context.Users
+                .AsNoTracking()
+                .Include(u => u.UserRoles)
+                    .ThenInclude(ur => ur.Role)
+                .Include(u => u.CandidateProfile)
+                .FirstOrDefaultAsync(u => u.Username == username);
+        }
+
+        public Task<User?> GetByEmailOrUsernameAsync(string identifier)
+        {
+            return _context.Users
+                .AsNoTracking()
+                .Include(u => u.UserRoles)
+                    .ThenInclude(ur => ur.Role)
+                .Include(u => u.CandidateProfile)
+                .FirstOrDefaultAsync(u => u.Email == identifier || u.Username == identifier);
+        }
+
         public Task<User?> GetTrackedByEmailAsync(string email)
         {
             return _context.Users
@@ -36,6 +56,15 @@ namespace RecruitPro.Infrastructure.Repositories
                     .ThenInclude(ur => ur.Role)
                 .Include(u => u.CandidateProfile)
                 .FirstOrDefaultAsync(u => u.Email == email);
+        }
+
+        public Task<User?> GetTrackedByEmailOrUsernameAsync(string identifier)
+        {
+            return _context.Users
+                .Include(u => u.UserRoles)
+                    .ThenInclude(ur => ur.Role)
+                .Include(u => u.CandidateProfile)
+                .FirstOrDefaultAsync(u => u.Email == identifier || u.Username == identifier);
         }
 
         public async Task<IReadOnlySet<string>> GetExistingEmailsAsync(IEnumerable<string> emails)
@@ -53,6 +82,45 @@ namespace RecruitPro.Infrastructure.Repositories
                 .ToListAsync();
 
             return existingEmailList.ToHashSet();
+        }
+
+        public async Task<IReadOnlySet<string>> GetExistingUsernamesAsync(IEnumerable<string> usernames)
+        {
+            List<string> normalizedUsernames = usernames
+                .Where(username => !string.IsNullOrWhiteSpace(username))
+                .Select(username => username.Trim().ToLowerInvariant())
+                .Distinct()
+                .ToList();
+
+            List<string> existingUsernameList = await _context.Users
+                .AsNoTracking()
+                .Where(user => normalizedUsernames.Contains(user.Username.ToLower()))
+                .Select(user => user.Username.ToLower())
+                .ToListAsync();
+
+            return existingUsernameList.ToHashSet();
+        }
+
+        public Task<bool> ExistsByEmailAsync(string email, Guid? excludedUserId = null)
+        {
+            IQueryable<User> query = _context.Users.Where(user => user.Email.ToLower() == email.ToLower());
+            if (excludedUserId.HasValue)
+            {
+                query = query.Where(user => user.Id != excludedUserId.Value);
+            }
+
+            return query.AnyAsync();
+        }
+
+        public Task<bool> ExistsByUsernameAsync(string username, Guid? excludedUserId = null)
+        {
+            IQueryable<User> query = _context.Users.Where(user => user.Username.ToLower() == username.ToLower());
+            if (excludedUserId.HasValue)
+            {
+                query = query.Where(user => user.Id != excludedUserId.Value);
+            }
+
+            return query.AnyAsync();
         }
 
         public Task<User?> GetByIdAsync(Guid id)

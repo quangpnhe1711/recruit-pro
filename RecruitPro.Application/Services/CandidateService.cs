@@ -44,12 +44,13 @@ public class CandidateService : ICandidateService
     private const string ResumeParseStatusFailed = "Failed";
     private const string ResumeEmbeddingStatusNotStarted = "NotStarted";
     private const int MinimumResumeTextLength = 50;
-    private const string ResumeExtractionFailureMessage = "Unable to read the resume content. Please upload a text-based PDF or DOCX file. Image-based or scanned PDF files are not supported.";
-    private const string ResumeAiRetryMessage = "Your CV was uploaded successfully, but the AI parser is temporarily unavailable. The system will retry parsing later.";
-    private const string ResumeAiFailedMessage = "Your CV was uploaded successfully, but automatic parsing could not be completed right now. You can retry parsing later without uploading again.";
-    private const string ResumeProfileMismatchMessage = "Your new CV does not match the current profile on the system. Please parse and update your profile so it matches the latest CV. If you later apply the parsed data, the system will treat that profile as your official CV";
+    private const string ResumeExtractionFailureMessage = "Không đọc được nội dung CV. Hãy dùng file PDF hoặc DOCX có thể chọn văn bản.";
+    private const string ResumeAiRetryMessage = "CV đã tải lên, nhưng AI đang bận. Hệ thống sẽ thử lại sau.";
+    private const string ResumeAiFailedMessage = "CV đã tải lên, nhưng chưa phân tích được lúc này. Bạn có thể thử lại sau.";
+    private const string ResumeProfileMismatchMessage = "CV mới chưa khớp với hồ sơ hiện tại. Hãy phân tích và cập nhật hồ sơ theo CV mới.";
     private static readonly Regex PhonePattern = new(@"^0\d{9}$", RegexOptions.Compiled);
     private static readonly Regex EmailExtractorPattern = new(@"(?<email>[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex UsernameSanitizerPattern = new(@"[^a-zA-Z0-9._-]", RegexOptions.Compiled);
     private static readonly Regex PhoneExtractorPattern = new(@"(?<phone>(?:\+?84|0)[\s\-.]?(?:\d[\s\-.]?){8,10})", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex UrlPattern = new(@"https?://[^\s)]+", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex YearPattern = new(@"\b(19|20)\d{2}\b", RegexOptions.Compiled);
@@ -111,6 +112,7 @@ public class CandidateService : ICandidateService
             User user = new()
             {
                 Id = Guid.NewGuid(),
+                Username = request.UserInfo.Username.Trim(),
                 Email = request.UserInfo.Email,
                 FullName = request.UserInfo.FullName,
                 Phone = request.UserInfo.Phone,
@@ -118,6 +120,16 @@ public class CandidateService : ICandidateService
                 CreatedAt = DbDateTime.Now,
                 UpdatedAt = DbDateTime.Now
             };
+
+            if (await _userRepository.ExistsByUsernameAsync(user.Username))
+            {
+                return ApiResponse<CandidateRegisterResponseDto>.BadRequest("Username đã tồn tại.");
+            }
+
+            if (await _userRepository.ExistsByEmailAsync(user.Email))
+            {
+                return ApiResponse<CandidateRegisterResponseDto>.BadRequest("Email đã tồn tại.");
+            }
 
             await _userRepository.AddAsync(user);
             await AssignCandidateRoleAsync(user.Id);
@@ -181,7 +193,7 @@ public class CandidateService : ICandidateService
                 options.Items["CandidateProfileId"] = profile?.Id ?? Guid.Empty;
             });
 
-            return ApiResponse<CandidateRegisterResponseDto>.Created(response, "Candidate registered successfully");
+            return ApiResponse<CandidateRegisterResponseDto>.Created(response, "Tạo tài khoản ứng viên thành công");
         }
         catch
         {
@@ -251,13 +263,13 @@ public class CandidateService : ICandidateService
     {
         if (!Guid.TryParse(candidateId, out Guid candidateGuid))
         {
-            return ApiResponse<HrCandidateDetailDto>.NotFound("Candidate not found.");
+            return ApiResponse<HrCandidateDetailDto>.NotFound("Không tìm thấy ứng viên.");
         }
 
         CandidateProfile? profile = await _candidateRepository.GetHrDetailByIdAsync(candidateGuid);
         if (profile == null)
         {
-            return ApiResponse<HrCandidateDetailDto>.NotFound("Candidate not found.");
+            return ApiResponse<HrCandidateDetailDto>.NotFound("Không tìm thấy ứng viên.");
         }
 
         CandidateProfileResponseDto baseProfile = await MapProfileAsync(profile);
@@ -368,7 +380,7 @@ public class CandidateService : ICandidateService
 
         if (validRows.Count == 0)
         {
-            return ApiResponse<CandidateImportResultDto>.BadRequest("No valid rows available for import.");
+            return ApiResponse<CandidateImportResultDto>.BadRequest("Không có dòng hợp lệ để import.");
         }
 
         List<string> createdCandidateIds = [];
@@ -384,6 +396,7 @@ public class CandidateService : ICandidateService
                 User user = new()
                 {
                     Id = Guid.NewGuid(),
+                    Username = await GenerateUniqueUsernameAsync(row.FullName, row.Email),
                     Email = row.Email.Trim(),
                     FullName = row.FullName.Trim(),
                     Phone = TextNormalizationHelper.NormalizeOptionalText(row.PhoneNumber),
@@ -485,7 +498,7 @@ public class CandidateService : ICandidateService
             }
         }
 
-        throw new InvalidOperationException("Candidate profile update failed after retry.");
+        throw new InvalidOperationException("Cập nhật hồ sơ ứng viên thất bại sau khi thử lại.");
     }
 
     public async Task<ApiResponse<CandidateProfileResponseDto>> SaveProfileAsync(
@@ -900,14 +913,14 @@ public class CandidateService : ICandidateService
     {
         if (!Guid.TryParse(resumeId, out Guid resumeGuid))
         {
-            return ApiResponse<ResumeFileResponseDto>.NotFound("Resume not found.");
+            return ApiResponse<ResumeFileResponseDto>.NotFound("Không tìm thấy CV.");
         }
 
         CandidateProfile? profile = await _candidateRepository.GetByResumeIdAsync(resumeGuid);
         CandidateResume? resume = profile?.Resumes.FirstOrDefault(item => item.Id == resumeGuid);
         if (profile == null || resume == null)
         {
-            return ApiResponse<ResumeFileResponseDto>.NotFound("Resume not found.");
+            return ApiResponse<ResumeFileResponseDto>.NotFound("Không tìm thấy CV.");
         }
 
         string presignedUrl = await _fileStorage.GetPresignedUrlAsync(resume.StorageKey);
@@ -1022,6 +1035,7 @@ public class CandidateService : ICandidateService
             Profile = new CandidateProfileViewDto
             {
                 Id = profile.Id.ToString(),
+                Username = profile.User.Username,
                 Name = profile.User.FullName,
                 AvatarUrl = profile.User.AvatarUrl,
                 Headline = profile.CurrentPosition ?? string.Empty,
@@ -1143,8 +1157,16 @@ public class CandidateService : ICandidateService
     /// <returns>A task that represents the asynchronous operation.</returns>
     private async Task ApplyProfileUpdateAsync(CandidateProfile profile, UpdateCandidateProfileRequest request)
     {
+        string nextEmail = request.Email ?? profile.User.Email;
+
+        if (!string.Equals(nextEmail, profile.User.Email, StringComparison.OrdinalIgnoreCase)
+            && await _userRepository.ExistsByEmailAsync(nextEmail, profile.User.Id))
+        {
+            throw new InvalidOperationException("Email đã tồn tại.");
+        }
+
         profile.User.FullName = request.Name ?? profile.User.FullName;
-        profile.User.Email = request.Email ?? profile.User.Email;
+        profile.User.Email = nextEmail;
         profile.User.Phone = request.Phone ?? profile.User.Phone;
         profile.User.UpdatedAt = DbDateTime.Now;
         profile.CurrentPosition = request.Headline ?? profile.CurrentPosition;
@@ -1936,7 +1958,15 @@ public class CandidateService : ICandidateService
     private async Task ApplyParsedResumeToProfileAsync(CandidateProfile profile, CandidateResumeParseResponseDto preview)
     {
         profile.User.FullName = string.IsNullOrWhiteSpace(preview.Profile.Name) ? profile.User.FullName : TextNormalizationHelper.NormalizeOptionalText(preview.Profile.Name) ?? profile.User.FullName;
-        profile.User.Email = string.IsNullOrWhiteSpace(preview.Profile.Email) ? profile.User.Email : TextNormalizationHelper.NormalizeOptionalText(preview.Profile.Email) ?? profile.User.Email;
+        if (!string.IsNullOrWhiteSpace(preview.Profile.Email))
+        {
+            string nextEmail = TextNormalizationHelper.NormalizeOptionalText(preview.Profile.Email) ?? profile.User.Email;
+            if (!string.Equals(nextEmail, profile.User.Email, StringComparison.OrdinalIgnoreCase)
+                && !await _userRepository.ExistsByEmailAsync(nextEmail, profile.User.Id))
+            {
+                profile.User.Email = nextEmail;
+            }
+        }
         profile.User.Phone = string.IsNullOrWhiteSpace(preview.Profile.Phone) ? string.Empty : TextNormalizationHelper.NormalizeOptionalText(preview.Profile.Phone) ?? string.Empty;
         profile.User.UpdatedAt = DbDateTime.Now;
         profile.CurrentPosition = TextNormalizationHelper.NormalizeOptionalText(preview.Profile.Headline);
@@ -2067,7 +2097,7 @@ public class CandidateService : ICandidateService
             return;
         }
 
-        throw new NotSupportedException("Unsupported resume format. Please upload a PDF, DOCX, or TXT file.");
+        throw new NotSupportedException("Định dạng CV không hỗ trợ. Hãy tải lên PDF, DOCX hoặc TXT.");
     }
 
     private static async Task<MemoryStream> CopyToMemoryAsync(Stream source)
@@ -2679,7 +2709,7 @@ public class CandidateService : ICandidateService
                 aiPreview.Activities),
             Notes = aiPreview.ParserWarnings.Count > 0
                 ? aiPreview.ParserWarnings
-                : ["AI parser extracted structured data from the resume. Please verify before saving."],
+                : ["AI đã trích xuất dữ liệu từ CV. Hãy kiểm tra trước khi lưu."],
             ExtractedTextPreview = string.Join(Environment.NewLine, NormalizeResumeText(extractedText).Split('\n').Take(40))
         };
     }
@@ -3272,7 +3302,7 @@ public class CandidateService : ICandidateService
         Role? candidateRole = await _userRepository.GetRoleByNameAsync(CandidateRoleName);
         if (candidateRole == null)
         {
-            throw new NotFoundException("Candidate role not found.");
+            throw new NotFoundException("Không tìm thấy vai trò ứng viên.");
         }
 
         await _userRepository.AddUserRoleAsync(new UserRole
@@ -3294,7 +3324,7 @@ public class CandidateService : ICandidateService
     {
         if (!fileName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
         {
-            throw new ArgumentException("Only .xlsx files are supported for candidate import.");
+            throw new ArgumentException("Chỉ hỗ trợ file .xlsx để import ứng viên.");
         }
 
         using MemoryStream buffer = new();
@@ -3371,29 +3401,29 @@ public class CandidateService : ICandidateService
 
             if (string.IsNullOrWhiteSpace(row.FullName))
             {
-                row.Errors.Add("Full name is required.");
+                row.Errors.Add("Họ tên là bắt buộc.");
             }
 
             if (string.IsNullOrWhiteSpace(row.Email))
             {
-                row.Errors.Add("Email is required.");
+                row.Errors.Add("Email là bắt buộc.");
             }
             else if (!IsValidEmail(row.Email))
             {
-                row.Errors.Add("Email format is invalid.");
+                row.Errors.Add("Email không đúng định dạng.");
             }
             else if (existingEmails.Contains(row.Email.Trim().ToLowerInvariant()))
             {
-                row.Errors.Add("Email already exists in the database.");
+                row.Errors.Add("Email đã tồn tại.");
             }
             else if (duplicateEmailsInFile.Contains(row.Email.Trim().ToLowerInvariant()))
             {
-                row.Errors.Add("Email is duplicated in the uploaded file.");
+                row.Errors.Add("Email bị trùng trong file tải lên.");
             }
 
             if (!string.IsNullOrWhiteSpace(row.PhoneNumber) && !PhonePattern.IsMatch(row.PhoneNumber))
             {
-                row.Errors.Add("Phone number must contain 10 digits and start with 0.");
+                row.Errors.Add("Số điện thoại phải có 10 số và bắt đầu bằng 0.");
             }
 
             row.IsValid = row.Errors.Count == 0;
@@ -3432,6 +3462,40 @@ public class CandidateService : ICandidateService
         {
             return false;
         }
+    }
+
+    private async Task<string> GenerateUniqueUsernameAsync(string fullName, string email)
+    {
+        string baseUsername = BuildUsernameBase(fullName, email);
+        string candidate = baseUsername;
+        int suffix = 1;
+
+        while (await _userRepository.ExistsByUsernameAsync(candidate))
+        {
+            suffix++;
+            candidate = $"{baseUsername}-{suffix}";
+        }
+
+        return candidate;
+    }
+
+    private static string BuildUsernameBase(string fullName, string email)
+    {
+        string preferred = TextNormalizationHelper.NormalizeOptionalText(fullName)?.Trim() ?? string.Empty;
+        preferred = preferred.Length == 0 ? email.Split('@')[0] : preferred.Replace(' ', '-').ToLowerInvariant();
+        preferred = UsernameSanitizerPattern.Replace(preferred, "-").Trim('-', '.');
+
+        if (string.IsNullOrWhiteSpace(preferred))
+        {
+            preferred = $"user-{Guid.NewGuid():N}"[..13];
+        }
+
+        if (preferred.Length < 4)
+        {
+            preferred = $"{preferred}-user";
+        }
+
+        return preferred[..Math.Min(preferred.Length, 40)];
     }
 
     /// <summary>

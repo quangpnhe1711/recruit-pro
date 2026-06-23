@@ -25,17 +25,17 @@ namespace RecruitPro.Application.DTOs.Response
             Extra = extra;
         }
 
-        public static ApiResponse<T> Ok(T data, string message = "Success")
+        public static ApiResponse<T> Ok(T data, string message = "Thành công")
         {
             return new ApiResponse<T>(true, 200, message, data);
         }
 
-        public static ApiResponse<T> Created(T data, string message = "Created successfully")
+        public static ApiResponse<T> Created(T data, string message = "Tạo thành công")
         {
             return new ApiResponse<T>(true, 201, message, data);
         }
 
-        public static ApiResponse<T> NoContent(string message = "No content")
+        public static ApiResponse<T> NoContent(string message = "Không có dữ liệu")
         {
             return new ApiResponse<T>(true, 204, message);
         }
@@ -50,22 +50,22 @@ namespace RecruitPro.Application.DTOs.Response
             return new ApiResponse<T>(false, 400, message, default, errors);
         }
 
-        public static ApiResponse<T> Unauthorized(string message = "Unauthorized")
+        public static ApiResponse<T> Unauthorized(string message = "Không có quyền truy cập")
         {
             return new ApiResponse<T>(false, 401, message);
         }
 
-        public static ApiResponse<T> NotFound(string message = "Resource not found")
+        public static ApiResponse<T> NotFound(string message = "Không tìm thấy dữ liệu")
         {
             return new ApiResponse<T>(false, 404, message);
         }
 
-        public static ApiResponse<T> Forbidden(string message = "Forbidden")
+        public static ApiResponse<T> Forbidden(string message = "Bạn không có quyền")
         {
             return new ApiResponse<T>(false, 403, message);
         }
 
-        public static ApiResponse<T> Error(string message = "Internal server error", object? extra = null)
+        public static ApiResponse<T> Error(string message = "Lỗi hệ thống", object? extra = null)
         {
             return new ApiResponse<T>(false, 500, message, default, null, extra);
         }

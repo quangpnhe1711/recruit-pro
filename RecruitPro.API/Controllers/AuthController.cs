@@ -27,7 +27,7 @@ namespace RecruitPro.API.Controllers
         [HttpPost("candidate/login")]
         public async Task<IActionResult> CandidateLogin([FromBody] CandidateLoginRequest request)
         {
-            var result = await _authService.CandidateLoginAsync(request.Email, request.Password);
+            var result = await _authService.CandidateLoginAsync(request.Username, request.Password);
             return StatusCode(result.StatusCode, result);
         }
 

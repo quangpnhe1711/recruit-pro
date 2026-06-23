@@ -17,6 +17,7 @@ public class InterviewService : IInterviewService
     private readonly IApplicationRepository _applicationRepository;
     private readonly IUserRepository _userRepository;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly INotificationEventService _notificationEventService;
     private readonly IMapper _mapper;
 
     /// <summary>
@@ -31,12 +32,14 @@ public class InterviewService : IInterviewService
         IApplicationRepository applicationRepository,
         IUserRepository userRepository,
         IUnitOfWork unitOfWork,
+        INotificationEventService notificationEventService,
         IMapper mapper)
     {
         _interviewRepository = interviewRepository;
         _applicationRepository = applicationRepository;
         _userRepository = userRepository;
         _unitOfWork = unitOfWork;
+        _notificationEventService = notificationEventService;
         _mapper = mapper;
     }
 
@@ -95,13 +98,13 @@ public class InterviewService : IInterviewService
         {
             if (!Guid.TryParse(applicationId, out Guid applicationGuid))
             {
-                return ApiResponse<ScheduleDataResponseDto>.BadRequest("Invalid application id.");
+                return ApiResponse<ScheduleDataResponseDto>.BadRequest("Mã hồ sơ ứng tuyển không hợp lệ.");
             }
 
             application = await _applicationRepository.GetByIdAsync(applicationGuid);
             if (application == null)
             {
-                return ApiResponse<ScheduleDataResponseDto>.NotFound("Application not found.");
+                return ApiResponse<ScheduleDataResponseDto>.NotFound("Không tìm thấy hồ sơ ứng tuyển.");
             }
         }
         else
@@ -109,7 +112,7 @@ public class InterviewService : IInterviewService
             application = (await _applicationRepository.GetRecentAsync(1)).FirstOrDefault();
             if (application == null)
             {
-                return ApiResponse<ScheduleDataResponseDto>.NotFound("No applications available for scheduling.");
+                return ApiResponse<ScheduleDataResponseDto>.NotFound("Chưa có hồ sơ để lên lịch.");
             }
         }
 
@@ -151,46 +154,49 @@ public class InterviewService : IInterviewService
     {
         if (!Guid.TryParse(request.ApplicationId, out Guid applicationGuid))
         {
-            return ApiResponse<InterviewCreatedResponseDto>.BadRequest("Invalid application id.");
+            return ApiResponse<InterviewCreatedResponseDto>.BadRequest("Mã hồ sơ ứng tuyển không hợp lệ.");
         }
 
         Domain.Entities.Application? application = await _applicationRepository.GetTrackedByIdAsync(applicationGuid);
         if (application == null)
         {
-            return ApiResponse<InterviewCreatedResponseDto>.NotFound("Application not found.");
+            return ApiResponse<InterviewCreatedResponseDto>.NotFound("Không tìm thấy hồ sơ ứng tuyển.");
         }
 
         if (application.Status != ApplicationStatus.ManagerReview &&
             application.Status != ApplicationStatus.Interview)
         {
             return ApiResponse<InterviewCreatedResponseDto>.BadRequest(
-                "Interviews can only be scheduled from manager review or while an interview sequence is already active.");
+                "Chỉ có thể lên lịch từ bước quản lý duyệt hoặc khi chuỗi phỏng vấn đang diễn ra.");
         }
 
         if (!string.IsNullOrWhiteSpace(request.CandidateId)
             && (!Guid.TryParse(request.CandidateId, out Guid candidateGuid) || candidateGuid != application.UserId))
         {
-            return ApiResponse<InterviewCreatedResponseDto>.BadRequest("Candidate does not match the selected application.");
+            return ApiResponse<InterviewCreatedResponseDto>.BadRequest("Ứng viên không khớp với hồ sơ đã chọn.");
         }
 
         if (!string.IsNullOrWhiteSpace(request.JobId)
             && (!Guid.TryParse(request.JobId, out Guid jobGuid) || jobGuid != application.JobId))
         {
-            return ApiResponse<InterviewCreatedResponseDto>.BadRequest("Job does not match the selected application.");
+            return ApiResponse<InterviewCreatedResponseDto>.BadRequest("Job không khớp với hồ sơ đã chọn.");
         }
 
+        Guid? interviewerGuid = null;
         if (!string.IsNullOrWhiteSpace(request.InterviewerId))
         {
-            if (!Guid.TryParse(request.InterviewerId, out Guid interviewerGuid))
+            if (!Guid.TryParse(request.InterviewerId, out Guid parsedInterviewerGuid))
             {
-                return ApiResponse<InterviewCreatedResponseDto>.BadRequest("Invalid interviewer id.");
+                return ApiResponse<InterviewCreatedResponseDto>.BadRequest("Mã người phỏng vấn không hợp lệ.");
             }
 
-            User? interviewer = await _userRepository.GetByIdAsync(interviewerGuid);
+            User? interviewer = await _userRepository.GetByIdAsync(parsedInterviewerGuid);
             if (interviewer == null)
             {
-                return ApiResponse<InterviewCreatedResponseDto>.NotFound("Interviewer not found.");
+                return ApiResponse<InterviewCreatedResponseDto>.NotFound("Không tìm thấy người phỏng vấn.");
             }
+
+            interviewerGuid = parsedInterviewerGuid;
         }
 
         Interview interview = new()
@@ -215,13 +221,14 @@ public class InterviewService : IInterviewService
         await _interviewRepository.AddAsync(interview);
         await _unitOfWork.SaveChangesAsync();
         await _unitOfWork.CommitAsync();
+        await _notificationEventService.PublishInterviewScheduledAsync(application, interview, interviewerGuid);
 
         return ApiResponse<InterviewCreatedResponseDto>.Created(
             new InterviewCreatedResponseDto
             {
                 InterviewId = interview.Id.ToString()
             },
-            "Interview scheduled successfully");
+            "Lên lịch phỏng vấn thành công");
     }
 
     /// <summary>
@@ -271,24 +278,24 @@ public class InterviewService : IInterviewService
     {
         if (!Guid.TryParse(interviewId, out Guid interviewGuid))
         {
-            return ApiResponse<string>.NotFound("Interview not found.");
+            return ApiResponse<string>.NotFound("Không tìm thấy lịch phỏng vấn.");
         }
 
         Interview? interview = await _interviewRepository.GetTrackedByIdAsync(interviewGuid);
         if (interview == null)
         {
-            return ApiResponse<string>.NotFound("Interview not found.");
+            return ApiResponse<string>.NotFound("Không tìm thấy lịch phỏng vấn.");
         }
 
         InterviewStatus? parsedStatus = ParseInterviewStatus(request.Status);
         if (!parsedStatus.HasValue)
         {
-            return ApiResponse<string>.BadRequest("Invalid interview status.");
+            return ApiResponse<string>.BadRequest("Trạng thái phỏng vấn không hợp lệ.");
         }
 
         interview.Status = parsedStatus.Value;
         await _unitOfWork.SaveChangesAsync();
-        return ApiResponse<string>.Ok("Interview status updated successfully");
+        return ApiResponse<string>.Ok("Cập nhật trạng thái phỏng vấn thành công");
     }
 
     /// <summary>
@@ -300,18 +307,18 @@ public class InterviewService : IInterviewService
     {
         if (!Guid.TryParse(interviewId, out Guid interviewGuid))
         {
-            return ApiResponse<string>.NotFound("Interview not found.");
+            return ApiResponse<string>.NotFound("Không tìm thấy lịch phỏng vấn.");
         }
 
         Interview? interview = await _interviewRepository.GetTrackedByIdAsync(interviewGuid);
         if (interview == null)
         {
-            return ApiResponse<string>.NotFound("Interview not found.");
+            return ApiResponse<string>.NotFound("Không tìm thấy lịch phỏng vấn.");
         }
 
         await _interviewRepository.DeleteAsync(interview);
         await _unitOfWork.SaveChangesAsync();
-        return ApiResponse<string>.Ok("Interview cancelled successfully", "Interview cancelled successfully");
+        return ApiResponse<string>.Ok("Đã hủy lịch phỏng vấn.", "Đã hủy lịch phỏng vấn.");
     }
 
     /// <summary>
