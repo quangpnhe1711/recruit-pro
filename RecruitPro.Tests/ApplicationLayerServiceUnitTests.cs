@@ -20,6 +20,7 @@ using RecruitPro.Application.Mappings;
 using RecruitPro.Application.Services;
 using RecruitPro.Domain.Entities;
 using RecruitPro.Domain.Enums;
+using System.Text.Json;
 
 namespace RecruitPro.Tests;
 
@@ -37,6 +38,7 @@ public sealed class ApplicationSemanticScoringServiceUnitTests
             Mock.Of<IEmbeddingProvider>(),
             Mock.Of<IEmbeddingCache>(),
             Mock.Of<IUnitOfWork>(),
+            Mock.Of<INotificationEventService>(),
             Mock.Of<ILogger<ApplicationSemanticScoringService>>());
 
         Func<Task> act = () => service.ProcessAsync(Guid.NewGuid());
@@ -65,6 +67,7 @@ public sealed class ApplicationSemanticScoringServiceUnitTests
             Mock.Of<IEmbeddingProvider>(),
             Mock.Of<IEmbeddingCache>(),
             unitOfWork.Object,
+            Mock.Of<INotificationEventService>(),
             Mock.Of<ILogger<ApplicationSemanticScoringService>>());
 
         await service.ProcessAsync(application.Id);
@@ -122,11 +125,13 @@ public sealed class ApplicationServiceUnitTests
         var service = new ApplicationService(
             applicationRepository.Object,
             candidateRepository.Object,
+            Mock.Of<IUserRepository>(),
             jobRepository.Object,
             Mock.Of<IOfferRepository>(),
             Mock.Of<IUnitOfWork>(),
             Mock.Of<IFileStorageService>(),
             Mock.Of<IApplicationSemanticProcessingQueue>(),
+            Mock.Of<INotificationEventService>(),
             Mock.Of<ILogger<ApplicationService>>());
 
         var response = await service.ApplyAsync(userId, jobId.ToString(), new ApplyJobRequest());
@@ -168,6 +173,7 @@ public sealed class AuthServiceUnitTests
 
         var service = new AuthService(
             userRepository.Object,
+            Mock.Of<ICandidateProfileRepository>(),
             jwtService.Object,
             Mock.Of<IEmailService>(),
             Mock.Of<IUnitOfWork>(),
@@ -186,6 +192,7 @@ public sealed class AuthServiceUnitTests
     {
         var service = new AuthService(
             Mock.Of<IUserRepository>(),
+            Mock.Of<ICandidateProfileRepository>(),
             Mock.Of<IJwtService>(),
             Mock.Of<IEmailService>(),
             Mock.Of<IUnitOfWork>(),
@@ -224,7 +231,7 @@ public sealed class CandidateServiceUnitTests
         var response = await service.GetResumeDownloadUrlAsync(Guid.NewGuid().ToString());
 
         response.StatusCode.Should().Be(404);
-        response.Message.Should().Be("Resume not found.");
+        response.Message.Should().Be("Không tìm thấy CV.");
     }
 
     [Fact]
@@ -450,11 +457,13 @@ public sealed class DashboardServiceUnitTests
 
         var service = new DashboardService(
             Mock.Of<ICandidateProfileRepository>(),
+            Mock.Of<IUserRepository>(),
             applicationRepository.Object,
             jobRepository.Object,
             interviewRepository.Object,
             Mock.Of<INotificationRepository>(),
-            Mock.Of<ISemanticDiscoveryService>());
+            Mock.Of<ISemanticDiscoveryService>(),
+            Mock.Of<IUnitOfWork>());
 
         var response = await service.GetHrDashboardAsync();
 
@@ -475,12 +484,13 @@ public sealed class InterviewServiceUnitTests
             Mock.Of<IApplicationRepository>(),
             Mock.Of<IUserRepository>(),
             Mock.Of<IUnitOfWork>(),
+            Mock.Of<INotificationEventService>(),
             TestMapperFactory.Create());
 
         var response = await service.GetScheduleDataAsync("not-a-guid");
 
         response.StatusCode.Should().Be(400);
-        response.Message.Should().Be("Invalid application id.");
+        response.Message.Should().Be("Mã hồ sơ ứng tuyển không hợp lệ.");
     }
 
     [Fact]
@@ -495,12 +505,13 @@ public sealed class InterviewServiceUnitTests
             Mock.Of<IApplicationRepository>(),
             Mock.Of<IUserRepository>(),
             Mock.Of<IUnitOfWork>(),
+            Mock.Of<INotificationEventService>(),
             TestMapperFactory.Create());
 
         var response = await service.UpdateInterviewStatusAsync(interviewId.ToString(), new UpdateInterviewStatusRequest { Status = "weird" });
 
         response.StatusCode.Should().Be(400);
-        response.Message.Should().Be("Invalid interview status.");
+        response.Message.Should().Be("Trạng thái phỏng vấn không hợp lệ.");
     }
 }
 
@@ -591,6 +602,175 @@ public sealed class ManagerAnalyticsServiceUnitTests
     }
 }
 
+public sealed class NotificationServiceUnitTests
+{
+    [Fact]
+    public async Task GetUserNotificationsAsync_ClampsPagingAndMapsJsonData()
+    {
+        Guid userId = Guid.NewGuid();
+        Guid notificationId = Guid.NewGuid();
+        var repository = new Mock<INotificationRepository>();
+        repository.Setup(value => value.GetByUserIdAsync(userId, 1, 50))
+            .ReturnsAsync(
+            [
+                new Notification
+                {
+                    Id = notificationId,
+                    UserId = userId,
+                    EventCode = "candidate_score_ready",
+                    Title = "Score ready",
+                    Body = "Done",
+                    DataJson = "{\"score\":92}",
+                    EntityType = "application",
+                    EntityId = Guid.NewGuid(),
+                    Type = "APPLICATION",
+                    IsRead = false,
+                    CreatedAt = new DateTime(2026, 1, 2, 3, 4, 5, DateTimeKind.Utc)
+                }
+            ]);
+        repository.Setup(value => value.CountByUserIdAsync(userId)).ReturnsAsync(75);
+
+        var service = new NotificationService(repository.Object);
+
+        var response = await service.GetUserNotificationsAsync(userId, -3, 999);
+
+        response.Success.Should().BeTrue();
+        response.Data!.Items.Should().ContainSingle();
+        response.Data.Items[0].Id.Should().Be(notificationId);
+        response.Data.Items[0].IsRead.Should().BeFalse();
+        response.Data.Items[0].Data.Should().BeOfType<JsonElement>()
+            .Which.GetProperty("score").GetInt32().Should().Be(92);
+        response.Data.Meta!.Page.Should().Be(1);
+        response.Data.Meta.PageSize.Should().Be(50);
+        response.Data.Meta.TotalItems.Should().Be(75);
+    }
+
+    [Fact]
+    public async Task MarkAsReadAsync_WhenNotificationBelongsToUser_MarksAndReturnsNotification()
+    {
+        Guid userId = Guid.NewGuid();
+        Guid notificationId = Guid.NewGuid();
+        var notification = new Notification
+        {
+            Id = notificationId,
+            UserId = userId,
+            Title = "Interview",
+            Body = "Scheduled",
+            Type = "INTERVIEW",
+            IsRead = false
+        };
+        var repository = new Mock<INotificationRepository>();
+        repository.Setup(value => value.GetByIdAsync(notificationId)).ReturnsAsync(notification);
+
+        var service = new NotificationService(repository.Object);
+
+        var response = await service.MarkAsReadAsync(userId, notificationId.ToString());
+
+        response.Success.Should().BeTrue();
+        response.Data!.IsRead.Should().BeTrue();
+        repository.Verify(value => value.MarkAsReadAsync(notificationId), Times.Once);
+    }
+
+    [Fact]
+    public async Task MarkAsReadAsync_WhenNotificationBelongsToAnotherUser_ReturnsNotFound()
+    {
+        var repository = new Mock<INotificationRepository>();
+        repository.Setup(value => value.GetByIdAsync(It.IsAny<Guid>()))
+            .ReturnsAsync(new Notification { Id = Guid.NewGuid(), UserId = Guid.NewGuid() });
+
+        var service = new NotificationService(repository.Object);
+
+        var response = await service.MarkAsReadAsync(Guid.NewGuid(), Guid.NewGuid().ToString());
+
+        response.StatusCode.Should().Be(404);
+        response.Message.Should().Be("Không tìm thấy thông báo.");
+        repository.Verify(value => value.MarkAsReadAsync(It.IsAny<Guid>()), Times.Never);
+    }
+}
+
+public sealed class NotificationEventServiceUnitTests
+{
+    [Fact]
+    public async Task PublishApplicationStatusChangedAsync_WhenStatusUnchanged_DoesNotPersistOrSend()
+    {
+        var notificationRepository = new Mock<INotificationRepository>();
+        var realtimeSender = new Mock<INotificationRealtimeSender>();
+        var unitOfWork = new Mock<IUnitOfWork>();
+        var service = new NotificationEventService(
+            notificationRepository.Object,
+            Mock.Of<IUserRepository>(),
+            realtimeSender.Object,
+            unitOfWork.Object);
+        var application = new Domain.Entities.Application
+        {
+            Id = Guid.NewGuid(),
+            UserId = Guid.NewGuid(),
+            Status = ApplicationStatus.Screening,
+            Job = new Job { Title = "Backend Engineer" }
+        };
+
+        await service.PublishApplicationStatusChangedAsync(application, ApplicationStatus.Screening);
+
+        notificationRepository.Verify(value => value.AddRangeAsync(It.IsAny<IEnumerable<Notification>>()), Times.Never);
+        unitOfWork.Verify(value => value.SaveChangesAsync(), Times.Never);
+        realtimeSender.Verify(value => value.SendToUserAsync(
+            It.IsAny<Guid>(),
+            It.IsAny<NotificationDto>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task PublishInterviewScheduledAsync_DeduplicatesRecipientsPersistsAndSendsRealtime()
+    {
+        Guid candidateId = Guid.NewGuid();
+        Guid headDepartmentId = Guid.NewGuid();
+        var interview = new Interview
+        {
+            Id = Guid.NewGuid(),
+            InterviewDate = new DateTime(2026, 2, 3, 9, 30, 0, DateTimeKind.Utc)
+        };
+        var application = new Domain.Entities.Application
+        {
+            Id = Guid.NewGuid(),
+            UserId = candidateId,
+            Job = new Job { Title = "Backend Engineer" }
+        };
+        List<Notification> persistedNotifications = [];
+        var notificationRepository = new Mock<INotificationRepository>();
+        notificationRepository.Setup(value => value.AddRangeAsync(It.IsAny<IEnumerable<Notification>>()))
+            .Callback<IEnumerable<Notification>>(notifications => persistedNotifications.AddRange(notifications))
+            .Returns(Task.CompletedTask);
+        var userRepository = new Mock<IUserRepository>();
+        userRepository.Setup(value => value.GetUsersInRolesAsync("HeadDepartment"))
+            .ReturnsAsync([new User { Id = headDepartmentId, FullName = "Head Department" }]);
+        userRepository.Setup(value => value.GetByIdAsync(candidateId))
+            .ReturnsAsync(new User { Id = candidateId, FullName = "Candidate" });
+        userRepository.Setup(value => value.GetByIdAsync(headDepartmentId))
+            .ReturnsAsync(new User { Id = headDepartmentId, FullName = "Head Department" });
+        var realtimeSender = new Mock<INotificationRealtimeSender>();
+        var unitOfWork = new Mock<IUnitOfWork>();
+        var service = new NotificationEventService(
+            notificationRepository.Object,
+            userRepository.Object,
+            realtimeSender.Object,
+            unitOfWork.Object);
+
+        await service.PublishInterviewScheduledAsync(application, interview, candidateId);
+
+        persistedNotifications.Should().HaveCount(2);
+        persistedNotifications.Select(value => value.UserId).Should().BeEquivalentTo([candidateId, headDepartmentId]);
+        persistedNotifications.Should().OnlyContain(value => value.EventCode == "interview_scheduled");
+        unitOfWork.Verify(value => value.SaveChangesAsync(), Times.Once);
+        realtimeSender.Verify(value => value.SendToUserAsync(
+            It.IsAny<Guid>(),
+            It.Is<NotificationDto>(notification =>
+                notification.EventCode == "interview_scheduled" &&
+                notification.EntityId == interview.Id &&
+                notification.Type == "INTERVIEW"),
+            It.IsAny<CancellationToken>()), Times.Exactly(2));
+    }
+}
+
 public sealed class OfferServiceUnitTests
 {
     [Fact]
@@ -605,7 +785,7 @@ public sealed class OfferServiceUnitTests
         var response = await service.GetOfferEditorAsync("not-a-guid");
 
         response.StatusCode.Should().Be(404);
-        response.Message.Should().Be("Application not found.");
+        response.Message.Should().Be("Không tìm thấy hồ sơ ứng tuyển.");
     }
 
     [Fact]
@@ -638,7 +818,7 @@ public sealed class OfferServiceUnitTests
         });
 
         response.StatusCode.Should().Be(400);
-        response.Message.Should().Be("Selected currency is not available.");
+        response.Message.Should().Be("Loại tiền tệ đã chọn không hợp lệ.");
     }
 }
 
@@ -658,7 +838,7 @@ public sealed class SemanticDiscoveryServiceUnitTests
         var response = await service.SearchTalentPoolAsync(new TalentPoolSearchRequest());
 
         response.StatusCode.Should().Be(400);
-        response.Message.Should().Be("Please provide a search query or jobId.");
+        response.Message.Should().Be("Hãy nhập từ khóa hoặc jobId.");
     }
 
     [Fact]
