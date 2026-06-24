@@ -13,12 +13,15 @@ namespace RecruitPro.Application.Services
     public class AuthService : IAuthService
     {
         private readonly IUserRepository _userRepository;
+        private readonly ICandidateProfileRepository _candidateProfileRepository;
         private readonly IJwtService _jwtService;
         private readonly IEmailService _emailService;
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
         private const string CandidateLoginUrl = "http://localhost:5173/login";
         private const string InternalLoginUrl = "http://localhost:5173/internal/login";
+        private const string ResumeParseStatusNotStarted = "NotStarted";
+        private const string ResumeEmbeddingStatusNotStarted = "NotStarted";
 
         /// <summary>
         /// Initializes a new instance of the AuthService class.
@@ -28,9 +31,16 @@ namespace RecruitPro.Application.Services
         /// <param name="emailService">The <paramref name="emailService"/> value.</param>
         /// <param name="unitOfWork">The <paramref name="unitOfWork"/> value.</param>
         /// <param name="mapper">The <paramref name="mapper"/> value.</param>
-        public AuthService(IUserRepository userRepository, IJwtService jwtService, IEmailService emailService, IUnitOfWork unitOfWork, IMapper mapper)
+        public AuthService(
+            IUserRepository userRepository,
+            ICandidateProfileRepository candidateProfileRepository,
+            IJwtService jwtService,
+            IEmailService emailService,
+            IUnitOfWork unitOfWork,
+            IMapper mapper)
         {
             _userRepository = userRepository;
+            _candidateProfileRepository = candidateProfileRepository;
             _jwtService = jwtService;
             _emailService = emailService;
             _unitOfWork = unitOfWork;
@@ -118,6 +128,11 @@ namespace RecruitPro.Application.Services
                 throw new UnauthorizeException("Tài khoản không có quyền truy cập cổng này.");
             }
 
+            if (roles.Any(role => role.Equals("Candidate", StringComparison.OrdinalIgnoreCase)))
+            {
+                user = await EnsureCandidateProfileAsync(user);
+            }
+
             var accessToken = _jwtService.GenerateToken(user, "Access");
             var refreshToken = _jwtService.GenerateToken(user, "Refresh");
 
@@ -166,6 +181,29 @@ namespace RecruitPro.Application.Services
             await _emailService.SendPasswordResetAsync(user.Email, user.FullName, temporaryPassword, loginUrl);
 
             return ApiResponse<string>.Ok("Nếu tài khoản tồn tại, mật khẩu tạm đã được cấp.");
+        }
+
+        private async Task<User> EnsureCandidateProfileAsync(User user)
+        {
+            if (user.CandidateProfile != null)
+            {
+                return user;
+            }
+
+            CandidateProfile profile = new()
+            {
+                Id = Guid.NewGuid(),
+                UserId = user.Id,
+                User = user,
+                ResumeParseStatus = ResumeParseStatusNotStarted,
+                CandidateEmbeddingStatus = ResumeEmbeddingStatusNotStarted
+            };
+
+            user.CandidateProfile = profile;
+            await _candidateProfileRepository.SaveAsync(profile);
+            await _unitOfWork.SaveChangesAsync();
+
+            return user;
         }
 
     }

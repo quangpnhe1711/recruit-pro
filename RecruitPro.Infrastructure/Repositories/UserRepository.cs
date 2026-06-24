@@ -67,6 +67,15 @@ namespace RecruitPro.Infrastructure.Repositories
                 .FirstOrDefaultAsync(u => u.Email == identifier || u.Username == identifier);
         }
 
+        public Task<User?> GetTrackedByIdAsync(Guid id)
+        {
+            return _context.Users
+                .Include(u => u.UserRoles)
+                    .ThenInclude(ur => ur.Role)
+                .Include(u => u.CandidateProfile)
+                .FirstOrDefaultAsync(u => u.Id == id);
+        }
+
         public async Task<IReadOnlySet<string>> GetExistingEmailsAsync(IEnumerable<string> emails)
         {
             List<string> normalizedEmails = emails

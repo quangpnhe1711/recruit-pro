@@ -134,8 +134,7 @@ public class CandidateService : ICandidateService
             await _userRepository.AddAsync(user);
             await AssignCandidateRoleAsync(user.Id);
 
-            CandidateProfile? profile = null;
-            if (request.Profile != null)
+            CandidateProfile profile;
             {
                 string? resumeObjectKey = null;
                 CandidateResume? initialResume = null;
@@ -162,13 +161,13 @@ public class CandidateService : ICandidateService
                 {
                     Id = Guid.NewGuid(),
                     UserId = user.Id,
-                    CurrentPosition = request.Profile.CurrentPosition,
-                    ExperienceYears = request.Profile.ExperienceYears,
-                    Education = request.Profile.Education,
-                    Address = request.Profile.Address,
-                    Bio = request.Profile.Bio,
-                    GithubUrl = request.Profile.GitHubUrl,
-                    LinkedinUrl = request.Profile.LinkedInUrl,
+                    CurrentPosition = request.Profile?.CurrentPosition,
+                    ExperienceYears = request.Profile?.ExperienceYears,
+                    Education = request.Profile?.Education,
+                    Address = request.Profile?.Address,
+                    Bio = request.Profile?.Bio,
+                    GithubUrl = request.Profile?.GitHubUrl,
+                    LinkedinUrl = request.Profile?.LinkedInUrl,
                     ResumeUrl = resumeObjectKey,
                     ResumeParseStatus = ResumeParseStatusNotStarted,
                     CandidateEmbeddingStatus = ResumeEmbeddingStatusNotStarted
@@ -461,7 +460,7 @@ public class CandidateService : ICandidateService
     /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<CandidateProfileResponseDto>> GetProfileAsync(Guid userId)
     {
-        CandidateProfile profile = await GetProfileEntityAsync(userId);
+        CandidateProfile profile = await GetOrCreateProfileEntityAsync(userId);
         return ApiResponse<CandidateProfileResponseDto>.Ok(await MapProfileAsync(profile));
     }
 
@@ -476,7 +475,7 @@ public class CandidateService : ICandidateService
     {
         for (int attempt = 0; attempt < 2; attempt += 1)
         {
-            CandidateProfile profile = await GetProfileEntityForUpdateAsync(userId);
+            CandidateProfile profile = await GetOrCreateProfileEntityForUpdateAsync(userId);
             await ApplyProfileUpdateAsync(profile, request);
 
             await _unitOfWork.BeginTransactionAsync();
@@ -523,7 +522,7 @@ public class CandidateService : ICandidateService
         }
 
         await using MemoryStream bufferedResume = await CopyToMemoryAsync(resumeStream);
-        CandidateProfile profile = await GetProfileEntityAsync(userId);
+        CandidateProfile profile = await GetOrCreateProfileEntityAsync(userId);
         await ApplyProfileUpdateAsync(profile, request);
 
         DateTime uploadedAt = DbDateTime.Now;
@@ -629,7 +628,7 @@ public class CandidateService : ICandidateService
     /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<CandidateProfileResponseDto>> UpdateSkillsAsync(Guid userId, UpdateCandidateSkillsRequest request)
     {
-        CandidateProfile profile = await GetProfileEntityAsync(userId);
+        CandidateProfile profile = await GetOrCreateProfileEntityAsync(userId);
         List<CandidateSkillUpsertRequest> requestedSkills = request.Skills.Count > 0
             ? request.Skills
             : request.SkillIds.Select(skillId => new CandidateSkillUpsertRequest
@@ -655,7 +654,7 @@ public class CandidateService : ICandidateService
     /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<CandidateProfileResponseDto>> CreateExperienceAsync(Guid userId, UpsertCandidateExperienceRequest request)
     {
-        CandidateProfile profile = await GetProfileEntityAsync(userId);
+        CandidateProfile profile = await GetOrCreateProfileEntityAsync(userId);
         List<CandidateExperienceDocument> experiences = LoadExperiences(profile);
         experiences.Add(MapExperienceRequest(request, null));
         profile.ExperienceEntriesJson = SerializeDocuments(experiences);
@@ -993,6 +992,58 @@ public class CandidateService : ICandidateService
         }
 
         return profile;
+    }
+
+    private async Task<CandidateProfile> GetOrCreateProfileEntityAsync(Guid userId)
+    {
+        CandidateProfile? profile = await _candidateRepository.GetByUserIdAsync(userId);
+        if (profile != null)
+        {
+            return profile;
+        }
+
+        await EnsureCandidateProfileExistsAsync(userId);
+        return await GetProfileEntityAsync(userId);
+    }
+
+    private async Task<CandidateProfile> GetOrCreateProfileEntityForUpdateAsync(Guid userId)
+    {
+        CandidateProfile? profile = await _candidateRepository.GetByUserIdForUpdateAsync(userId);
+        if (profile != null)
+        {
+            return profile;
+        }
+
+        await EnsureCandidateProfileExistsAsync(userId);
+        return await GetProfileEntityForUpdateAsync(userId);
+    }
+
+    private async Task EnsureCandidateProfileExistsAsync(Guid userId)
+    {
+        CandidateProfile? existingProfile = await _candidateRepository.GetByUserIdForUpdateAsync(userId);
+        if (existingProfile != null)
+        {
+            return;
+        }
+
+        User? user = await _userRepository.GetTrackedByIdAsync(userId);
+        if (user == null)
+        {
+            throw new NotFoundException("Không tìm thấy người dùng.");
+        }
+
+        CandidateProfile profile = new()
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            User = user,
+            ResumeParseStatus = ResumeParseStatusNotStarted,
+            CandidateEmbeddingStatus = ResumeEmbeddingStatusNotStarted
+        };
+
+        user.CandidateProfile = profile;
+        await _candidateRepository.SaveAsync(profile);
+        await _unitOfWork.SaveChangesAsync();
     }
 
     /// <summary>

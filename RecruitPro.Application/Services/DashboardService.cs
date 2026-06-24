@@ -1,6 +1,7 @@
 using RecruitPro.Application.DTOs.Response;
 using RecruitPro.Application.Common;
 using RecruitPro.Application.Exceptions;
+using RecruitPro.Application.Interfaces;
 using RecruitPro.Application.Interfaces.IRepositories;
 using RecruitPro.Application.Interfaces.IServices;
 using RecruitPro.Domain.Entities;
@@ -10,12 +11,16 @@ namespace RecruitPro.Application.Services;
 
 public class DashboardService : IDashboardService
 {
+    private const string ResumeParseStatusNotStarted = "NotStarted";
+    private const string ResumeEmbeddingStatusNotStarted = "NotStarted";
     private readonly ICandidateProfileRepository _candidateProfileRepository;
+    private readonly IUserRepository _userRepository;
     private readonly IApplicationRepository _applicationRepository;
     private readonly IJobRepository _jobRepository;
     private readonly IInterviewRepository _interviewRepository;
     private readonly INotificationRepository _notificationRepository;
     private readonly ISemanticDiscoveryService _semanticDiscoveryService;
+    private readonly IUnitOfWork _unitOfWork;
 
     /// <summary>
     /// Initializes a new instance of the DashboardService class.
@@ -27,18 +32,22 @@ public class DashboardService : IDashboardService
     /// <param name="notificationRepository">The <paramref name="notificationRepository"/> value.</param>
     public DashboardService(
         ICandidateProfileRepository candidateProfileRepository,
+        IUserRepository userRepository,
         IApplicationRepository applicationRepository,
         IJobRepository jobRepository,
         IInterviewRepository interviewRepository,
         INotificationRepository notificationRepository,
-        ISemanticDiscoveryService semanticDiscoveryService)
+        ISemanticDiscoveryService semanticDiscoveryService,
+        IUnitOfWork unitOfWork)
     {
         _candidateProfileRepository = candidateProfileRepository;
+        _userRepository = userRepository;
         _applicationRepository = applicationRepository;
         _jobRepository = jobRepository;
         _interviewRepository = interviewRepository;
         _notificationRepository = notificationRepository;
         _semanticDiscoveryService = semanticDiscoveryService;
+        _unitOfWork = unitOfWork;
     }
 
     /// <summary>
@@ -48,7 +57,7 @@ public class DashboardService : IDashboardService
     /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<CandidateDashboardDto>> GetCandidateDashboardAsync(Guid userId)
     {
-        CandidateProfile profile = await GetProfileEntityAsync(userId);
+        CandidateProfile profile = await GetOrCreateProfileEntityAsync(userId);
         IReadOnlyList<Domain.Entities.Application> allCandidateApplications = await _applicationRepository.GetByUserIdAsync(profile.UserId);
         ApiResponse<IReadOnlyList<RecommendedJobDto>> semanticRecommendations = await _semanticDiscoveryService.GetRecommendedJobsForCandidateAsync(userId, 5);
         IReadOnlyList<Job> recommended = semanticRecommendations.Data?.Count > 0
@@ -241,6 +250,36 @@ public class DashboardService : IDashboardService
         }
 
         return profile;
+    }
+
+    private async Task<CandidateProfile> GetOrCreateProfileEntityAsync(Guid userId)
+    {
+        CandidateProfile? profile = await _candidateProfileRepository.GetByUserIdAsync(userId);
+        if (profile != null)
+        {
+            return profile;
+        }
+
+        User? user = await _userRepository.GetTrackedByIdAsync(userId);
+        if (user == null)
+        {
+            throw new NotFoundException("Không tìm thấy người dùng.");
+        }
+
+        CandidateProfile createdProfile = new()
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            User = user,
+            ResumeParseStatus = ResumeParseStatusNotStarted,
+            CandidateEmbeddingStatus = ResumeEmbeddingStatusNotStarted
+        };
+
+        user.CandidateProfile = createdProfile;
+        await _candidateProfileRepository.SaveAsync(createdProfile);
+        await _unitOfWork.SaveChangesAsync();
+
+        return createdProfile;
     }
 
     /// <summary>

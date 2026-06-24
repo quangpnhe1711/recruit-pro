@@ -14,6 +14,7 @@ namespace RecruitPro.Application.Interfaces.IRepositories
         Task<User?> GetByEmailOrUsernameAsync(string identifier);
         Task<User?> GetTrackedByEmailAsync(string email);
         Task<User?> GetTrackedByEmailOrUsernameAsync(string identifier);
+        Task<User?> GetTrackedByIdAsync(Guid id);
         Task<IReadOnlySet<string>> GetExistingEmailsAsync(IEnumerable<string> emails);
         Task<IReadOnlySet<string>> GetExistingUsernamesAsync(IEnumerable<string> usernames);
         Task<bool> ExistsByEmailAsync(string email, Guid? excludedUserId = null);

@@ -19,8 +19,11 @@ namespace RecruitPro.Application.Services;
 public class ApplicationService : IApplicationService
 {
     private const string ScoreStatusPendingSemantic = "PendingSemantic";
+    private const string ResumeParseStatusNotStarted = "NotStarted";
+    private const string ResumeEmbeddingStatusNotStarted = "NotStarted";
     private readonly IApplicationRepository _applicationRepository;
     private readonly ICandidateProfileRepository _candidateProfileRepository;
+    private readonly IUserRepository _userRepository;
     private readonly IJobRepository _jobRepository;
     private readonly IOfferRepository _offerRepository;
     private readonly IUnitOfWork _unitOfWork;
@@ -42,6 +45,7 @@ public class ApplicationService : IApplicationService
     public ApplicationService(
         IApplicationRepository applicationRepository,
         ICandidateProfileRepository candidateProfileRepository,
+        IUserRepository userRepository,
         IJobRepository jobRepository,
         IOfferRepository offerRepository,
         IUnitOfWork unitOfWork,
@@ -52,6 +56,7 @@ public class ApplicationService : IApplicationService
     {
         _applicationRepository = applicationRepository;
         _candidateProfileRepository = candidateProfileRepository;
+        _userRepository = userRepository;
         _jobRepository = jobRepository;
         _offerRepository = offerRepository;
         _unitOfWork = unitOfWork;
@@ -70,7 +75,7 @@ public class ApplicationService : IApplicationService
     public async Task<ApiResponse<ApplyJobScreenDto>> GetApplyScreenAsync(Guid userId, string jobId)
     {
         Job job = await GetJobAsync(jobId);
-        CandidateProfile profile = await GetProfileEntityAsync(userId);
+        CandidateProfile profile = await GetOrCreateProfileEntityAsync(userId);
         Domain.Entities.Application? existingApplication = await GetExistingApplicationAsync(userId, job.Id);
         ApplyJobEligibilityDto eligibility = BuildApplyEligibility(job, profile, existingApplication);
 
@@ -129,7 +134,7 @@ public class ApplicationService : IApplicationService
     public async Task<ApiResponse<ApplyJobResponseDto>> ApplyAsync(Guid userId, string jobId, ApplyJobRequest request)
     {
         Job job = await GetJobAsync(jobId);
-        CandidateProfile profile = await GetProfileEntityAsync(userId);
+        CandidateProfile profile = await GetOrCreateProfileEntityAsync(userId);
         Domain.Entities.Application? existingApplication = await GetExistingApplicationAsync(userId, job.Id);
         ApplyJobEligibilityDto eligibility = BuildApplyEligibility(job, profile, existingApplication);
         if (!eligibility.CanApply)
@@ -235,7 +240,7 @@ public class ApplicationService : IApplicationService
     /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<CandidateApplicationsResponseDto>> GetCandidateApplicationsAsync(Guid userId, int page, int pageSize, string? status, string? keyword)
     {
-        CandidateProfile profile = await GetProfileEntityAsync(userId);
+        CandidateProfile profile = await GetOrCreateProfileEntityAsync(userId);
         IEnumerable<Domain.Entities.Application> query = await _applicationRepository.GetByUserIdAsync(profile.UserId);
 
         if (!string.IsNullOrWhiteSpace(status))
@@ -691,6 +696,36 @@ public class ApplicationService : IApplicationService
         return profile;
     }
 
+    private async Task<CandidateProfile> GetOrCreateProfileEntityAsync(Guid userId)
+    {
+        CandidateProfile? profile = await _candidateProfileRepository.GetByUserIdAsync(userId);
+        if (profile != null)
+        {
+            return profile;
+        }
+
+        User? user = await _userRepository.GetTrackedByIdAsync(userId);
+        if (user == null)
+        {
+            throw new NotFoundException("Không tìm thấy người dùng.");
+        }
+
+        CandidateProfile createdProfile = new()
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            User = user,
+            ResumeParseStatus = ResumeParseStatusNotStarted,
+            CandidateEmbeddingStatus = ResumeEmbeddingStatusNotStarted
+        };
+
+        user.CandidateProfile = createdProfile;
+        await _candidateProfileRepository.SaveAsync(createdProfile);
+        await _unitOfWork.SaveChangesAsync();
+
+        return createdProfile;
+    }
+
     /// <summary>
     /// Retrieves tracked application for candidate.
     /// </summary>
@@ -700,7 +735,7 @@ public class ApplicationService : IApplicationService
     /// <exception cref="NotFoundException">Thrown when the operation fails validation or encounters an invalid state.</exception>
     private async Task<Domain.Entities.Application> GetTrackedApplicationForCandidateAsync(Guid userId, string applicationId)
     {
-        CandidateProfile profile = await GetProfileEntityAsync(userId);
+        CandidateProfile profile = await GetOrCreateProfileEntityAsync(userId);
         if (!Guid.TryParse(applicationId, out Guid applicationGuid))
         {
             throw new NotFoundException("Không tìm thấy hồ sơ ứng tuyển.");
