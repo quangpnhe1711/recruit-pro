@@ -10,5 +10,6 @@ namespace RecruitPro.Domain.Enums
         Hired,
         Rejected,
         OfferDeclined,
+        Withdrawn,
     }
 }

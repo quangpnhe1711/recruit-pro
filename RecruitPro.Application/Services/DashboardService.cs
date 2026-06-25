@@ -173,7 +173,8 @@ public class DashboardService : IDashboardService
             .Where(pair =>
                 pair.Key != ApplicationStatus.Hired &&
                 pair.Key != ApplicationStatus.Rejected &&
-                pair.Key != ApplicationStatus.OfferDeclined)
+                pair.Key != ApplicationStatus.OfferDeclined &&
+                pair.Key != ApplicationStatus.Withdrawn)
             .Sum(pair => pair.Value);
 
         int offeredCount = statusCounts.GetValueOrDefault(ApplicationStatus.Offer);

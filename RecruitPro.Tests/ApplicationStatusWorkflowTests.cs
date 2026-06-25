@@ -28,6 +28,7 @@ public sealed class ApplicationStatusWorkflowTests
     [InlineData(ApplicationStatus.Hired, true)]
     [InlineData(ApplicationStatus.Rejected, true)]
     [InlineData(ApplicationStatus.OfferDeclined, true)]
+    [InlineData(ApplicationStatus.Withdrawn, true)]
     [InlineData(ApplicationStatus.Interview, false)]
     public void IsClosed_DetectsTerminalStates(ApplicationStatus status, bool expected)
     {
@@ -40,6 +41,8 @@ public sealed class ApplicationStatusWorkflowTests
     [InlineData(ApplicationStatus.ManagerReview, true)]
     [InlineData(ApplicationStatus.Interview, true)]
     [InlineData(ApplicationStatus.Offer, false)]
+    [InlineData(ApplicationStatus.Withdrawn, false)]
+    [InlineData(ApplicationStatus.Rejected, false)]
     public void CanCandidateWithdraw_MatchesPolicy(ApplicationStatus status, bool expected)
     {
         ApplicationStatusWorkflow.CanCandidateWithdraw(status).Should().Be(expected);

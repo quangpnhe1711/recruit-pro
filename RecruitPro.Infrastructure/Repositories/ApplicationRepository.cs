@@ -168,7 +168,8 @@ public class ApplicationRepository : IApplicationRepository
             .Where(application =>
                 application.Status != ApplicationStatus.Hired &&
                 application.Status != ApplicationStatus.Rejected &&
-                application.Status != ApplicationStatus.OfferDeclined)
+                application.Status != ApplicationStatus.OfferDeclined &&
+                application.Status != ApplicationStatus.Withdrawn)
             .Select(application => application.UserId)
             .Distinct()
             .CountAsync();
@@ -238,7 +239,8 @@ public class ApplicationRepository : IApplicationRepository
                 ActiveApplications = group.Count(application =>
                     application.Status != ApplicationStatus.Hired &&
                     application.Status != ApplicationStatus.Rejected &&
-                    application.Status != ApplicationStatus.OfferDeclined),
+                    application.Status != ApplicationStatus.OfferDeclined &&
+                    application.Status != ApplicationStatus.Withdrawn),
                 OfferedCandidates = group.Count(application => application.Status == ApplicationStatus.Offer),
                 AcceptedCandidates = group.Count(application => application.Status == ApplicationStatus.Hired)
             })

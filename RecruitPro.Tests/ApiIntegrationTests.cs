@@ -56,7 +56,7 @@ public sealed class ApiIntegrationTests : IClassFixture<PostgresTestFixture>, IA
 
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
         json.RootElement.GetProperty("success").GetBoolean().Should().BeFalse();
-        json.RootElement.GetProperty("message").GetString().Should().Be("Invalid email or password.");
+        json.RootElement.GetProperty("message").GetString().Should().Be("Username hoặc mật khẩu không đúng.");
     }
 
     [Fact]
@@ -84,7 +84,7 @@ public sealed class ApiIntegrationTests : IClassFixture<PostgresTestFixture>, IA
         HttpResponseMessage forbidden = await _client.GetAsync("/api/hr/jobs");
         var forbiddenJson = await ApiResponseAssertions.AssertNo500AndEnvelopeAsync(forbidden);
         forbidden.StatusCode.Should().Be(HttpStatusCode.Forbidden);
-        forbiddenJson.RootElement.GetProperty("message").GetString().Should().Be("Forbidden");
+        forbiddenJson.RootElement.GetProperty("message").GetString().Should().Be("Bạn không có quyền");
     }
 
     [Fact]
@@ -108,7 +108,7 @@ public sealed class ApiIntegrationTests : IClassFixture<PostgresTestFixture>, IA
         HttpResponseMessage unauthorized = await _client.GetAsync("/api/candidate/profile");
         var unauthorizedJson = await ApiResponseAssertions.AssertNo500AndEnvelopeAsync(unauthorized);
         unauthorized.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
-        unauthorizedJson.RootElement.GetProperty("message").GetString().Should().Be("Unauthorized");
+        unauthorizedJson.RootElement.GetProperty("message").GetString().Should().Be("Không có quyền truy cập");
 
         string candidateToken = _factory.Fixture.CreateJwt(TestDataSeeder.CandidateUserId.ToString(), "Candidate");
         PostgresTestFixture.SetBearerToken(_client, candidateToken);

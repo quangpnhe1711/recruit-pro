@@ -44,6 +44,8 @@ public sealed class ConvertersAndInfrastructureUnitTests
     [InlineData("offer_sent", ApplicationStatus.Offer)]
     [InlineData("accepted", ApplicationStatus.Hired)]
     [InlineData("declined", ApplicationStatus.OfferDeclined)]
+    [InlineData("withdrawn", ApplicationStatus.Withdrawn)]
+    [InlineData("Withdrawn", ApplicationStatus.Withdrawn)]
     public void ApplicationStatusValueConverter_MapsLegacyStrings(string source, ApplicationStatus expected)
     {
         var converter = new ApplicationStatusValueConverter();

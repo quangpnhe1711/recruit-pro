@@ -218,6 +218,7 @@ public class NotificationEventService : INotificationEventService
             ApplicationStatus.Hired => "Đã nhận việc",
             ApplicationStatus.Rejected => "Từ chối",
             ApplicationStatus.OfferDeclined => "Đã từ chối offer",
+            ApplicationStatus.Withdrawn => "Đã rút đơn",
             _ => status.ToString()
         };
     }

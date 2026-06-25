@@ -139,10 +139,17 @@ public class ApplicationService : IApplicationService
         ApplyJobEligibilityDto eligibility = BuildApplyEligibility(job, profile, existingApplication);
         if (!eligibility.CanApply)
         {
-            string message = eligibility.AlreadyApplied
-                ? "Candidate already applied for this job."
-                : eligibility.Blockers.FirstOrDefault() ?? "This job cannot be applied for right now.";
-            return ApiResponse<ApplyJobResponseDto>.BadRequest(message);
+            // Only an ACTIVE (non-closed) application means "already applied". A withdrawn/rejected
+            // application is closed and must never produce the "already applied" message — that was
+            // the bug where withdraw-then-reapply reported a duplicate. Map the active duplicate to
+            // 409 Conflict and every other unmet business precondition to 422 with its real reason.
+            if (HasActiveApplication(existingApplication))
+            {
+                return ApiResponse<ApplyJobResponseDto>.Conflict("Candidate already applied for this job.");
+            }
+
+            string message = eligibility.Blockers.FirstOrDefault() ?? "This job cannot be applied for right now.";
+            return ApiResponse<ApplyJobResponseDto>.UnprocessableEntity(message);
         }
 
         decimal ruleScore = CalculateRuleScore(profile, job);
@@ -167,20 +174,45 @@ public class ApplicationService : IApplicationService
         await _unitOfWork.SaveChangesAsync();
         await _unitOfWork.CommitAsync();
 
-        // The job (and its JobSkills/Skills) was loaded AsNoTracking, so it must NOT be
-        // linked onto the now-tracked application: the notification below calls
-        // SaveChanges again, and EF would re-traverse that detached graph and try to
-        // INSERT already-existing skills. Pass a throwaway, untracked entity that simply
-        // carries the navigation values the notification needs to read.
-        await _notificationEventService.PublishNewApplicationReceivedAsync(new Domain.Entities.Application
+        // The application is now durably committed: the apply succeeded. Everything below is a
+        // best-effort side effect. A failure in notification dispatch or semantic-scoring enqueue
+        // must NOT turn a successful apply into an HTTP 500 — that was the "normal apply randomly
+        // returns 500" bug. Each side effect is isolated and logged, never propagated.
+        try
         {
-            Id = application.Id,
-            UserId = application.UserId,
-            JobId = application.JobId,
-            User = profile.User,
-            Job = job
-        });
-        await _semanticProcessingQueue.EnqueueAsync(application.Id);
+            // The job (and its JobSkills/Skills) was loaded AsNoTracking, so it must NOT be
+            // linked onto the now-tracked application: the notification below calls
+            // SaveChanges again, and EF would re-traverse that detached graph and try to
+            // INSERT already-existing skills. Pass a throwaway, untracked entity that simply
+            // carries the navigation values the notification needs to read.
+            await _notificationEventService.PublishNewApplicationReceivedAsync(new Domain.Entities.Application
+            {
+                Id = application.Id,
+                UserId = application.UserId,
+                JobId = application.JobId,
+                User = profile.User,
+                Job = job
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "Application {ApplicationId} was saved but the new-application notification failed to publish.",
+                application.Id);
+        }
+
+        try
+        {
+            await _semanticProcessingQueue.EnqueueAsync(application.Id);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "Application {ApplicationId} was saved but enqueueing semantic scoring failed.",
+                application.Id);
+        }
 
         return ApiResponse<ApplyJobResponseDto>.Created(new ApplyJobResponseDto
         {
@@ -304,10 +336,13 @@ public class ApplicationService : IApplicationService
         Domain.Entities.Application application = await GetTrackedApplicationForCandidateAsync(userId, applicationId);
         if (!ApplicationStatusWorkflow.CanCandidateWithdraw(application.Status))
         {
-            return ApiResponse<string>.BadRequest("This application can no longer be withdrawn.");
+            return ApiResponse<string>.UnprocessableEntity("This application can no longer be withdrawn.");
         }
 
-        application.Status = ApplicationStatus.Rejected;
+        // Withdrawal is candidate-initiated and non-punitive: it must be modelled as its own
+        // closed state (Withdrawn), never as Rejected. Conflating it with Rejected mislabels the
+        // candidate's history ("Không phù hợp") and is the reason re-apply used to be blocked.
+        application.Status = ApplicationStatus.Withdrawn;
 
         await _unitOfWork.BeginTransactionAsync();
         await _applicationRepository.UpdateAsync(application);
@@ -647,7 +682,8 @@ public class ApplicationService : IApplicationService
             blockers.Add("Please upload your latest resume before applying.");
         }
 
-        if (existingApplication != null && !ApplicationStatusWorkflow.IsClosed(existingApplication.Status))
+        bool hasActiveApplication = HasActiveApplication(existingApplication);
+        if (hasActiveApplication)
         {
             blockers.Add("You have already applied for this job.");
         }
@@ -655,16 +691,29 @@ public class ApplicationService : IApplicationService
         return new ApplyJobEligibilityDto
         {
             CanApply = blockers.Count == 0,
-            AlreadyApplied = existingApplication != null,
+            // "Already applied" must reflect a live application only. A withdrawn/rejected/closed
+            // record is history, not an active application, and must not block or mislabel re-apply.
+            AlreadyApplied = hasActiveApplication,
             ExistingApplicationId = existingApplication?.Id.ToString(),
             ExistingApplicationStatus = existingApplication?.Status.ToString(),
             Blockers = blockers,
             GuidanceMessage = blockers.Count == 0
                 ? "Your application will be submitted to the recruitment team for review."
-                : existingApplication != null && !ApplicationStatusWorkflow.IsClosed(existingApplication.Status)
+                : hasActiveApplication
                     ? "Track the latest status of this application from My Applications."
                     : "Complete the missing requirements before submitting your application."
         };
+    }
+
+    /// <summary>
+    /// Determines whether the candidate currently holds an active (non-closed) application for the job.
+    /// </summary>
+    /// <param name="existingApplication">The most recent existing application, if any.</param>
+    /// <returns><c>true</c> when an active application exists; otherwise <c>false</c>.</returns>
+    private static bool HasActiveApplication(Domain.Entities.Application? existingApplication)
+    {
+        return existingApplication != null
+            && !ApplicationStatusWorkflow.IsClosed(existingApplication.Status);
     }
 
     /// <summary>
@@ -956,6 +1005,7 @@ public class ApplicationService : IApplicationService
                 ApplicationStatus.Hired => "Ứng viên đã chấp nhận offer.",
                 ApplicationStatus.OfferDeclined => "Ứng viên đã từ chối offer.",
                 ApplicationStatus.Rejected => "Hồ sơ đã bị từ chối.",
+                ApplicationStatus.Withdrawn => "Ứng viên đã rút đơn ứng tuyển.",
                 _ => orderedInterviews.Any() ? "Theo dõi lịch phỏng vấn." : "Tiếp tục xử lý hồ sơ."
             },
             Candidate = new ApplicationReviewCandidateDto
@@ -1259,6 +1309,7 @@ public class ApplicationService : IApplicationService
             "hired" or "accepted" => ApplicationStatus.Hired,
             "rejected" => ApplicationStatus.Rejected,
             "offerdeclined" or "offer-declined" or "declined" => ApplicationStatus.OfferDeclined,
+            "withdrawn" or "withdraw" => ApplicationStatus.Withdrawn,
             _ => null
         };
     }
@@ -1329,6 +1380,7 @@ public class ApplicationService : IApplicationService
             ApplicationStatus.Hired => "Hired",
             ApplicationStatus.Rejected => "Rejected",
             ApplicationStatus.OfferDeclined => "Offer Declined",
+            ApplicationStatus.Withdrawn => "Withdrawn",
             _ => application.Status.ToString()
         };
     }
@@ -1350,6 +1402,7 @@ public class ApplicationService : IApplicationService
             ApplicationStatus.Hired => "Đã tuyển dụng",
             ApplicationStatus.Rejected => "Không phù hợp",
             ApplicationStatus.OfferDeclined => "Đã từ chối đề nghị",
+            ApplicationStatus.Withdrawn => "Đã rút đơn",
             _ => application.Status.ToString()
         };
     }
@@ -1387,6 +1440,9 @@ public class ApplicationService : IApplicationService
             ApplicationStatus.OfferDeclined =>
                 "Bạn đã từ chối đề nghị tuyển dụng cho vị trí này.",
 
+            ApplicationStatus.Withdrawn =>
+                "Bạn đã rút đơn ứng tuyển. Bạn có thể ứng tuyển lại vị trí này bất cứ lúc nào.",
+
             _ =>
                 "Trạng thái hồ sơ đang được cập nhật."
         };
@@ -1409,6 +1465,7 @@ public class ApplicationService : IApplicationService
             ApplicationStatus.Hired => "Candidate accepted the offer.",
             ApplicationStatus.OfferDeclined => "Candidate declined the offer.",
             ApplicationStatus.Rejected => "Application closed.",
+            ApplicationStatus.Withdrawn => "Candidate withdrew the application.",
             _ => "Continue workflow."
         };
     }

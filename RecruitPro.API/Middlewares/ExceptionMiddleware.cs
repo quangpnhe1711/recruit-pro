@@ -53,7 +53,10 @@ namespace RecruitPro.API.Middlewares
                 {
                     400 => ApiResponse<object>.BadRequest(customException.Message),
                     401 => ApiResponse<object>.Unauthorized(customException.Message),
+                    403 => ApiResponse<object>.Forbidden(customException.Message),
                     404 => ApiResponse<object>.NotFound(customException.Message),
+                    409 => ApiResponse<object>.Conflict(customException.Message),
+                    422 => ApiResponse<object>.UnprocessableEntity(customException.Message),
                     _ => ApiResponse<object>.Error(customException.Message)
                 };
             }

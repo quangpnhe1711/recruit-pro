@@ -65,6 +65,16 @@ namespace RecruitPro.Application.DTOs.Response
             return new ApiResponse<T>(false, 403, message);
         }
 
+        public static ApiResponse<T> Conflict(string message, object? extra = null)
+        {
+            return new ApiResponse<T>(false, 409, message, default, null, extra);
+        }
+
+        public static ApiResponse<T> UnprocessableEntity(string message, object? extra = null)
+        {
+            return new ApiResponse<T>(false, 422, message, default, null, extra);
+        }
+
         public static ApiResponse<T> Error(string message = "Lỗi hệ thống", object? extra = null)
         {
             return new ApiResponse<T>(false, 500, message, default, null, extra);

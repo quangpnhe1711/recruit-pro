@@ -84,7 +84,7 @@ public sealed class ApplicationSemanticScoringServiceUnitTests
 public sealed class ApplicationServiceUnitTests
 {
     [Fact]
-    public async Task ApplyAsync_WhenCandidateAlreadyApplied_ReturnsBadRequest()
+    public async Task ApplyAsync_WhenCandidateAlreadyApplied_ReturnsConflict()
     {
         var jobRepository = new Mock<IJobRepository>();
         var candidateRepository = new Mock<ICandidateProfileRepository>();
@@ -137,7 +137,8 @@ public sealed class ApplicationServiceUnitTests
         var response = await service.ApplyAsync(userId, jobId.ToString(), new ApplyJobRequest());
 
         response.Success.Should().BeFalse();
-        response.StatusCode.Should().Be(400);
+        // Duplicate of an ACTIVE application is a conflict (409), not a generic bad request.
+        response.StatusCode.Should().Be(409);
         response.Message.Should().Be("Candidate already applied for this job.");
     }
 }

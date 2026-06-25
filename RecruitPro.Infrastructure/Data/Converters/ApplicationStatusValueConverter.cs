@@ -26,6 +26,7 @@ public sealed class ApplicationStatusValueConverter : ValueConverter<Application
             "hired" or "accepted" => ApplicationStatus.Hired,
             "rejected" => ApplicationStatus.Rejected,
             "offerdeclined" or "offer_declined" or "offer-declined" or "declined" => ApplicationStatus.OfferDeclined,
+            "withdrawn" or "withdraw" or "rút đơn" => ApplicationStatus.Withdrawn,
             _ when Enum.TryParse<ApplicationStatus>(value, true, out ApplicationStatus parsed) => parsed,
             _ => throw new InvalidOperationException(
                 $"Cannot convert string value '{value}' from the database to any value in the mapped 'ApplicationStatus' enum.")

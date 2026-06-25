@@ -43,7 +43,7 @@ public sealed class ServiceIntegrationTests : IClassFixture<PostgresTestFixture>
         Func<Task> act = () => service.InternalLoginAsync("candidate.user", "Pass@123");
 
         await act.Should().ThrowAsync<UnauthorizeException>()
-            .WithMessage("User does not have permission to access this portal.");
+            .WithMessage("Tài khoản không có quyền truy cập cổng này.");
     }
 
     [Fact]
@@ -155,6 +155,41 @@ public sealed class ServiceIntegrationTests : IClassFixture<PostgresTestFixture>
         response.Data.Stats.TotalApplicants.Should().BeGreaterThanOrEqualTo(1);
         response.Data.RecentApplications.Should().NotBeEmpty();
         response.Data.PendingApprovals.Should().NotBeEmpty();
+    }
+
+    // TEST-E2E-APPLICATION-001: end-to-end proof against real PostgreSQL that withdraw → re-apply no
+    // longer conflicts and that apply never surfaces HTTP 500 (covers BUG-APPLICATION-001/002).
+    [Fact]
+    public async Task ApplicationService_WithdrawThenReapply_SucceedsWithoutConflictOr500()
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        IApplicationService service = scope.ServiceProvider.GetRequiredService<IApplicationService>();
+
+        // The seeded candidate has an active (ManagerReview) application on the approved job.
+        var withdraw = await service.WithdrawApplicationAsync(
+            TestDataSeeder.CandidateUserId,
+            TestDataSeeder.ApplicationId.ToString());
+
+        withdraw.Success.Should().BeTrue();
+        withdraw.StatusCode.Should().Be(200);
+
+        // Re-apply must now be allowed (the withdrawn application is closed) and must not 500.
+        var reapply = await service.ApplyAsync(
+            TestDataSeeder.CandidateUserId,
+            TestDataSeeder.ApprovedJobId.ToString(),
+            new ApplyJobRequest { CoverLetter = "Re-applying after withdrawal." });
+
+        reapply.Success.Should().BeTrue();
+        reapply.StatusCode.Should().Be(201);
+
+        // A second apply against the now-active application is a clean 409 conflict, never 500.
+        var duplicate = await service.ApplyAsync(
+            TestDataSeeder.CandidateUserId,
+            TestDataSeeder.ApprovedJobId.ToString(),
+            new ApplyJobRequest());
+
+        duplicate.StatusCode.Should().Be(409);
+        duplicate.Message.Should().Be("Candidate already applied for this job.");
     }
 
     [Fact]

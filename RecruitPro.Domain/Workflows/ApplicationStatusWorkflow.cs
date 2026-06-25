@@ -15,6 +15,7 @@ public static class ApplicationStatusWorkflow
             [ApplicationStatus.Hired] = [],
             [ApplicationStatus.Rejected] = [],
             [ApplicationStatus.OfferDeclined] = [],
+            [ApplicationStatus.Withdrawn] = [],
         };
 
     public static bool CanTransition(ApplicationStatus current, ApplicationStatus target)
@@ -34,7 +35,8 @@ public static class ApplicationStatusWorkflow
     {
         return status is ApplicationStatus.Hired
             or ApplicationStatus.Rejected
-            or ApplicationStatus.OfferDeclined;
+            or ApplicationStatus.OfferDeclined
+            or ApplicationStatus.Withdrawn;
     }
 
     public static bool CanCandidateWithdraw(ApplicationStatus status)

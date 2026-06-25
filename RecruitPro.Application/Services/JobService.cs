@@ -365,7 +365,8 @@ public class JobService : IJobService
         int activePipelineCount = job.Applications.Count(application =>
             application.Status != ApplicationStatus.Rejected &&
             application.Status != ApplicationStatus.Hired &&
-            application.Status != ApplicationStatus.OfferDeclined);
+            application.Status != ApplicationStatus.OfferDeclined &&
+            application.Status != ApplicationStatus.Withdrawn);
 
         return ApiResponse<ManagerJobApprovalDetailDto>.Ok(new ManagerJobApprovalDetailDto
         {
