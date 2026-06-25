@@ -83,6 +83,7 @@ public class SharedProfile : Profile
         CreateMap<Interview, InterviewListItemDto>().ConvertUsing(src => new InterviewListItemDto
         {
             Id = src.Id.ToString(),
+            ApplicationId = src.ApplicationId.ToString(),
             CandidateName = src.Application.User.FullName,
             CandidateEmail = src.Application.User.Email,
             JobTitle = src.Application.Job.Title,

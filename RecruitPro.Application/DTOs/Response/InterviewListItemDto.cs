@@ -3,6 +3,7 @@ namespace RecruitPro.Application.DTOs.Response;
 public class InterviewListItemDto
 {
     public string Id { get; set; } = string.Empty;
+    public string ApplicationId { get; set; } = string.Empty;
     public string CandidateName { get; set; } = string.Empty;
     public string CandidateEmail { get; set; } = string.Empty;
     public string JobTitle { get; set; } = string.Empty;

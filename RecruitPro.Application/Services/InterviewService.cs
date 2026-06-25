@@ -93,27 +93,20 @@ public class InterviewService : IInterviewService
     /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<ScheduleDataResponseDto>> GetScheduleDataAsync(string? applicationId = null)
     {
-        Domain.Entities.Application? application;
-        if (!string.IsNullOrWhiteSpace(applicationId))
+        if (string.IsNullOrWhiteSpace(applicationId))
         {
-            if (!Guid.TryParse(applicationId, out Guid applicationGuid))
-            {
-                return ApiResponse<ScheduleDataResponseDto>.BadRequest("Mã hồ sơ ứng tuyển không hợp lệ.");
-            }
-
-            application = await _applicationRepository.GetByIdAsync(applicationGuid);
-            if (application == null)
-            {
-                return ApiResponse<ScheduleDataResponseDto>.NotFound("Không tìm thấy hồ sơ ứng tuyển.");
-            }
+            return ApiResponse<ScheduleDataResponseDto>.BadRequest("Vui lòng chọn hồ sơ ứng tuyển trước khi lên lịch.");
         }
-        else
+
+        if (!Guid.TryParse(applicationId, out Guid applicationGuid))
         {
-            application = (await _applicationRepository.GetRecentAsync(1)).FirstOrDefault();
-            if (application == null)
-            {
-                return ApiResponse<ScheduleDataResponseDto>.NotFound("Chưa có hồ sơ để lên lịch.");
-            }
+            return ApiResponse<ScheduleDataResponseDto>.BadRequest("Mã hồ sơ ứng tuyển không hợp lệ.");
+        }
+
+        Domain.Entities.Application? application = await _applicationRepository.GetByIdAsync(applicationGuid);
+        if (application == null)
+        {
+            return ApiResponse<ScheduleDataResponseDto>.NotFound("Không tìm thấy hồ sơ ứng tuyển.");
         }
 
         IReadOnlyList<User> interviewers = await _userRepository.GetUsersInRolesAsync("HR", "Manager");
