@@ -162,14 +162,24 @@ public class ApplicationService : IApplicationService
             ScoreStatus = ScoreStatusPendingSemantic,
             ScoredAt = DbDateTime.Now
         };
-        application.User = profile.User;
-        application.Job = job;
-
         await _unitOfWork.BeginTransactionAsync();
         await _applicationRepository.AddAsync(application);
         await _unitOfWork.SaveChangesAsync();
         await _unitOfWork.CommitAsync();
-        await _notificationEventService.PublishNewApplicationReceivedAsync(application);
+
+        // The job (and its JobSkills/Skills) was loaded AsNoTracking, so it must NOT be
+        // linked onto the now-tracked application: the notification below calls
+        // SaveChanges again, and EF would re-traverse that detached graph and try to
+        // INSERT already-existing skills. Pass a throwaway, untracked entity that simply
+        // carries the navigation values the notification needs to read.
+        await _notificationEventService.PublishNewApplicationReceivedAsync(new Domain.Entities.Application
+        {
+            Id = application.Id,
+            UserId = application.UserId,
+            JobId = application.JobId,
+            User = profile.User,
+            Job = job
+        });
         await _semanticProcessingQueue.EnqueueAsync(application.Id);
 
         return ApiResponse<ApplyJobResponseDto>.Created(new ApplyJobResponseDto

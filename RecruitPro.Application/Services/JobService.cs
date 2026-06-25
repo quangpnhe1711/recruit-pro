@@ -878,7 +878,6 @@ public class JobService : IJobService
                         {
                             JobId = Guid.Empty,
                             SkillId = matchedSkill.Id,
-                            Skill = matchedSkill,
                             IsRequired = !string.Equals(requirement.SkillType, "NiceToHave", StringComparison.OrdinalIgnoreCase),
                             MinYearsExperience = requirement.MinimumYearsOfExperience
                         };
@@ -910,7 +909,6 @@ public class JobService : IJobService
             {
                 JobId = Guid.Empty,
                 SkillId = skill.Id,
-                Skill = skill,
                 IsRequired = true
             })
             .ToList();
