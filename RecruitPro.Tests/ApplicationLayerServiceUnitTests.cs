@@ -692,6 +692,65 @@ public sealed class NotificationServiceUnitTests
 public sealed class NotificationEventServiceUnitTests
 {
     [Fact]
+    public async Task PublishNewApplicationReceivedAsync_FansOutToHrAndDeduplicatesRecipients()
+    {
+        Guid recruiterId = Guid.NewGuid();
+        Guid hrUserId = Guid.NewGuid();
+        var application = new Domain.Entities.Application
+        {
+            Id = Guid.NewGuid(),
+            UserId = Guid.NewGuid(),
+            User = new User { Id = Guid.NewGuid(), FullName = "Nguyen Van A" },
+            Job = new Job
+            {
+                Id = Guid.NewGuid(),
+                Title = "Backend Engineer",
+                CreatedBy = recruiterId
+            }
+        };
+
+        List<Notification> persistedNotifications = [];
+        var notificationRepository = new Mock<INotificationRepository>();
+        notificationRepository.Setup(value => value.AddRangeAsync(It.IsAny<IEnumerable<Notification>>()))
+            .Callback<IEnumerable<Notification>>(notifications => persistedNotifications.AddRange(notifications))
+            .Returns(Task.CompletedTask);
+
+        var userRepository = new Mock<IUserRepository>();
+        userRepository.Setup(value => value.GetUsersInRolesAsync("HR"))
+            .ReturnsAsync(
+            [
+                new User { Id = recruiterId, FullName = "Recruiter Owner" },
+                new User { Id = hrUserId, FullName = "HR Member" }
+            ]);
+        userRepository.Setup(value => value.GetByIdAsync(recruiterId))
+            .ReturnsAsync(new User { Id = recruiterId, FullName = "Recruiter Owner" });
+        userRepository.Setup(value => value.GetByIdAsync(hrUserId))
+            .ReturnsAsync(new User { Id = hrUserId, FullName = "HR Member" });
+
+        var realtimeSender = new Mock<INotificationRealtimeSender>();
+        var unitOfWork = new Mock<IUnitOfWork>();
+        var service = new NotificationEventService(
+            notificationRepository.Object,
+            userRepository.Object,
+            realtimeSender.Object,
+            unitOfWork.Object);
+
+        await service.PublishNewApplicationReceivedAsync(application);
+
+        persistedNotifications.Should().HaveCount(2);
+        persistedNotifications.Select(value => value.UserId)
+            .Should().BeEquivalentTo([recruiterId, hrUserId]);
+        persistedNotifications.Should().OnlyContain(value => value.EventCode == "new_application_received");
+        realtimeSender.Verify(value => value.SendToUserAsync(
+            It.IsAny<Guid>(),
+            It.Is<NotificationDto>(notification =>
+                notification.EventCode == "new_application_received" &&
+                notification.EntityId == application.Id &&
+                notification.Type == "APPLICATION"),
+            It.IsAny<CancellationToken>()), Times.Exactly(2));
+    }
+
+    [Fact]
     public async Task PublishApplicationStatusChangedAsync_WhenStatusUnchanged_DoesNotPersistOrSend()
     {
         var notificationRepository = new Mock<INotificationRepository>();

@@ -129,3 +129,47 @@ infrastructure faults before/at commit.
 
 **Tests:** `ApplicationStatusWorkflowTests.CanTransition_RespectsConfiguredWorkflow`. See
 [STATE-MACHINE.md](STATE-MACHINE.md).
+
+---
+
+## BR-APPLICATION-007 — Derived workflow state must come from dependencies
+
+**Description:** Application labels, actions, and blockers are derived from the application status
+and its dependent workflow context. They must not be interpreted as standalone strings.
+
+**Dependency inputs:**
+- Application status (`Applied`, `Screening`, `ManagerReview`, `Interview`, `Offer`, closed states).
+- Job state (`Approved`, deadline, whether the posting still accepts applications).
+- Candidate readiness (contact info and current resume).
+- Application history for the same candidate/job (active vs closed).
+- Related interview and offer records when the application reaches those stages.
+- Current actor (candidate, HR, manager) and ownership.
+
+**Derived outputs:**
+- `CanApply` and `AlreadyApplied`.
+- Candidate visible actions (`withdraw`, `acceptOffer`, `declineOffer`).
+- Reviewer allowed transitions.
+- Candidate-facing labels and next-step copy.
+- Notification recipients and event codes.
+
+**Allowed:**
+- A closed previous application allows a new `Applied` row only when the job/profile/resume
+  dependencies are still satisfied.
+- `acceptOffer` and `declineOffer` are visible only when both application status is `Offer` and the
+  offer workflow allows candidate response.
+- Interview UI/actions are tied to `Interview` stage and related interview data.
+
+**Forbidden:**
+- FE or BE logic that treats `"Rejected"`, `"Withdrawn"`, or `"Applied"` as enough context by itself.
+- Showing offer actions for an application that is not in `Offer`.
+- Blocking re-apply solely because any historical application row exists.
+- Advancing to interview/offer before the required previous workflow checkpoint has been reached.
+
+**Backend enforcement:** `ApplicationStatusWorkflow`, `ApplicationService.BuildApplyEligibility`,
+`BuildCandidateAvailableActions`, offer response validation, and interview scheduling validation.
+
+**Frontend enforcement:** Render badges/actions from API-provided status/action fields and apply
+context; do not duplicate the workflow with ad hoc status-string checks.
+
+**Tests:** Covered by workflow, apply eligibility, withdrawal/re-apply, and notification tests in
+[TEST-MATRIX.md](TEST-MATRIX.md). Add targeted tests when a new dependent workflow output is added.

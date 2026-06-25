@@ -10,6 +10,27 @@ States: `Applied`, `Screening`, `ManagerReview`, `Interview`, `Offer`, `Hired`, 
 
 Closed/terminal: `Hired`, `Rejected`, `OfferDeclined`, `Withdrawn` (`ApplicationStatusWorkflow.IsClosed`).
 
+### Dependency model
+
+The state machine is a dependency chain, not a set of independent labels. A later state must only be
+reachable when the earlier workflow checkpoint has produced the facts it needs.
+
+| Status | Required previous facts | Dependent workflows |
+|---|---|---|
+| `Applied` | Valid job + valid candidate profile/resume + no active duplicate | Notification, semantic scoring, HR queue |
+| `Screening` | A committed `Applied` application exists and HR accepted it into screening | Candidate status notification, HR review queue |
+| `ManagerReview` | HR screening passed | Manager review queue, department/hiring-manager context |
+| `Interview` | Manager review passed | Interview scheduling and interviewer assignment |
+| `Offer` | Interview stage passed and HR/Manager is ready to send offer | Offer draft/send/response |
+| `Hired` | Offer exists and candidate accepted it | Hiring completion/reporting |
+| `Rejected` | Reviewer explicitly closed the application from an allowed active state | Candidate history, re-apply eligibility |
+| `OfferDeclined` | Offer exists and candidate declined it | Candidate history, re-apply eligibility |
+| `Withdrawn` | Candidate owns the active application and withdraws before offer stage | Candidate history, re-apply eligibility |
+
+Derived flags such as `Active`, `Closed`, `AlreadyApplied`, `CanApply`, and visible UI actions must be
+computed from the application status plus its related job/profile/resume/interview/offer context.
+They must not be treated as independent workflow truth.
+
 ### Reviewer (HR/Manager) transitions — `ApplicationStatusWorkflow.AllowedTransitions`
 
 | State | Allowed next | Actor | Endpoint |
@@ -38,6 +59,9 @@ workflow does **not** include `Withdrawn` as a target — withdrawal is a separa
 
 Side effects: status changes emit notifications **after** the DB commit; a notification failure does
 not roll back or fail the request (BR-APPLICATION-005).
+
+For the FE-facing labels, derived actions, cross-workflow dependencies, and notification behavior, see
+[APPLY-STATUS-FLOW.md](APPLY-STATUS-FLOW.md).
 
 ## Job status
 

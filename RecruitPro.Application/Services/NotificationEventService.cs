@@ -11,6 +11,7 @@ namespace RecruitPro.Application.Services;
 public class NotificationEventService : INotificationEventService
 {
     private const string HeadDepartmentRoleName = "HeadDepartment";
+    private const string HrRoleName = "HR";
     private readonly INotificationRepository _notificationRepository;
     private readonly IUserRepository _userRepository;
     private readonly INotificationRealtimeSender _notificationRealtimeSender;
@@ -32,9 +33,15 @@ public class NotificationEventService : INotificationEventService
     {
         string candidateName = application.User.FullName;
         string jobTitle = application.Job.Title;
+        HashSet<Guid> recipients = [application.Job.CreatedBy];
+        IReadOnlyList<User> hrUsers = await _userRepository.GetUsersInRolesAsync(HrRoleName);
+        foreach (User hrUser in hrUsers)
+        {
+            recipients.Add(hrUser.Id);
+        }
 
         await PublishToUsersAsync(
-            [application.Job.CreatedBy],
+            recipients,
             "new_application_received",
             $"Ứng viên mới ứng tuyển vào {jobTitle}",
             $"{candidateName} vừa ứng tuyển vào vị trí {jobTitle}.",

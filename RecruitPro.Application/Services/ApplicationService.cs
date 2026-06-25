@@ -1394,14 +1394,14 @@ public class ApplicationService : IApplicationService
     {
         return application.Status switch
         {
-            ApplicationStatus.Applied => "Đã ứng tuyển",
-            ApplicationStatus.Screening => "Đang sàng lọc hồ sơ",
-            ApplicationStatus.ManagerReview => "Đang đánh giá",
-            ApplicationStatus.Interview => "Đã lên lịch phỏng vấn",
-            ApplicationStatus.Offer => "Đã gửi đề nghị tuyển dụng",
+            ApplicationStatus.Applied => "Mới nộp",
+            ApplicationStatus.Screening => "HR đang sàng lọc",
+            ApplicationStatus.ManagerReview => "Quản lý đang đánh giá",
+            ApplicationStatus.Interview => "Phỏng vấn",
+            ApplicationStatus.Offer => "Chờ phản hồi offer",
             ApplicationStatus.Hired => "Đã tuyển dụng",
             ApplicationStatus.Rejected => "Không phù hợp",
-            ApplicationStatus.OfferDeclined => "Đã từ chối đề nghị",
+            ApplicationStatus.OfferDeclined => "Đã từ chối offer",
             ApplicationStatus.Withdrawn => "Đã rút đơn",
             _ => application.Status.ToString()
         };
@@ -1417,19 +1417,19 @@ public class ApplicationService : IApplicationService
         return application.Status switch
         {
             ApplicationStatus.Applied =>
-                "Hồ sơ của bạn đã được ghi nhận và đang chờ xem xét.",
+                "Hồ sơ đã được ghi nhận và đang chờ HR tiếp nhận.",
 
             ApplicationStatus.Screening =>
-                "Hồ sơ của bạn đang được đội ngũ tuyển dụng đánh giá.",
+                "HR đang kiểm tra mức độ phù hợp của hồ sơ với vị trí.",
 
             ApplicationStatus.ManagerReview =>
-                "Hồ sơ của bạn đang được quản lý tuyển dụng xem xét.",
+                "Hồ sơ đang được quản lý chuyên môn đánh giá thêm.",
 
             ApplicationStatus.Interview =>
-                "Bạn đã được chọn vào vòng phỏng vấn. Vui lòng theo dõi thông báo để cập nhật lịch phỏng vấn.",
+                "Bạn đã vào vòng phỏng vấn. Hãy theo dõi thông báo để cập nhật lịch.",
 
             ApplicationStatus.Offer =>
-                "Bạn đã nhận được đề nghị tuyển dụng. Vui lòng xem chi tiết và phản hồi trong thời gian quy định.",
+                "Bạn đã nhận offer. Vui lòng phản hồi trong thời gian quy định.",
 
             ApplicationStatus.Hired =>
                 "Chúc mừng! Bạn đã chấp nhận đề nghị tuyển dụng và hoàn tất quy trình ứng tuyển.",

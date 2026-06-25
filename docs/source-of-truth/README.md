@@ -24,6 +24,7 @@ them out to the same depth is tracked in [DECISION-LOG.md](DECISION-LOG.md) as r
 |---|---|
 | [BUSINESS-RULES.md](BUSINESS-RULES.md) | Enforceable business rules (BR-*) with BE/FE enforcement points and tests. |
 | [STATE-MACHINE.md](STATE-MACHINE.md) | Application and Job state machines, allowed/forbidden transitions. |
+| [APPLY-STATUS-FLOW.md](APPLY-STATUS-FLOW.md) | Candidate apply-flow statuses, UI labels, actors, and notification behavior. |
 | [API-CONTRACT.md](API-CONTRACT.md) | Application-domain endpoints: request/response/error/consumers. |
 | [ERROR-CONTRACT.md](ERROR-CONTRACT.md) | Stable HTTP status semantics and the response envelope. |
 | [TEST-MATRIX.md](TEST-MATRIX.md) | Tests mapped to requirements and rules. |

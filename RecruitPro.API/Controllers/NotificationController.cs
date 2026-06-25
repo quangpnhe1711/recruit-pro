@@ -31,6 +31,7 @@ public class NotificationController : ControllerBase
     }
 
     [HttpPatch("api/notifications/{notificationId}/read")]
+    [HttpPost("api/notifications/{notificationId}/read")]
     public async Task<IActionResult> MarkAsRead(string notificationId)
     {
         var result = await _notificationService.MarkAsReadAsync(User.GetCurrentUserId(), notificationId);
@@ -38,6 +39,7 @@ public class NotificationController : ControllerBase
     }
 
     [HttpPatch("api/notifications/read-all")]
+    [HttpPost("api/notifications/read-all")]
     public async Task<IActionResult> MarkAllAsRead()
     {
         var result = await _notificationService.MarkAllAsReadAsync(User.GetCurrentUserId());
