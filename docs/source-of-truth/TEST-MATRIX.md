@@ -118,6 +118,16 @@ Full suite after this pass: **156 passed, 0 failed** (was 138). New/updated test
 | T-OWN-031 | `UpdateJobStatus_ApproveBySystemAdmin_Succeeds` | integration (PG) | BR-OWN-003 | SystemAdmin → 200 Approved |
 | T-OWN-032 | `UpdateJobStatus_WhenDepartmentHasNoHead_Returns422` | integration (PG) | BR-OWN-003 | no head → 422 `DEPARTMENT_HEAD_REQUIRED` |
 | T-OWN-033 | `Departments_LookupRoute_StillReturnsDepartmentsWithHead` | integration (PG) | compat | `GET /api/departments` still works, now incl. head |
+| T-OWN-034 | `ApprovalQueueAccessIntegrationTests.HeadDepartment_CanViewOwnDepartmentApprovalQueue` | integration (PG) | BR-OWN-003 | dept head sees the queue for the department they head |
+| T-OWN-035 | `HeadDepartment_CannotViewOtherDepartmentApprovalQueue` | integration (PG) | BR-OWN-003 | head of nothing → empty queue (no other-dept jobs) |
+| T-OWN-036 | `SystemAdmin_CanViewAllApprovalQueue` | integration (PG) | BR-OWN-003 | SystemAdmin sees all departments' pending jobs |
+| T-OWN-037 | `HeadDepartment_CanViewOwnApprovalDetail` | integration (PG) | BR-OWN-003 | dept head opens detail for their department → 200 |
+| T-OWN-038 | `HeadDepartment_CannotViewOtherDepartmentApprovalDetail` | integration (PG) | BR-OWN-003 | other department's detail → 403 `FORBIDDEN` |
+| T-OWN-039 | `Manager_WhoIsDepartmentHead_CanViewQueueAndDetail` | integration (PG) | BR-OWN-003 | compat — a Manager who IS the head keeps queue + detail |
+| T-OWN-040 | `LegacyManager_NotDepartmentHead_CannotApproveOrViewOtherDepartmentJob` | integration (PG) | BR-OWN-003 | non-head Manager → empty queue, 403 detail, 403 submit |
+| T-STATUS-001 | `CandidateApplicationStatusContractTests.CandidateApplications_Screening_ReturnsCanonicalStatusAndStatusLabel` | integration (PG) | BR-APPLICATION-012 | `status` = `Screening`; `statusLabel` = `HR đang sàng lọc`; withdraw available |
+| T-STATUS-002 | `CandidateApplications_Interview_ReturnsCanonicalStatusAndStatusLabel` | integration (PG) | BR-APPLICATION-012 | `status` = `Interview`; `statusLabel` = `Phỏng vấn` |
+| T-STATUS-003 | `CandidateApplications_Rejected_ReturnsCanonicalStatusAndNoWithdraw` | integration (PG) | BR-APPLICATION-012 | `status` = `Rejected`; no `withdraw` action |
 
 ### Backend — planned (later phases)
 
@@ -137,3 +147,8 @@ Full suite after this pass: **156 passed, 0 failed** (was 138). New/updated test
 | FV-OWN-003 | Job create screen displays the DepartmentHead based on the selected Department. |
 | FV-OWN-004 | Job detail shows Recruiter and DepartmentHead. |
 | FV-OWN-005 | Application detail shows Assigned Recruiter and Assigned DepartmentHead. |
+| FV-STATUS-001 | My Applications: a `Screening` application shows the Screening badge, not `Rejected`/`Từ chối`. |
+| FV-STATUS-002 | My Applications: an `Interview` application shows the Interview badge, not `Rejected`/`Từ chối`. |
+| FV-STATUS-003 | `ManagerReview` displays as "Head Review". |
+| FV-STATUS-004 | An unknown status displays neutral `Unknown`, never `Rejected`. |
+| FV-STATUS-005 | No Vietnamese label drives status logic (filter/actions key off canonical status). |

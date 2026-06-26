@@ -111,10 +111,17 @@ namespace RecruitPro.Infrastructure.Repositories
             return (jobs, total);
         }
 
-        public async Task<(IReadOnlyList<Job> Jobs, int Total)> GetPendingApprovalPagedAsync(string? keyword, string? department, int currentPage, int pageSize)
+        public async Task<(IReadOnlyList<Job> Jobs, int Total)> GetPendingApprovalPagedAsync(string? keyword, string? department, int currentPage, int pageSize, Guid? departmentHeadUserId = null)
         {
             IQueryable<Job> query = BuildJobQuery()
                 .Where(job => job.Status == JobStatus.PendingApproval);
+
+            if (departmentHeadUserId.HasValue)
+            {
+                // Scope to the jobs this DepartmentHead owns (BR-OWN-003). Applied DB-side so pagination
+                // stays correct.
+                query = query.Where(job => job.Department != null && job.Department.HeadUserId == departmentHeadUserId.Value);
+            }
 
             if (!string.IsNullOrWhiteSpace(keyword))
             {
@@ -153,12 +160,19 @@ namespace RecruitPro.Infrastructure.Repositories
             return _context.Jobs.AsNoTracking().CountAsync(job => job.Status == JobStatus.PendingApproval);
         }
 
-        public async Task<IReadOnlyList<Job>> GetPendingApprovalJobsAsync(int take)
+        public async Task<IReadOnlyList<Job>> GetPendingApprovalJobsAsync(int take, Guid? departmentHeadUserId = null)
         {
-            return await _context.Jobs
+            IQueryable<Job> query = _context.Jobs
                 .AsNoTracking()
                 .Include(job => job.Department)
-                .Where(job => job.Status == JobStatus.PendingApproval)
+                .Where(job => job.Status == JobStatus.PendingApproval);
+
+            if (departmentHeadUserId.HasValue)
+            {
+                query = query.Where(job => job.Department != null && job.Department.HeadUserId == departmentHeadUserId.Value);
+            }
+
+            return await query
                 .OrderByDescending(job => job.CreatedAt)
                 .Take(take)
                 .ToListAsync();

@@ -125,6 +125,15 @@ fallback; ensure snapshot is taken inside the apply transaction (before commit).
   Assigned DepartmentHead.
 - Continue to route status logic through the centralized `common/status/*` modules (no VI-label logic).
 
+**Phase 4 follow-up — DepartmentHead approval-queue access (DONE):** the prior limitation (the approval
+queue/detail were `Manager`-role only, so a `HeadDepartment` user could not reach them) is **fixed**.
+Backend: `GET /api/manager/jobs/approval-queue` + `…/{id}/approval-detail` now
+`[Authorize(Roles = "Manager,HeadDepartment,SystemAdmin")]` and **scoped** to `Department.HeadUserId`
+(SystemAdmin = all; non-head Manager = empty/403), sharing `EvaluateApprovalAccess` with the submit
+guard. Frontend: `JOB_APPROVE` now includes `HeadDepartment`, `JobsRouteScreen` routes it to the queue,
+and the side-nav exposes "Duyệt tin tuyển dụng". Route/screen names unchanged for compatibility. Covered
+by `ApprovalQueueAccessIntegrationTests` (T-OWN-034..040).
+
 **Files likely touched:** `recruit-pro-internal/src/pages/{hr,manager}/**` (Department, JobCreating,
 JobDetail, CandidateReviewDetail), relevant services/DTO types.
 **Validation:** `npm run build`, `npx tsc --noEmit`, `npm run lint` clean (no new errors vs baseline);

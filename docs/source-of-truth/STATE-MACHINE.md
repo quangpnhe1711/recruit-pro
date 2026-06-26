@@ -20,6 +20,12 @@ ReapplyEligibleClosedStates  = { Rejected, Withdrawn, OfferDeclined }   // Hired
 States: `Applied`, `Screening`, `ManagerReview`, `Interview`, `Offer`, `Hired`, `Rejected`,
 `OfferDeclined`, `Withdrawn`.
 
+> **Canonical vs presentation.** These enum values are the canonical contract across DB / API / FE logic
+> — APIs return them verbatim in the `status` field (`entity.Status.ToString()`). Localized labels are
+> presentation-only (`statusLabel`/`displayStatus`), never the `status` value. `ManagerReview` is the
+> code value (= the **DepartmentHeadReview** business stage); presentation may render it as "Head Review",
+> but the enum is **not** renamed. An unknown status presents as neutral `Unknown`, never `Rejected`.
+
 Closed/terminal: `Hired`, `Rejected`, `OfferDeclined`, `Withdrawn` (`ApplicationStatusWorkflow.IsClosed`).
 Of these, only `Rejected`, `Withdrawn`, `OfferDeclined` are **re-apply-eligible**; `Hired` is terminal
 for its `jobId` (INV-015).

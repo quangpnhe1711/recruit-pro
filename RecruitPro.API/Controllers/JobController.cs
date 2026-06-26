@@ -75,19 +75,25 @@ public class JobController : ControllerBase
         return StatusCode(result.StatusCode, result);
     }
 
+    // BR-OWN-003: the approval queue is the DepartmentHead's workflow surface (SystemAdmin sees all).
+    // Manager is kept temporarily for compatibility, but the service scopes the queue to the departments
+    // the caller heads — a non-head Manager sees an empty queue, not every department's jobs. Route name
+    // kept as `manager/...` for compatibility.
     [HttpGet("api/manager/jobs/approval-queue")]
-    [Authorize(Roles = "Manager")]
+    [Authorize(Roles = "Manager,HeadDepartment,SystemAdmin")]
     public async Task<IActionResult> GetManagerApprovalQueue([FromQuery] ManagerJobApprovalQueryRequest request)
     {
-        var result = await _jobService.GetManagerApprovalQueueAsync(request);
+        var result = await _jobService.GetManagerApprovalQueueAsync(request, User.TryGetCurrentUserId(), User.GetRoles());
         return StatusCode(result.StatusCode, result);
     }
 
+    // BR-OWN-003: viewing the approval detail uses the same authorization as approving — the job's
+    // DepartmentHead or a SystemAdmin (service returns 403/422 otherwise).
     [HttpGet("api/manager/jobs/{jobId}/approval-detail")]
-    [Authorize(Roles = "Manager")]
+    [Authorize(Roles = "Manager,HeadDepartment,SystemAdmin")]
     public async Task<IActionResult> GetManagerApprovalDetail(string jobId)
     {
-        var result = await _jobService.GetManagerApprovalDetailAsync(jobId);
+        var result = await _jobService.GetManagerApprovalDetailAsync(jobId, User.TryGetCurrentUserId(), User.GetRoles());
         return StatusCode(result.StatusCode, result);
     }
 

@@ -456,7 +456,7 @@ public sealed class DashboardServiceUnitTests
         interviewRepository.Setup(value => value.CountOnDateAsync(It.IsAny<DateTime>())).ReturnsAsync(2);
         interviewRepository.Setup(value => value.GetNextAsync(It.IsAny<DateTime>())).ReturnsAsync(new Interview { Id = Guid.NewGuid(), InterviewDate = new DateTime(2026, 1, 1, 9, 0, 0) });
         jobRepository.Setup(value => value.CountApprovedJobsAsync()).ReturnsAsync(3);
-        jobRepository.Setup(value => value.GetPendingApprovalJobsAsync(5)).ReturnsAsync([new Job { Id = Guid.NewGuid(), Title = "Pending", WorkMode = WorkMode.Remote, Department = new Department { Name = "Engineering" } }]);
+        jobRepository.Setup(value => value.GetPendingApprovalJobsAsync(5, It.IsAny<Guid?>())).ReturnsAsync([new Job { Id = Guid.NewGuid(), Title = "Pending", WorkMode = WorkMode.Remote, Department = new Department { Name = "Engineering" } }]);
 
         var service = new DashboardService(
             Mock.Of<ICandidateProfileRepository>(),

@@ -55,13 +55,18 @@ DepartmentHead approves or rejects
 | Approver identity | `Job.ApprovedBy` is set to the acting user (decision-actor audit) on approve/reject. | Conformant. |
 | Department head data | `Department.HeadUserId` exists and is settable via `PUT /api/departments/{id}` (validated against the HeadDepartment/SystemAdmin role). | Conformant. |
 | `PATCH /api/jobs/{id}/status` | **Hardened (Phase 2/3):** now requires auth (`HR,Manager,HeadDepartment,SystemAdmin`) and routes through the same `PatchJobAsync` guard as `/api/hr/jobs/{id}/status` — an authenticated alias (the old unguarded `UpdateJobStatusAsync` was removed). | **Closed** — no longer a public approval bypass. |
+| Approval **queue/detail** access (`GET /api/manager/jobs/approval-queue`, `…/{id}/approval-detail`) | **Hardened (Phase 4):** `[Authorize(Roles = "Manager,HeadDepartment,SystemAdmin")]` **and server-scoped** — `GetManagerApprovalQueueAsync`/`GetManagerApprovalDetailAsync` take the caller's id/roles. The queue is filtered to `Department.HeadUserId == currentUserId` (SystemAdmin = all); the detail uses the same `EvaluateApprovalAccess` predicate as the submit guard (422 no head → 403 not head/admin). A non-head Manager sees an empty queue / 403 detail. | **Closed** — the DepartmentHead is now the approval workflow role; generic Manager no longer sees all departments. |
 | Public listing / apply gating | Only `Approved` jobs accept applications (`BuildApplyEligibility`, INV-001); FE `JobDetailScreen.jobApplyState` disables the CTA otherwise. | Conformant — unchanged. |
 
 **Conclusion:** the approval *gate* exists and works, the ownership *data model*
 (`Department.HeadUserId`, `Job.RecruiterId`) is implemented, and approval is now authorized
 *against the specific Department head* (or a SystemAdmin) in `JobService.PatchJobAsync` (Phase 3, done).
 Both status routes (`/api/hr/jobs/{id}/status` and the hardened `/api/jobs/{id}/status` alias) go through
-that guard. What remains is the **frontend** (Phase 4) and **notifications** (Phase 6) in
+that guard. **Phase 4 done:** the frontend consumes the ownership model, and the approval **queue/detail**
+access is now the DepartmentHead's (server-scoped to `Department.HeadUserId`, SystemAdmin = all; Manager
+kept only as compatibility but scoped, not cross-department). The `HeadDepartment` role can now reach the
+approval queue/detail in the UI without needing the generic `Manager` role. What remains is
+**notifications** (Phase 6 — **not implemented**) in
 [IMPLEMENTATION-PLAN-OWNERSHIP.md](IMPLEMENTATION-PLAN-OWNERSHIP.md).
 
 ---

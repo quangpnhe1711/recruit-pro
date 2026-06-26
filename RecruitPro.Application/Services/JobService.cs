@@ -368,17 +368,24 @@ public class JobService : IJobService
     /// </summary>
     /// <param name="request">The <paramref name="request"/> value.</param>
     /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
-    public async Task<ApiResponse<ManagerJobApprovalQueueResponseDto>> GetManagerApprovalQueueAsync(ManagerJobApprovalQueryRequest request)
+    public async Task<ApiResponse<ManagerJobApprovalQueueResponseDto>> GetManagerApprovalQueueAsync(ManagerJobApprovalQueryRequest request, Guid? currentUserId = null, IReadOnlyCollection<string>? currentUserRoles = null)
     {
         string? normalizedKeyword = string.IsNullOrWhiteSpace(request.Keyword) ? null : request.Keyword.Trim();
         string? normalizedDepartment = string.IsNullOrWhiteSpace(request.Department) ? null : request.Department.Trim();
+
+        // BR-OWN-003: a DepartmentHead (or legacy Manager) only sees the queue for departments they head;
+        // a SystemAdmin sees every department's pending jobs. A non-head Manager therefore sees an empty
+        // queue — generic Manager role no longer grants cross-department approval visibility.
+        Guid? departmentHeadFilter = ResolveApprovalQueueHeadFilter(currentUserId, currentUserRoles);
+
         (IReadOnlyList<Job> jobs, int total) = await _jobRepository.GetPendingApprovalPagedAsync(
             normalizedKeyword,
             normalizedDepartment,
             request.Page,
-            request.PageSize);
+            request.PageSize,
+            departmentHeadFilter);
 
-        IReadOnlyList<Job> allPendingJobs = await _jobRepository.GetPendingApprovalJobsAsync(int.MaxValue);
+        IReadOnlyList<Job> allPendingJobs = await _jobRepository.GetPendingApprovalJobsAsync(int.MaxValue, departmentHeadFilter);
         DateTime today = DbDateTime.Now.Date;
 
         return ApiResponse<ManagerJobApprovalQueueResponseDto>.Ok(new ManagerJobApprovalQueueResponseDto
@@ -418,9 +425,28 @@ public class JobService : IJobService
     /// </summary>
     /// <param name="jobId">The <paramref name="jobId"/> value.</param>
     /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
-    public async Task<ApiResponse<ManagerJobApprovalDetailDto>> GetManagerApprovalDetailAsync(string jobId)
+    public async Task<ApiResponse<ManagerJobApprovalDetailDto>> GetManagerApprovalDetailAsync(string jobId, Guid? currentUserId = null, IReadOnlyCollection<string>? currentUserRoles = null)
     {
         Job job = await GetJobAsync(jobId);
+
+        // BR-OWN-003: viewing the approval detail uses the SAME authorization as approving — only the
+        // job's DepartmentHead or a SystemAdmin. Mirrors GuardDepartmentHeadApprovalAsync precedence
+        // (422 when the department has no head, then 403 when the actor is not the head/admin).
+        ApprovalAccess access = EvaluateApprovalAccess(job.Department?.HeadUserId, currentUserId, currentUserRoles);
+        if (access == ApprovalAccess.NoHead)
+        {
+            return ApiResponse<ManagerJobApprovalDetailDto>.UnprocessableEntity(
+                "This job's department has no head assigned; assign a department head before approving or rejecting.",
+                errorCode: ErrorCodes.DepartmentHeadRequired);
+        }
+
+        if (access == ApprovalAccess.Forbidden)
+        {
+            return ApiResponse<ManagerJobApprovalDetailDto>.Forbidden(
+                "Only the department head or a system administrator can view or act on this job's approval.",
+                errorCode: ErrorCodes.Forbidden);
+        }
+
         int applicationsCount = job.Applications.Count;
         int activePipelineCount = job.Applications.Count(application =>
             application.Status != ApplicationStatus.Rejected &&
@@ -957,16 +983,15 @@ public class JobService : IJobService
                 : (await _jobRepository.GetDepartmentByIdAsync(job.DepartmentId.Value))?.HeadUserId;
         }
 
-        if (headUserId == null)
+        ApprovalAccess access = EvaluateApprovalAccess(headUserId, currentUserId, currentUserRoles);
+        if (access == ApprovalAccess.NoHead)
         {
             return ApiResponse<HrJobStatusResponseDto>.UnprocessableEntity(
                 "This job's department has no head assigned; assign a department head before approving or rejecting.",
                 errorCode: ErrorCodes.DepartmentHeadRequired);
         }
 
-        bool isHead = currentUserId.HasValue && currentUserId.Value == headUserId.Value;
-        bool isSystemAdmin = currentUserRoles != null && currentUserRoles.Contains(RoleNames.SystemAdmin);
-        if (!isHead && !isSystemAdmin)
+        if (access == ApprovalAccess.Forbidden)
         {
             return ApiResponse<HrJobStatusResponseDto>.Forbidden(
                 "Only the department head or a system administrator can approve or reject this job.",
@@ -974,6 +999,55 @@ public class JobService : IJobService
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// The outcome of evaluating whether a user may act on a job's approval. Shared by the approval
+    /// submit guard, the approval detail guard, and (indirectly) the queue scope so all three honor the
+    /// same BR-OWN-003 rule: only the job's DepartmentHead or a SystemAdmin, and a department with no
+    /// head cannot be approved/reviewed at all.
+    /// </summary>
+    private enum ApprovalAccess
+    {
+        Allowed,
+        NoHead,
+        Forbidden
+    }
+
+    private static ApprovalAccess EvaluateApprovalAccess(
+        Guid? headUserId,
+        Guid? currentUserId,
+        IReadOnlyCollection<string>? currentUserRoles)
+    {
+        if (headUserId == null)
+        {
+            return ApprovalAccess.NoHead;
+        }
+
+        bool isHead = currentUserId.HasValue && currentUserId.Value == headUserId.Value;
+        bool isSystemAdmin = currentUserRoles != null && currentUserRoles.Contains(RoleNames.SystemAdmin);
+        return isHead || isSystemAdmin ? ApprovalAccess.Allowed : ApprovalAccess.Forbidden;
+    }
+
+    /// <summary>
+    /// Resolves the department-head filter for the approval queue. A SystemAdmin sees every department's
+    /// pending jobs (null filter); everyone else (DepartmentHead, legacy Manager) is scoped to the
+    /// departments they head. A non-head therefore gets an empty queue — generic Manager role no longer
+    /// grants cross-department approval visibility (BR-OWN-003).
+    /// </summary>
+    private static Guid? ResolveApprovalQueueHeadFilter(
+        Guid? currentUserId,
+        IReadOnlyCollection<string>? currentUserRoles)
+    {
+        bool isSystemAdmin = currentUserRoles != null && currentUserRoles.Contains(RoleNames.SystemAdmin);
+        if (isSystemAdmin)
+        {
+            return null;
+        }
+
+        // Non-admin with no identity must never fall through to the unscoped (all-departments) query;
+        // Guid.Empty never matches a real Department.HeadUserId, so the queue comes back empty.
+        return currentUserId ?? Guid.Empty;
     }
 
     private static bool UserHasAnyRole(User user, params string[] roleNames)

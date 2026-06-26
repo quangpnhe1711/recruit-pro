@@ -335,7 +335,10 @@ public class ApplicationService : IApplicationService
                 JobTitle = application.Job.Title,
                 CompanyOrDepartment = application.Job.Department != null ? application.Job.Department.Name : "RecruitPro",
                 AppliedDate = application.AppliedAt,
-                Status = MapCandidateApplicationStatus(application),
+                // Canonical English enum value for logic; localized text moves to StatusLabel
+                // (presentation only). Never return the Vietnamese label as Status.
+                Status = application.Status.ToString(),
+                StatusLabel = MapCandidateApplicationStatus(application),
                 NextStep = BuildCandidateNextStep(application),
                 AvailableActions = BuildCandidateAvailableActions(application)
             }).ToList();
@@ -1580,6 +1583,9 @@ public class ApplicationService : IApplicationService
     /// </summary>
     /// <param name="application">The <paramref name="application"/> value.</param>
     /// <returns>The resulting string value.</returns>
+    // Localized (Vietnamese) DISPLAY label for the candidate application status. This is used ONLY for
+    // the presentation-layer StatusLabel field — the canonical English enum drives the Status field and
+    // all frontend logic (KEEP-CANONICAL-STATUS contract).
     private static string MapCandidateApplicationStatus(Domain.Entities.Application application)
     {
         return application.Status switch

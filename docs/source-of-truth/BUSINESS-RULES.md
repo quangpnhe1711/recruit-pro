@@ -307,6 +307,29 @@ CompanyRejections   = Rejected
 
 ---
 
+## BR-APPLICATION-012 — Status fields are canonical English; localized text is presentation-only
+
+**Description:** Every workflow `status` field returned by the API is the **canonical English enum value**
+(`entity.Status.ToString()`), consistent across DB / API / frontend logic (INV-012). Localized
+(Vietnamese) display text is returned in a **separate** presentation field (`statusLabel` /
+`displayStatus`) and **never** as `status`. The frontend branches on the canonical `status` only and
+must never parse a localized label as status.
+
+**Backend enforcement:** `ApplicationService.GetCandidateApplicationsAsync` sets
+`Status = application.Status.ToString()` and `StatusLabel = MapCandidateApplicationStatus(application)`
+(localized). `nextStep` stays localized guidance; `availableActions` are stable action keys.
+
+**Frontend enforcement:** `getApplicationStatusPresentation(status)` maps the canonical key to a display
+label (English; `ManagerReview` → "Head Review"). An unknown/unrecognized status resolves to a **neutral
+`Unknown`** — never `Rejected`. `ManagerReview` is the canonical code value (= the **DepartmentHeadReview**
+business stage); it is **not** renamed.
+
+**Forbidden:** Returning localized text as `status`; mapping an unknown status to `Rejected`.
+
+**Tests:** `CandidateApplicationStatusContractTests` (T-STATUS-001..003).
+
+---
+
 # Recruitment Ownership Rules (BR-OWN-*)
 
 > **Status (updated 2026-06-26, Phase 2/3):** the data foundation (Phase 1) **and** the backend API +
@@ -355,6 +378,16 @@ On approve/reject, `Job.ApprovedBy` is set to the acting user. The controller ad
 enforces the specific head. Both status routes — `/api/hr/jobs/{id}/status` and the hardened
 `/api/jobs/{id}/status` alias (now authenticated, routed through the same guard) — are covered. Other
 status moves keep HR/Manager behavior.
+**Phase 4 (implemented) — approval queue/detail access:** the approval **queue** and **detail**
+(`GET /api/manager/jobs/approval-queue`, `…/{id}/approval-detail`) now admit
+`Manager,HeadDepartment,SystemAdmin` and are **scoped server-side** so the DepartmentHead is the real
+approval workflow role without needing the generic `Manager` role:
+- the **queue** returns only `PendingApproval` jobs where `Department.HeadUserId == currentUserId`;
+  a `SystemAdmin` sees every department's pending jobs; a non-head Manager sees an **empty** queue;
+- the **detail** uses the same predicate as the submit guard (`EvaluateApprovalAccess`): no head → **422**
+  `DEPARTMENT_HEAD_REQUIRED`; not the head and not SystemAdmin → **403** `FORBIDDEN`.
+Queue, detail, and submit therefore share one authorization rule. Route/screen names keep the `manager`
+prefix for compatibility.
 
 ## BR-OWN-004 — Candidate applies only to approved jobs
 A candidate can apply only when `Job.Status = Approved` (and the deadline has not passed). Only approved

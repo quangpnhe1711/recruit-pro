@@ -18,9 +18,9 @@ Business roles: **Candidate**, **HR / Recruiter**, **DepartmentHead**, **SystemA
 | Workflow area | State / Event | Primary owner | Secondary participant | Future notification recipient | Data source | Fallback | Notes |
 |---|---|---|---|---|---|---|---|
 | Job | Draft / Created | HR / Recruiter | — | (none) | `Job.RecruiterId` _(planned)_ → `Job.CreatedBy` | `Job.CreatedBy` (current) | HR drafts the posting; not public. |
-| Job | PendingApproval | DepartmentHead | HR / Recruiter | DepartmentHead | `Department.HeadUserId` _(planned)_ | `Manager` role (current) | Submitted for the Department head's approval. |
-| Job | Approved | DepartmentHead (approver) | HR / Recruiter | HR / Recruiter | `Job.ApprovedBy` (audit) + `Department.HeadUserId` _(planned)_ | `Manager` role (current) | Job becomes public/applyable. |
-| Job | Rejected | DepartmentHead (approver) | HR / Recruiter | HR / Recruiter | `Job.ApprovedBy` (audit) | `Manager` role (current) | Posting rejected during approval; not public. |
+| Job | PendingApproval | DepartmentHead | HR / Recruiter | DepartmentHead | `Department.HeadUserId` **(implemented)** | `SystemAdmin` override | Submitted for the Department head's approval. Approval **queue/detail scoped** to `Department.HeadUserId` (Phase 4); `SystemAdmin` sees all. |
+| Job | Approved | DepartmentHead (approver) | HR / Recruiter | HR / Recruiter | `Department.HeadUserId` **(implemented)** + `Job.ApprovedBy` (audit) | `SystemAdmin` override | Job becomes public/applyable. Approve guarded to the head / SystemAdmin (BR-OWN-003). |
+| Job | Rejected | DepartmentHead (approver) | HR / Recruiter | HR / Recruiter | `Department.HeadUserId` **(implemented)** + `Job.ApprovedBy` (audit) | `SystemAdmin` override | Posting rejected during approval; not public. Reject guarded to the head / SystemAdmin. |
 | Application | Applied | HR / Recruiter | — | HR / Recruiter | `Application.AssignedRecruiterId` _(planned)_ | `Job.CreatedBy` + `HR` role (current) | **HR-first** — DepartmentHead is **not** notified yet (BR-OWN-006). |
 | Application | Screening | HR / Recruiter | — | Candidate | `Application.AssignedRecruiterId` _(planned)_ | `Job.CreatedBy` + `HR` role | HR evaluates fit. |
 | Application | DepartmentHeadReview (`ManagerReview`) | DepartmentHead | HR / Recruiter | DepartmentHead | `Application.AssignedDepartmentHeadId` _(planned)_ | `Manager` role + `Job.ApprovedBy` | Entered only after HR passes screening (BR-OWN-007). |

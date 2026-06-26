@@ -10,6 +10,25 @@ status/action/error site (centralized modules + screens + services), grep-classi
 
 ---
 
+## 0a. Addendum — candidate status-contract fix (later pass)
+
+A regression was later found and fixed in the **candidate applications** endpoint: it returned the
+**localized** label as the `status` field (`"status": "HR đang sàng lọc"`), which the FE normalized to an
+unknown and the presentation layer collapsed to `Rejected` ("Từ chối") — an active Screening/Interview row
+rendered with a red rejected badge. Fix (BR-APPLICATION-012, T-STATUS-001..003):
+
+- **Backend:** `CandidateApplicationListItemDto.Status = application.Status.ToString()` (canonical English);
+  added `StatusLabel` for the localized display text; `nextStep` stays localized.
+- **Frontend:** candidate badges render via `getApplicationStatusPresentation(status)` (canonical key →
+  English label; `ManagerReview` → "Head Review"); the two unknown→`Rejected` fallbacks were removed
+  (`statusPresentation` no longer `?? Rejected`; `applicationPresentation.normalizeApplicationStatusKey`
+  default is now neutral `unknown`). Logic keys off the canonical status, never the localized label.
+
+This supersedes the §3.1 "candidate path PASS" claim for the specific candidate-list `status` field, which
+was carrying localized text at the time of the original audit.
+
+---
+
 ## 0. Headline finding (read this first)
 
 **The frontend conformance refactor has now landed.** This supersedes the previous version of this

@@ -3,6 +3,15 @@
 All responses use the `ApiResponse<T>` envelope ([ERROR-CONTRACT.md](ERROR-CONTRACT.md)). Controller:
 `ApplicationController`. Frontend client: `src/services/http/api-client.ts` + `endpoints.ts`.
 
+> **Status-field canonicality (binding).** Every workflow `status` field (application, job, interview,
+> offer) is the **canonical English enum value** across DB / API / frontend logic — `status =
+> entity.Status.ToString()`. Localized (Vietnamese) text is presentation-only and is returned in a
+> **separate** field (`statusLabel` / `displayStatus`), never in `status`. The frontend must branch on
+> the canonical `status` and must never parse a localized label as status, nor fall back to `Rejected`
+> for an unknown value (unknown → neutral `Unknown`). `ManagerReview` is the canonical code value (= the
+> **DepartmentHeadReview** business stage); presentation may show "Head Review" but the enum is **not**
+> renamed.
+
 ---
 
 ## GET /api/jobs/{jobId}/apply-context
@@ -53,11 +62,19 @@ All responses use the `ApiResponse<T>` envelope ([ERROR-CONTRACT.md](ERROR-CONTR
 ## GET /api/candidate/applications
 
 - **Auth:** required, role `Candidate`.
-- **Response 200:** paginated candidate applications with localized `status`, `nextStep`,
-  `availableActions` (`viewDetail`, `withdraw` when withdrawable, `acceptOffer`/`declineOffer` when
-  offer pending). Withdrawn applications report status `Đã rút đơn`.
-- **FE consumer:** `MyApplicationScreen.tsx`; status rendered via `applicationPresentation.ts`
-  (`withdrawn` → neutral badge).
+- **Response 200:** paginated candidate applications. Status fields are **canonical** (status-contract):
+  - `status` — the **canonical English** `ApplicationStatus` enum value (`Applied`, `Screening`,
+    `ManagerReview`, `Interview`, `Offer`, `Hired`, `Rejected`, `OfferDeclined`, `Withdrawn`). This is
+    the business/logic field — **never** localized text.
+  - `statusLabel` — localized (Vietnamese) **display** label for `status` (e.g. `Screening` →
+    `HR đang sàng lọc`, `Withdrawn` → `Đã rút đơn`). Presentation only; must not drive FE logic.
+  - `nextStep` — localized guidance text (Vietnamese).
+  - `availableActions` — stable action keys (`viewDetail`, `withdraw` when withdrawable,
+    `acceptOffer`/`declineOffer` when an offer is pending).
+- **FE consumer:** `MyApplicationScreen.tsx` — badges render via
+  `getApplicationStatusPresentation(status)` (canonical key → English label; `ManagerReview` →
+  `Head Review`; unknown → neutral `Unknown`, never `Rejected`). The FE branches on canonical `status`
+  only, never on `statusLabel`.
 
 ## POST /api/candidate/applications/{applicationId}/accept-offer · /decline-offer
 
@@ -74,6 +91,8 @@ All responses use the `ApiResponse<T>` envelope ([ERROR-CONTRACT.md](ERROR-CONTR
 | GET /api/hr/applications/{id}/cv | HR, Manager | 404 if no CV |
 | POST /api/hr/applications/{id}/send-email | HR, Manager | composes candidate email |
 | GET /api/manager/applications/review-queue | Manager | ManagerReview queue |
+| GET /api/manager/jobs/approval-queue | Manager, HeadDepartment, SystemAdmin | job approval queue — **scoped** to `Department.HeadUserId` (SystemAdmin = all; non-head Manager = empty) (BR-OWN-003) |
+| GET /api/manager/jobs/{id}/approval-detail | Manager, HeadDepartment, SystemAdmin | job approval detail — head/SystemAdmin only: no head → **422** `DEPARTMENT_HEAD_REQUIRED`; not head/admin → **403** `FORBIDDEN` |
 | GET /api/jobs/{jobId}/applications[/recent] | (see controller) | job applications |
 
 Candidate (`Candidate`) hitting HR endpoints → **403** `Bạn không có quyền`.
@@ -86,7 +105,8 @@ Candidate (`Candidate`) hitting HR endpoints → **403** `Bạn không có quy�
 > **implemented**. Ownership fields are exposed on the Department, Job, and HR/internal Application
 > responses below; `init.sql` columns + EF mappings back them. `Job.HiringManagerId` is **deferred** —
 > the effective head is `Department.HeadUserId ?? Job.ApprovedBy`. Notification routing remains
-> **Phase 6, not implemented**; frontend remains **Phase 4, not implemented**.
+> **Phase 6, not implemented**. **Frontend (Phase 4) is implemented**, including DepartmentHead-scoped
+> access to the approval queue/detail.
 
 **Department response fields (implemented)** — `GET /api/departments`, `GET /api/departments/{id}`,
 `PUT /api/departments/{id}`:
@@ -147,6 +167,14 @@ scope the **Approved/Rejected** transition to the job's **DepartmentHead (`Depar
 On approve/reject, `Job.ApprovedBy` is set to the acting user (decision-actor audit). Other field edits
 and non-approval status moves remain available to HR/Manager. `POST /api/hr/jobs` requires a valid
 department and accepts `recruiterId` (falls back to the creating user when omitted).
+
+**Approval queue/detail access (Phase 4).** `GET /api/manager/jobs/approval-queue` and
+`…/{id}/approval-detail` admit `Manager,HeadDepartment,SystemAdmin` and are **scoped server-side** so the
+DepartmentHead is the approval workflow role without needing the generic `Manager` role: the queue only
+returns pending jobs of the department(s) the caller heads (`Department.HeadUserId`), a SystemAdmin sees
+all, and a non-head Manager sees an empty queue. The detail uses the **same** `EvaluateApprovalAccess`
+predicate as the submit guard (422 no head → 403 not head/admin). Route names keep the `manager` prefix
+for compatibility.
 
 These ownership fields back the planned notification routing in
 [NOTIFICATION-EVENT-MATRIX.md](NOTIFICATION-EVENT-MATRIX.md) and the snapshot logic in
