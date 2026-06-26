@@ -159,11 +159,19 @@ public class ApplicationService : IApplicationService
         }
 
         decimal ruleScore = CalculateRuleScore(profile, job);
+        // BR-OWN-005: snapshot the recruiter and department-head owners at apply time so later changes
+        // to the job's recruiter or the department's head do not silently re-route this application.
+        //   AssignedRecruiterId      = Job.RecruiterId ?? Job.CreatedBy (audit fallback)
+        //   AssignedDepartmentHeadId = Job.Department.HeadUserId ?? Job.ApprovedBy (audit fallback)
+        Guid assignedRecruiterId = job.RecruiterId ?? job.CreatedBy;
+        Guid? assignedDepartmentHeadId = job.Department?.HeadUserId ?? job.ApprovedBy;
         Domain.Entities.Application application = new()
         {
             Id = Guid.NewGuid(),
             UserId = userId,
             JobId = job.Id,
+            AssignedRecruiterId = assignedRecruiterId,
+            AssignedDepartmentHeadId = assignedDepartmentHeadId,
             Status = ApplicationStatus.Applied,
             AppliedAt = DbDateTime.Now,
             CoverLetter = string.IsNullOrWhiteSpace(request.CoverLetter)

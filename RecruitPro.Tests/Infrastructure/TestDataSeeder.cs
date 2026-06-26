@@ -72,7 +72,8 @@ public static class TestDataSeeder
             UpdatedAt = now
         };
 
-        Department engineering = new() { Id = DepartmentId, Name = "Engineering", Description = "Core delivery" };
+        // Phase 1 ownership: the manager user is the Engineering department head in the test seed.
+        Department engineering = new() { Id = DepartmentId, Name = "Engineering", Description = "Core delivery", HeadUserId = ManagerUserId };
         Skill dotNet = new() { Id = DotNetSkillId, Name = ".NET" };
         Skill sql = new() { Id = SqlSkillId, Name = "SQL" };
 
@@ -120,6 +121,8 @@ public static class TestDataSeeder
             Id = ApprovedJobId,
             DepartmentId = DepartmentId,
             CreatedBy = HrUserId,
+            RecruiterId = HrUserId,
+            ApprovedBy = ManagerUserId,
             Title = "Senior .NET Engineer",
             ShortPitch = "Own backend services",
             Description = "[\"Build APIs\",\"Work with PostgreSQL\"]",
@@ -168,6 +171,8 @@ public static class TestDataSeeder
             UserId = CandidateUserId,
             JobId = ApprovedJobId,
             ReviewedBy = ManagerUserId,
+            AssignedRecruiterId = HrUserId,
+            AssignedDepartmentHeadId = ManagerUserId,
             Status = ApplicationStatus.ManagerReview,
             AppliedAt = Timestamp(now.AddDays(-3)),
             CoverLetter = "I am interested.",

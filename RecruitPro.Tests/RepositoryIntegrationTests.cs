@@ -114,6 +114,37 @@ public sealed class RepositoryIntegrationTests : IClassFixture<PostgresTestFixtu
         await act.Should().NotThrowAsync();
     }
 
+    // T-OWN-001 / BR-OWN-001: a Department persists and returns its HeadUserId through EF + PostgreSQL.
+    [Fact]
+    public async Task Department_PersistsAndReturnsHeadUserId()
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        AppDbContext context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        Department? department = await context.Departments
+            .AsNoTracking()
+            .SingleOrDefaultAsync(d => d.Id == TestDataSeeder.DepartmentId);
+
+        department.Should().NotBeNull();
+        department!.HeadUserId.Should().Be(TestDataSeeder.ManagerUserId);
+    }
+
+    // T-OWN-007 (persistence): the application ownership snapshot round-trips through EF + PostgreSQL.
+    [Fact]
+    public async Task Application_PersistsOwnershipSnapshotFields()
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        AppDbContext context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        Domain.Entities.Application? application = await context.Applications
+            .AsNoTracking()
+            .SingleOrDefaultAsync(a => a.Id == TestDataSeeder.ApplicationId);
+
+        application.Should().NotBeNull();
+        application!.AssignedRecruiterId.Should().Be(TestDataSeeder.HrUserId);
+        application.AssignedDepartmentHeadId.Should().Be(TestDataSeeder.ManagerUserId);
+    }
+
     [Fact]
     public async Task CandidateProfileRepository_ReplaceSkillsAsync_Should_Not_Throw_TrackingConflict_And_Should_Update_Mappings()
     {

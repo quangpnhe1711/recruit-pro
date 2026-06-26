@@ -14,6 +14,14 @@ public partial class Application
 
     public Guid? ReviewedBy { get; set; }
 
+    // Phase 1 ownership snapshot, taken at apply time (BR-OWN-005). Independent of ReviewedBy (who
+    // later acts). Resolved as:
+    //   AssignedRecruiterId      = Job.RecruiterId ?? Job.CreatedBy
+    //   AssignedDepartmentHeadId = Job.Department.HeadUserId ?? Job.ApprovedBy
+    public Guid? AssignedRecruiterId { get; set; }
+
+    public Guid? AssignedDepartmentHeadId { get; set; }
+
     public ApplicationStatus Status { get; set; } = ApplicationStatus.Applied;
 
     public DateTime? AppliedAt { get; set; }
@@ -39,6 +47,10 @@ public partial class Application
     public virtual Job Job { get; set; } = null!;
 
     public virtual User? ReviewedByNavigation { get; set; }
+
+    public virtual User? AssignedRecruiter { get; set; }
+
+    public virtual User? AssignedDepartmentHead { get; set; }
 
     public virtual User User { get; set; } = null!;
 }

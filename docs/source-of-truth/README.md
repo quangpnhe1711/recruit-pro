@@ -34,6 +34,20 @@ state-dependency model that every rule, state machine, contract, and test traces
 | [TEST-MATRIX.md](TEST-MATRIX.md) | Tests mapped to requirements and rules. |
 | [DECISION-LOG.md](DECISION-LOG.md) | Decisions taken during hardening, with rationale, and remaining work. |
 
+### Recruitment ownership (DepartmentHead) — Phase 0 design + Phase 1 data foundation
+
+| Document | Purpose |
+|---|---|
+| [01-system-overview.md](01-system-overview.md) | Roles (Candidate / HR-Recruiter / DepartmentHead / SystemAdmin) and demo personas. |
+| [RECRUITMENT-OWNERSHIP-MATRIX.md](RECRUITMENT-OWNERSHIP-MATRIX.md) | Who owns each workflow state/event + future notification recipient. |
+| [JOB-APPROVAL-FLOW.md](JOB-APPROVAL-FLOW.md) | HR creates → DepartmentHead approves → public/applyable. |
+| [APPLICATION-OWNERSHIP-FLOW.md](APPLICATION-OWNERSHIP-FLOW.md) | Apply snapshots owners; HR-first, DepartmentHead-after-screening. |
+| [NOTIFICATION-EVENT-MATRIX.md](NOTIFICATION-EVENT-MATRIX.md) | Planned notification events/routing (**not implemented**). |
+| [IMPLEMENTATION-PLAN-OWNERSHIP.md](IMPLEMENTATION-PLAN-OWNERSHIP.md) | Phased coding plan; **Phase 1 (DB/EF/snapshot) implemented**, later phases planned. |
+
+> `ManagerReview` (code enum) **=** the **DepartmentHeadReview** business stage — the enum is **not**
+> renamed. Notification and frontend ownership work are **not implemented** yet.
+
 ## Key invariants (read first)
 
 - A candidate has **at most one _active_ application per job** — enforced as `EXISTS active`, not

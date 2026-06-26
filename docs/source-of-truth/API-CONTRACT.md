@@ -77,3 +77,53 @@ All responses use the `ApiResponse<T>` envelope ([ERROR-CONTRACT.md](ERROR-CONTR
 | GET /api/jobs/{jobId}/applications[/recent] | (see controller) | job applications |
 
 Candidate (`Candidate`) hitting HR endpoints → **403** `Bạn không có quyền`.
+
+---
+
+## Ownership fields
+
+> **Status (updated 2026-06-26, Phase 1):** the **data model** is now **implemented** — the columns
+> `departments.head_user_id`, `jobs.recruiter_id`, `applications.assigned_recruiter_id`,
+> `applications.assigned_department_head_id` exist in `init.sql` (+ patch) and are mapped on the
+> `Department`, `Job`, and `Application` EF entities; apply snapshots the assigned owners (BR-OWN-005).
+> The **API response fields below are still NOT exposed** — surfacing them on the DTOs is **Phase 2**
+> ([IMPLEMENTATION-PLAN-OWNERSHIP.md](IMPLEMENTATION-PLAN-OWNERSHIP.md)). `Job.HiringManagerId` is
+> deferred; the effective head is `Department.HeadUserId ?? Job.ApprovedBy`.
+
+**Department (planned response fields):**
+
+```
+headUserId
+headUserName
+headUserEmail
+```
+
+**Job (planned response fields):**
+
+```
+recruiterId
+recruiterName
+departmentHeadId            // from Department.HeadUserId
+departmentHeadName
+effectiveDepartmentHeadId   // resolved head: HiringManagerId ?? Department.HeadUserId ?? ApprovedBy
+effectiveDepartmentHeadName
+approvedBy                  // audit (exists today as Job.ApprovedBy)
+approvedByName
+```
+
+**Application (planned response fields):**
+
+```
+assignedRecruiterId
+assignedRecruiterName
+assignedDepartmentHeadId
+assignedDepartmentHeadName
+```
+
+**Compatibility:** if implementation keeps the legacy name `assignedManagerId`, the contract docs and
+the field's description must state that, in this workflow, it means the **assigned Department Head**.
+`createdBy`/`approvedBy` remain **audit** fields and are not the long-term owners (BR-OWN-002/003).
+
+These fields back the planned notification routing in
+[NOTIFICATION-EVENT-MATRIX.md](NOTIFICATION-EVENT-MATRIX.md) and the snapshot logic in
+[APPLICATION-OWNERSHIP-FLOW.md](APPLICATION-OWNERSHIP-FLOW.md).

@@ -843,6 +843,20 @@ INSERT INTO public.applications VALUES ('40000000-0000-4000-8000-000000000012', 
 INSERT INTO public.applications VALUES ('40000000-0000-4000-8000-000000000013', 'c3d4e5f6-a7b8-4903-9a04-001122334455', '7c2d3e4f-5a6b-4c7d-8e9f-000000000003', '10000000-0000-4000-8000-000000000003', 'Hired', '2026-06-01 09:50:00', NULL);
 INSERT INTO public.applications VALUES ('40000000-0000-4000-8000-000000000014', '4071353e-5816-4746-a8b6-c0bc3113c44d', '8c1b65c9-1c9f-4a36-9e6a-111111111112', '10000000-0000-4000-8000-000000000002', 'Screening', '2026-06-01 09:55:00', NULL);
 
+-- application_offers — keep Offer/Hired applications consistent with the offer workflow (BR-APPLICATION-009):
+--   * an application in 'Offer' must have an offer row (here in 'Sent');
+--   * an application in 'Hired' must have an 'Accepted' offer row.
+-- The five rows below correspond to the one 'Offer' (...003) and four 'Hired' (...001/006/012/013)
+-- seeded applications above. Currency 'VND' is the only seeded offer currency; template = Standard Tech Role.
+INSERT INTO public.application_offers
+    (id, application_id, offer_template_id, base_salary, currency_code, bonus_description, equity_notes, employment_type, proposed_start_date, probation_period, reporting_manager_id, personal_message, status, sent_at, created_at, updated_at)
+VALUES
+    ('93000000-0000-4000-8000-000000000001', '40000000-0000-4000-8000-000000000003', '91000000-0000-4000-8000-000000000001', 32000000.00, 'VND', 'Quarterly performance bonus.', NULL, 'Full-time', '2026-07-15 00:00:00', '2 months', NULL, 'We are pleased to extend this offer for the Data Analyst role.', 'Sent', '2026-06-05 10:00:00', '2026-06-05 09:30:00', '2026-06-05 10:00:00'),
+    ('93000000-0000-4000-8000-000000000002', '40000000-0000-4000-8000-000000000001', '91000000-0000-4000-8000-000000000001', 45000000.00, 'VND', 'Annual performance bonus.', NULL, 'Full-time', '2026-07-01 00:00:00', '2 months', NULL, 'Congratulations on completing the Java Backend interview process.', 'Accepted', '2026-06-04 09:00:00', '2026-06-03 16:00:00', '2026-06-06 11:00:00'),
+    ('93000000-0000-4000-8000-000000000003', '40000000-0000-4000-8000-000000000006', '91000000-0000-4000-8000-000000000001', 38000000.00, 'VND', NULL, NULL, 'Full-time', '2026-07-01 00:00:00', '2 months', NULL, 'Welcome aboard as our new Product Designer.', 'Accepted', '2026-06-04 09:30:00', '2026-06-03 16:30:00', '2026-06-06 11:15:00'),
+    ('93000000-0000-4000-8000-000000000004', '40000000-0000-4000-8000-000000000012', '91000000-0000-4000-8000-000000000001', 42000000.00, 'VND', 'Sign-on bonus.', NULL, 'Full-time', '2026-07-10 00:00:00', '2 months', NULL, 'We look forward to having you on the DevOps team.', 'Accepted', '2026-06-05 09:00:00', '2026-06-04 17:00:00', '2026-06-07 10:00:00'),
+    ('93000000-0000-4000-8000-000000000005', '40000000-0000-4000-8000-000000000013', '91000000-0000-4000-8000-000000000001', 35000000.00, 'VND', NULL, NULL, 'Full-time', '2026-07-05 00:00:00', '2 months', NULL, 'Excited to confirm your operations role.', 'Accepted', '2026-06-04 14:00:00', '2026-06-03 18:00:00', '2026-06-06 09:00:00');
+
 INSERT INTO public.interviews VALUES ('ce4c916b-dfe9-455c-9fbc-f8f3bfa6c994', '75afffb4-ad67-4974-807c-0308a90f07bf', '2026-05-30 09:23:38.11334', 'Online', 'https://meet.google.com/sample-room', NULL, 'Technical interview round 1', 'Scheduled');
 INSERT INTO public.interviews VALUES ('d2222222-2222-4222-8222-222222222221', 'a1111111-1111-4111-8111-111111111112', '2026-06-01 10:00:00', 'Online', 'https://meet.google.com/frontend-room', NULL, 'Frontend screening interview', 'Scheduled');
 INSERT INTO public.interviews VALUES ('d2222222-2222-4222-8222-222222222222', 'a1111111-1111-4111-8111-111111111113', '2026-06-02 14:00:00', 'Offline', NULL, 'RecruitPro Office', 'HR and culture fit interview', 'Scheduled');
@@ -2141,4 +2155,104 @@ AND NOT EXISTS (
     WHERE user_id = '721b1851-349a-48aa-acae-feed1c1843ed'::uuid
       AND role_id = '7a5b2c6d-1e2f-4a3b-9c8d-112233445566'::uuid
 );
+
+-- ============================================================================
+-- Phase 1 — Department Head ownership foundation
+-- See docs/source-of-truth/RECRUITMENT-OWNERSHIP-MATRIX.md, JOB-APPROVAL-FLOW.md,
+--     APPLICATION-OWNERSHIP-FLOW.md, IMPLEMENTATION-PLAN-OWNERSHIP.md.
+--
+-- Demo persona mapping:
+--   Candidate      = Phùng Nhật Quang    (4071353e-5816-4746-a8b6-c0bc3113c44d)
+--   HR / Recruiter = Nguyễn Thục Uyên    (e781ccd9-e6f8-4ce1-b15d-e142f8977a4e)
+--   DepartmentHead = Trần Trọng Tiến Đạt (721b1851-349a-48aa-acae-feed1c1843ed)
+--
+-- Ownership model:
+--   departments.head_user_id                  = default approver + business reviewer (BR-OWN-001/003).
+--   jobs.recruiter_id                         = business owner of the job's applications; created_by is
+--                                               an audit field and the legacy fallback (BR-OWN-002).
+--   applications.assigned_recruiter_id        = jobs.recruiter_id ?? jobs.created_by (snapshot, BR-OWN-005).
+--   applications.assigned_department_head_id  = departments.head_user_id ?? jobs.approved_by (snapshot).
+-- This block is idempotent and safe to re-run.
+-- ============================================================================
+
+-- 1. Columns (nullable during the migration window)
+ALTER TABLE public.departments  ADD COLUMN IF NOT EXISTS head_user_id uuid;
+ALTER TABLE public.jobs         ADD COLUMN IF NOT EXISTS recruiter_id uuid;
+ALTER TABLE public.applications ADD COLUMN IF NOT EXISTS assigned_recruiter_id uuid;
+ALTER TABLE public.applications ADD COLUMN IF NOT EXISTS assigned_department_head_id uuid;
+
+-- 2. Foreign keys to users — RESTRICT/NO ACTION (matching jobs_created_by_fkey etc.); deleting a user
+--    must never cascade-delete a department/job/application.
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'departments_head_user_id_fkey') THEN
+        ALTER TABLE ONLY public.departments
+            ADD CONSTRAINT departments_head_user_id_fkey
+            FOREIGN KEY (head_user_id) REFERENCES public.users(id);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'jobs_recruiter_id_fkey') THEN
+        ALTER TABLE ONLY public.jobs
+            ADD CONSTRAINT jobs_recruiter_id_fkey
+            FOREIGN KEY (recruiter_id) REFERENCES public.users(id);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'applications_assigned_recruiter_id_fkey') THEN
+        ALTER TABLE ONLY public.applications
+            ADD CONSTRAINT applications_assigned_recruiter_id_fkey
+            FOREIGN KEY (assigned_recruiter_id) REFERENCES public.users(id);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'applications_assigned_department_head_id_fkey') THEN
+        ALTER TABLE ONLY public.applications
+            ADD CONSTRAINT applications_assigned_department_head_id_fkey
+            FOREIGN KEY (assigned_department_head_id) REFERENCES public.users(id);
+    END IF;
+END $$;
+
+-- 3. Indexes
+CREATE INDEX IF NOT EXISTS ix_departments_head_user_id
+    ON public.departments USING btree (head_user_id);
+CREATE INDEX IF NOT EXISTS ix_jobs_recruiter_id
+    ON public.jobs USING btree (recruiter_id);
+CREATE INDEX IF NOT EXISTS ix_applications_assigned_recruiter_id
+    ON public.applications USING btree (assigned_recruiter_id);
+CREATE INDEX IF NOT EXISTS ix_applications_assigned_department_head_id
+    ON public.applications USING btree (assigned_department_head_id);
+
+-- 4. Seed normalization — Department heads.
+--    Demo simplification: Trần Trọng Tiến Đạt heads all seeded departments — he is the sole
+--    DepartmentHead persona and already approves the main demo jobs (Engineering dept fafe312f...).
+--    In production each department would have its own head.
+UPDATE public.departments
+SET head_user_id = '721b1851-349a-48aa-acae-feed1c1843ed'::uuid
+WHERE head_user_id IS NULL;
+
+-- 5. Backfill — Job recruiter from the audit created_by field (legacy fallback owner).
+--    The main demo jobs are created_by = Nguyễn Thục Uyên (HR), so recruiter_id resolves to her.
+UPDATE public.jobs
+SET recruiter_id = created_by
+WHERE recruiter_id IS NULL
+  AND created_by IS NOT NULL;
+
+-- 6. Backfill — Application ownership snapshot (BR-OWN-005).
+UPDATE public.applications a
+SET assigned_recruiter_id = COALESCE(j.recruiter_id, j.created_by),
+    assigned_department_head_id = COALESCE(d.head_user_id, j.approved_by)
+FROM public.jobs j
+LEFT JOIN public.departments d ON j.department_id = d.id
+WHERE a.job_id = j.id
+  AND (
+    a.assigned_recruiter_id IS NULL
+    OR a.assigned_department_head_id IS NULL
+  );
+
+-- ============================================================================
+-- INV-014 — at most one ACTIVE application per (candidate, job).
+-- DB-level defense-in-depth behind the service check (INV-003). Closed rows
+-- (Hired, Rejected, OfferDeclined, Withdrawn) are history and excluded from the
+-- filter so re-apply stays possible. Mirrors AppDbContext (ux_applications_active_user_job)
+-- and migration 20260626023451_AddActiveApplicationUniqueIndex exactly. Created
+-- after the seed above (which has zero duplicate active rows). Idempotent.
+-- ============================================================================
+CREATE UNIQUE INDEX IF NOT EXISTS ux_applications_active_user_job
+ON public.applications (user_id, job_id)
+WHERE status IN ('Applied', 'Screening', 'ManagerReview', 'Interview', 'Offer');
 

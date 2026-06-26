@@ -61,3 +61,44 @@ Full suite after this pass: **156 passed, 0 failed** (was 138). New/updated test
 > The defect-relevant paths are at/near full coverage. Whole-solution line-rate is ~25% because large
 > unrelated services (Copilot, Candidate import, analytics) are out of scope for this iteration — this
 > is reported honestly rather than claimed as 100%.
+
+## Ownership tests (T-OWN-*)
+
+> **Status (updated 2026-06-26, Phase 1):** the snapshot + persistence tests are **implemented and
+> passing** (full suite **162 passed, 0 failed**). The remaining T-OWN tests depend on later phases
+> (approval routing — Phase 3; create-job DTO — Phase 2) and stay **planned**. See
+> [IMPLEMENTATION-PLAN-OWNERSHIP.md](IMPLEMENTATION-PLAN-OWNERSHIP.md) and
+> [BUSINESS-RULES.md](BUSINESS-RULES.md) BR-OWN-*.
+
+### Backend — implemented (Phase 1)
+
+| Test ID | Test | Layer | Rule | Expected |
+|---|---|---|---|---|
+| T-OWN-001 | `RepositoryIntegrationTests.Department_PersistsAndReturnsHeadUserId` | integration (PG) | BR-OWN-001 | seeded Department round-trips `HeadUserId` |
+| T-OWN-007 | `ApplicationOwnershipTests.ApplyAsync_SnapshotsRecruiterAndDepartmentHead_FromPrimarySources` | unit | BR-OWN-005 | application snapshots `AssignedRecruiterId` = `Job.RecruiterId`, `AssignedDepartmentHeadId` = `Department.HeadUserId` |
+| T-OWN-007a | `ApplicationOwnershipTests.ApplyAsync_RecruiterFallsBackToCreatedBy_WhenRecruiterIdMissing` | unit | BR-OWN-005 | recruiter falls back to `Job.CreatedBy` |
+| T-OWN-007b | `ApplicationOwnershipTests.ApplyAsync_DepartmentHeadFallsBackToApprovedBy_OnlyWhenHeadUserMissing` | unit | BR-OWN-005 | head falls back to `Job.ApprovedBy` only when no `HeadUserId` |
+| T-OWN-007c | `ApplicationOwnershipTests.ApplyAsync_PrefersDepartmentHead_OverApprovedBy_WhenBothPresent` | unit | BR-OWN-005 | head not overridden by the audit fallback |
+| T-OWN-007d | `RepositoryIntegrationTests.Application_PersistsOwnershipSnapshotFields` | integration (PG) | BR-OWN-005 | snapshot fields round-trip through EF + PostgreSQL |
+
+### Backend — planned (later phases)
+
+| Test ID | Intended test | Rule | Phase |
+|---|---|---|---|
+| T-OWN-002 | `CreateJob_CapturesDepartmentAndRecruiter` | BR-OWN-002 | Phase 2 (create-job DTO carries `RecruiterId`) |
+| T-OWN-003 | `DepartmentHead_CanApproveJob` | BR-OWN-003 | Phase 3 (approval routing by `Department.HeadUserId`) |
+| T-OWN-004 | `NonDepartmentHead_CannotApproveJob` | BR-OWN-003 | Phase 3 |
+| T-OWN-005 | `ApprovedJob_BecomesPublicAndApplyable` | BR-OWN-004 | already enforced (INV-001); explicit test deferred |
+| T-OWN-006 | `Candidate_CannotApplyToNonApprovedJob` | BR-OWN-004 | already enforced; explicit test deferred |
+| T-OWN-008 | `AppliedAndScreening_OwnedByHR` | BR-OWN-006 | Phase 6 (notification routing) |
+| T-OWN-009 | `ManagerReview_OwnedByDepartmentHead` | BR-OWN-007 | Phase 6 |
+
+### Frontend (planned verification)
+
+| ID | Verification |
+|---|---|
+| FV-OWN-001 | Department screen can show/edit the DepartmentHead. |
+| FV-OWN-002 | Job create screen shows Department and Recruiter selectors. |
+| FV-OWN-003 | Job create screen displays the DepartmentHead based on the selected Department. |
+| FV-OWN-004 | Job detail shows Recruiter and DepartmentHead. |
+| FV-OWN-005 | Application detail shows Assigned Recruiter and Assigned DepartmentHead. |

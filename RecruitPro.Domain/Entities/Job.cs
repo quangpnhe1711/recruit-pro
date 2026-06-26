@@ -14,6 +14,10 @@ public partial class Job
 
     public Guid? ApprovedBy { get; set; }
 
+    // Phase 1 ownership: the recruiter who owns this job's applications (BR-OWN-002). Nullable during
+    // the migration window; falls back to CreatedBy. CreatedBy remains an audit field, not the owner.
+    public Guid? RecruiterId { get; set; }
+
     public string Title { get; set; } = null!;
 
     public string? ShortPitch { get; set; }
@@ -59,6 +63,8 @@ public partial class Job
     public virtual User? ApprovedByNavigation { get; set; }
 
     public virtual User CreatedByNavigation { get; set; } = null!;
+
+    public virtual User? Recruiter { get; set; }
 
     public virtual Department? Department { get; set; }
 

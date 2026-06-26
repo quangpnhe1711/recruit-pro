@@ -129,3 +129,30 @@ drives the application; the candidate's response on a `Sent` offer drives it (IN
 
 Forbidden combinations (must never occur): `Offer Sent` while Application is `Screening`; `Offer
 Accepted` while Application is not `Hired`; Application `Hired` with no `Accepted` offer.
+
+## Recruitment ownership per state (Planned vocabulary)
+
+> **Status:** Phase 0 — description/vocabulary only. **No status enum is renamed.** This section adds
+> the ownership reading of each existing state. **`ManagerReview` = the DepartmentHeadReview business
+> stage.** Business roles: Candidate, HR / Recruiter, DepartmentHead, SystemAdmin. See
+> [RECRUITMENT-OWNERSHIP-MATRIX.md](RECRUITMENT-OWNERSHIP-MATRIX.md).
+
+| Status (code) | Business stage | Owner | Notes |
+|---|---|---|---|
+| `Applied` | Applied | **HR / Recruiter** | HR-first (BR-OWN-006); DepartmentHead not notified yet. |
+| `Screening` | Screening | **HR / Recruiter** | HR evaluates fit. |
+| `ManagerReview` | **DepartmentHeadReview** | **DepartmentHead** | Entered only after HR passes screening (BR-OWN-007). |
+| `Interview` | Interview | **HR / Recruiter** (coordinates) + **DepartmentHead / Interviewer** (evaluates) | HR coordinates scheduling. |
+| `Offer` | Offer | **Candidate** (response) + **HR / Recruiter** (coordination) | Candidate accepts/declines a `Sent` offer. |
+| `Hired` | Hired | **HR / Recruiter** (close-out) + **DepartmentHead** (informed) | Terminal for the `jobId` (INV-015). |
+| `Rejected` | Rejected | closed (company decision) | — |
+| `Withdrawn` | Withdrawn | closed (candidate decision) | Pending interview becomes stale/cancelled. |
+| `OfferDeclined` | OfferDeclined | closed (candidate decision) | HR follow-up. |
+
+Job statuses keep their meaning; ownership note: `Draft`/`PendingApproval` are owned by HR (drafting)
+and the DepartmentHead (approval queue) respectively; `Approved`/`Rejected` are the DepartmentHead's
+decision (audit in `Job.ApprovedBy`). See [JOB-APPROVAL-FLOW.md](JOB-APPROVAL-FLOW.md).
+
+**Current vs planned:** today `ManagerReview → Interview` is driven by the generic `Manager` role; the
+target ties `ManagerReview` ownership to the application's assigned DepartmentHead
+(`Application.AssignedDepartmentHeadId` _(planned)_). No code transition changes in Phase 0.

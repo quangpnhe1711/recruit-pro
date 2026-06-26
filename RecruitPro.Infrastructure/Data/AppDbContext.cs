@@ -106,6 +106,8 @@ public partial class AppDbContext : DbContext
                 .HasPrecision(5, 2)
                 .HasColumnName("final_score");
             entity.Property(e => e.ReviewedBy).HasColumnName("reviewed_by");
+            entity.Property(e => e.AssignedRecruiterId).HasColumnName("assigned_recruiter_id");
+            entity.Property(e => e.AssignedDepartmentHeadId).HasColumnName("assigned_department_head_id");
             entity.Property(e => e.RuleScore)
                 .HasPrecision(5, 2)
                 .HasColumnName("rule_score");
@@ -137,6 +139,21 @@ public partial class AppDbContext : DbContext
             entity.HasOne(d => d.User).WithMany(p => p.Applications)
                 .HasForeignKey(d => d.UserId)
                 .HasConstraintName("applications_user_id_fkey");
+
+            // Phase 1 ownership snapshot (BR-OWN-005). Restrict: deleting a user must never
+            // cascade-delete applications.
+            entity.HasIndex(e => e.AssignedRecruiterId, "ix_applications_assigned_recruiter_id");
+            entity.HasIndex(e => e.AssignedDepartmentHeadId, "ix_applications_assigned_department_head_id");
+
+            entity.HasOne(d => d.AssignedRecruiter).WithMany()
+                .HasForeignKey(d => d.AssignedRecruiterId)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("applications_assigned_recruiter_id_fkey");
+
+            entity.HasOne(d => d.AssignedDepartmentHead).WithMany()
+                .HasForeignKey(d => d.AssignedDepartmentHeadId)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("applications_assigned_department_head_id_fkey");
 
             // INV-014: at most one ACTIVE application per (candidate, job) enforced at the database
             // level as defense-in-depth behind the service check (INV-003). Closed rows (Hired,
@@ -624,6 +641,15 @@ public partial class AppDbContext : DbContext
             entity.Property(e => e.Name)
                 .HasMaxLength(100)
                 .HasColumnName("name");
+            entity.Property(e => e.HeadUserId).HasColumnName("head_user_id");
+
+            entity.HasIndex(e => e.HeadUserId, "ix_departments_head_user_id");
+
+            // Restrict: deleting a user must never cascade-delete departments/jobs/applications.
+            entity.HasOne(d => d.HeadUser).WithMany()
+                .HasForeignKey(d => d.HeadUserId)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("departments_head_user_id_fkey");
         });
 
         modelBuilder.Entity<Interview>(entity =>
@@ -668,6 +694,7 @@ public partial class AppDbContext : DbContext
                 .HasDefaultValueSql("gen_random_uuid()")
                 .HasColumnName("id");
             entity.Property(e => e.ApprovedBy).HasColumnName("approved_by");
+            entity.Property(e => e.RecruiterId).HasColumnName("recruiter_id");
             entity.Property(e => e.Benefits).HasColumnName("benefits");
             entity.Property(e => e.Status)
                 .HasConversion<string>()
@@ -744,6 +771,14 @@ public partial class AppDbContext : DbContext
             entity.HasOne(d => d.Department).WithMany(p => p.Jobs)
                 .HasForeignKey(d => d.DepartmentId)
                 .HasConstraintName("jobs_department_id_fkey");
+
+            entity.HasIndex(e => e.RecruiterId, "ix_jobs_recruiter_id");
+
+            // Restrict: deleting a user must never cascade-delete jobs.
+            entity.HasOne(d => d.Recruiter).WithMany()
+                .HasForeignKey(d => d.RecruiterId)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("jobs_recruiter_id_fkey");
         });
 
         modelBuilder.Entity<JobSkill>(entity =>

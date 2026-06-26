@@ -16,11 +16,35 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
+          script_stop: true
           script: |
-            cd /opt/recruitpro/recruit-pro
-            git pull
+            set -e
 
-            cd /opt/recruitpro
+            ROOT_DIR="/opt/recruitpro"
+            BACKEND_DIR="/opt/recruitpro/recruit-pro"
+
+            echo "== Pull latest BE code =="
+            cd "$BACKEND_DIR"
+            git fetch origin develop
+            git reset --hard origin/develop
+
+            echo "== Go to docker compose folder =="
+            cd "$ROOT_DIR"
+
+            echo "== Start postgres and minio =="
+            docker compose up -d postgres minio
+
+            echo "== Stop backend before reset DB =="
+            docker compose stop backend || true
+
+            echo "== Drop and recreate database =="
+            bash "$ROOT_DIR/reset.sh"
+
+            echo "== Run backend init.sql =="
+            docker compose exec -T postgres psql -U postgres -d recruitpro < "$BACKEND_DIR/init.sql"
+
+            echo "== Build and restart backend =="
             docker compose up -d --build backend
 
+            echo "== Check containers =="
             docker ps

@@ -291,3 +291,76 @@ CompanyRejections   = Rejected
 **Forbidden:** Counting `Withdrawn` as `Rejected`, or as active pipeline.
 
 **Tests:** Active/closed split covered by workflow tests; planned analytics assertions T-DASH-001.
+
+---
+
+# Recruitment Ownership Rules (BR-OWN-*)
+
+> **Status:** the **data foundation is implemented (Phase 1, 2026-06-26)** — `Department.HeadUserId`,
+> `Job.RecruiterId`, `Application.AssignedRecruiterId`, `Application.AssignedDepartmentHeadId` exist in
+> `init.sql` + EF, and apply snapshots the owners (BR-OWN-005). Still **planned**: job-approval routing
+> by `Department.HeadUserId` (Phase 3), DTO/API field exposure (Phase 2), frontend (Phase 4), and
+> **notification routing (Phase 6, not implemented)**. Backend status enums and roles are **not**
+> renamed; `ManagerReview` (code) **=** the **DepartmentHeadReview** business stage. See
+> [01-system-overview.md](01-system-overview.md),
+> [RECRUITMENT-OWNERSHIP-MATRIX.md](RECRUITMENT-OWNERSHIP-MATRIX.md), and
+> [IMPLEMENTATION-PLAN-OWNERSHIP.md](IMPLEMENTATION-PLAN-OWNERSHIP.md).
+
+Business roles: **Candidate**, **HR / Recruiter**, **DepartmentHead**, **SystemAdmin**.
+
+## BR-OWN-001 — A Department must have a Head for routing
+Each Department should have a DepartmentHead user (`Department.HeadUserId`). The head is the
+default job approver and default business reviewer for that Department. If a Department has no head, job
+approval and DepartmentHead review cannot be routed safely.
+**Phase 1 (implemented):** `Department.HeadUserId` column + EF mapping exist; seed sets it to the
+DepartmentHead persona. **Still planned:** approval *authorization* by `Department.HeadUserId` (Phase 3)
+— today approval is still gated by the generic `Manager` role.
+
+## BR-OWN-002 — HR creates the job; CreatedBy is an audit field
+HR / Recruiter creates a job, capturing **Department** and **Recruiter phụ trách**
+(`Job.RecruiterId`, the business owner of the job's applications). `Job.CreatedBy` is an **audit**
+field and must **not** be treated as the long-term recruiter owner except as a legacy fallback.
+**Phase 1 (implemented):** `Job.RecruiterId` column + EF mapping exist; seed/backfill sets
+`recruiter_id = created_by` (the demo jobs are created by the HR persona). **Still planned:** the job
+create/edit flow capturing/validating `RecruiterId` explicitly (Phases 2–4).
+
+## BR-OWN-003 — DepartmentHead approves the job; ApprovedBy is an audit field
+A job is not public/applyable until approved. The approver is the Department's head
+(`Department.HeadUserId` _(planned)_). `Job.ApprovedBy` **(current)** is an **audit** field, not the
+long-term head owner except as a legacy fallback.
+**Current:** approval is authorized by the `Manager` role (`JobController` approval endpoints).
+
+## BR-OWN-004 — Candidate applies only to approved jobs
+A candidate can apply only when `Job.Status = Approved` (and the deadline has not passed). Only approved
+jobs appear in the public listing. **Current:** enforced (INV-001 / BR-APPLICATION-004) — unchanged.
+
+## BR-OWN-005 — Application snapshots its owners at apply time
+On apply, the application snapshots the current recruiter and DepartmentHead into
+`Application.AssignedRecruiterId` and `Application.AssignedDepartmentHeadId`. Resolution order in
+[APPLICATION-OWNERSHIP-FLOW.md](APPLICATION-OWNERSHIP-FLOW.md) §2. Re-apply creates a new row (INV-007)
+and a fresh snapshot.
+**Phase 1 (implemented):** `ApplicationService.ApplyAsync` sets
+`AssignedRecruiterId = Job.RecruiterId ?? Job.CreatedBy` and
+`AssignedDepartmentHeadId = Job.Department.HeadUserId ?? Job.ApprovedBy`. Covered by unit tests
+(see [TEST-MATRIX.md](TEST-MATRIX.md) T-OWN-007).
+
+## BR-OWN-006 — Candidate apply is owned by HR first, not DepartmentHead
+On apply, the primary owner is `AssignedRecruiterId` (the HR / Recruiter). The DepartmentHead must
+**not** receive every new application immediately — HR screens first to avoid spamming the head.
+**Current:** `new_application_received` already routes to `Job.CreatedBy` + `HR` role (HR-first by role).
+
+## BR-OWN-007 — DepartmentHead participates after HR screening
+When HR moves the application to `ManagerReview` / DepartmentHeadReview, the primary owner becomes
+`AssignedDepartmentHeadId`. **Current:** the `ManagerReview → Interview` transition is driven by the
+generic `Manager` role, not a per-application assigned head.
+
+## BR-OWN-008 — Interview and offer responsibilities
+Interview: HR coordinates, DepartmentHead evaluates/participates, Candidate attends. Offer: HR sends,
+Candidate accepts/declines, DepartmentHead is informed when the outcome affects the Department. Planned
+notification routing in [NOTIFICATION-EVENT-MATRIX.md](NOTIFICATION-EVENT-MATRIX.md).
+
+## BR-OWN-009 — SystemAdmin is not part of normal recruitment ownership
+SystemAdmin manages configuration and access and may override/maintain data, but is **never** the
+default owner or recipient of recruitment workflow items.
+
+**Tests:** Planned — see [TEST-MATRIX.md](TEST-MATRIX.md) §Planned ownership tests (T-OWN-001…009).
