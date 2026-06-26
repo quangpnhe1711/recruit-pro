@@ -24,6 +24,28 @@ integration via Testcontainers PostgreSQL). Full suite at time of writing: **138
 | T-API-001 | `ApplicationController_ApplyContext_Should_Require_Candidate…` | integration (PG) | authz | candidate 200, HR-as-candidate 403 |
 | T-API-002 | `Public_Apis_Should_Return_Controlled_404_Not_500_For_Invalid_Ids` | integration (PG) | 500 eradication | 404 not 500 |
 
+## Implemented in the conformance pass (DL-007/008/009)
+
+Full suite after this pass: **156 passed, 0 failed** (was 138). New/updated tests:
+
+| Test ID | Test | Layer | Rule / Inv | Expected |
+|---|---|---|---|---|
+| T-RE-003 | `ApplicationConformanceTests.ApplyAsync_AfterHired_ForSameJob_IsBlocked` | unit | BR-002 / INV-015 | re-apply after `Hired` same job → 422 `APPLICATION_ALREADY_HIRED`, no insert |
+| T-DUP-003 | `ApplicationConformanceTests.ApplyAsync_UsesExistsActive_NotArbitraryRow` | unit | BR-001 / INV-003 | active detected via EXISTS query even when fetched row is closed → 409 |
+| T-DUP-004 | `RepositoryIntegrationTests.ActiveApplicationUniqueIndex_*` (reject active dup / allow closed dup) | integration (PG) | INV-014 | DB index rejects 2nd active row; allows closed duplicate |
+| T-OFR-001 | `AcceptOffer_WhenNotInOfferStage_Returns422`, `AcceptOffer_WhenOfferNotSent_Returns422`, `UpdateApplicationDecision_FromOffer_IsRejected` | unit | BR-009 / INV-009 | forbidden offer combos & reviewer Offer→Hired → 422 |
+| T-OFR-002 | `AcceptOffer_WhenOfferSent_SetsOfferAcceptedAndApplicationHired` | unit | INV-009 | Offer Accepted + Application Hired, 200 |
+| T-OFR-003 | `DeclineOffer_WhenOfferSent_SetsOfferDeclinedAndApplicationOfferDeclined` | unit | INV-009 | Offer Declined + Application OfferDeclined, 200 |
+| T-INT-001 | `CreateInterview_WhenApplicationNotInInterviewStage_Returns422` | unit | BR-008 / INV-008 | off-stage interview create → 422 `INTERVIEW_NOT_ACTIONABLE` |
+| T-INT-002 | `Withdraw_FromInterviewStage_CancelsPendingInterview` | unit | BR-008 / INV-008 | pending `Scheduled` → `Canceled`; completed untouched |
+| T-WF-004 | `ApplicationStatusWorkflowTests.IsReapplyEligibleClosedStatus_ExcludesHiredAndActiveStates` | unit | INV-015 | Rejected/Withdrawn/OfferDeclined eligible; Hired not |
+
+## Still planned (not in this pass)
+
+| Test ID | Intended test | Rule / Invariant | Notes |
+|---|---|---|---|
+| T-DASH-001 | `Analytics_DeriveFromCanonicalGroups_WithdrawnNotRejected` | BR-011 / INV-011 | INV-011 already PASS in code; explicit analytics assertion deferred |
+
 ## Coverage evidence (cobertura, this run)
 
 | Class / method | Line | Branch |

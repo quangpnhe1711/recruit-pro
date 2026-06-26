@@ -51,4 +51,10 @@ public class ApplyJobEligibilityDto
     public string? ExistingApplicationStatus { get; set; }
     public List<string> Blockers { get; set; } = [];
     public string GuidanceMessage { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Stable machine error code for the primary blocker (null when CanApply). The frontend should
+    /// branch on this before HTTP status or localized message (INV-012).
+    /// </summary>
+    public string? PrimaryErrorCode { get; set; }
 }

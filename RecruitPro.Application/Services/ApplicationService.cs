@@ -1,4 +1,5 @@
 using RecruitPro.Application.DTOs.Request.Applications;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RecruitPro.Application.DTOs.Request;
 using RecruitPro.Application.DTOs.Request.Jobs;
@@ -77,7 +78,8 @@ public class ApplicationService : IApplicationService
         Job job = await GetJobAsync(jobId);
         CandidateProfile profile = await GetOrCreateProfileEntityAsync(userId);
         Domain.Entities.Application? existingApplication = await GetExistingApplicationAsync(userId, job.Id);
-        ApplyJobEligibilityDto eligibility = BuildApplyEligibility(job, profile, existingApplication);
+        bool hasActiveApplication = await _applicationRepository.HasActiveApplicationAsync(userId, job.Id);
+        ApplyJobEligibilityDto eligibility = BuildApplyEligibility(job, profile, existingApplication, hasActiveApplication);
 
         CandidateResume? currentResume = GetCurrentResume(profile);
         ApplyJobResumeDto? resume = null;
@@ -136,20 +138,24 @@ public class ApplicationService : IApplicationService
         Job job = await GetJobAsync(jobId);
         CandidateProfile profile = await GetOrCreateProfileEntityAsync(userId);
         Domain.Entities.Application? existingApplication = await GetExistingApplicationAsync(userId, job.Id);
-        ApplyJobEligibilityDto eligibility = BuildApplyEligibility(job, profile, existingApplication);
+        // INV-003: the duplicate decision is EXISTS-active, evaluated by the DB independently of row
+        // ordering — not "is the most recent/arbitrary row active".
+        bool hasActiveApplication = await _applicationRepository.HasActiveApplicationAsync(userId, job.Id);
+        ApplyJobEligibilityDto eligibility = BuildApplyEligibility(job, profile, existingApplication, hasActiveApplication);
         if (!eligibility.CanApply)
         {
             // Only an ACTIVE (non-closed) application means "already applied". A withdrawn/rejected
             // application is closed and must never produce the "already applied" message — that was
             // the bug where withdraw-then-reapply reported a duplicate. Map the active duplicate to
             // 409 Conflict and every other unmet business precondition to 422 with its real reason.
-            if (HasActiveApplication(existingApplication))
+            if (hasActiveApplication)
             {
-                return ApiResponse<ApplyJobResponseDto>.Conflict("Candidate already applied for this job.");
+                return ApiResponse<ApplyJobResponseDto>.Conflict(
+                    "Candidate already applied for this job.", errorCode: ErrorCodes.ApplicationAlreadyActive);
             }
 
             string message = eligibility.Blockers.FirstOrDefault() ?? "This job cannot be applied for right now.";
-            return ApiResponse<ApplyJobResponseDto>.UnprocessableEntity(message);
+            return ApiResponse<ApplyJobResponseDto>.UnprocessableEntity(message, errorCode: eligibility.PrimaryErrorCode);
         }
 
         decimal ruleScore = CalculateRuleScore(profile, job);
@@ -169,10 +175,23 @@ public class ApplicationService : IApplicationService
             ScoreStatus = ScoreStatusPendingSemantic,
             ScoredAt = DbDateTime.Now
         };
-        await _unitOfWork.BeginTransactionAsync();
-        await _applicationRepository.AddAsync(application);
-        await _unitOfWork.SaveChangesAsync();
-        await _unitOfWork.CommitAsync();
+        try
+        {
+            await _unitOfWork.BeginTransactionAsync();
+            await _applicationRepository.AddAsync(application);
+            await _unitOfWork.SaveChangesAsync();
+            await _unitOfWork.CommitAsync();
+        }
+        catch (DbUpdateException ex) when (IsActiveApplicationUniqueViolation(ex))
+        {
+            // INV-014: the DB partial unique index (ux_applications_active_user_job) is the last line of
+            // defense against a concurrent double-apply that slipped past the service-level EXISTS check
+            // (two requests both reading "no active application" before either commits). Map it to the
+            // same stable 409 the service check produces, rather than letting it surface as a 500.
+            await _unitOfWork.RollbackAsync();
+            return ApiResponse<ApplyJobResponseDto>.Conflict(
+                "Candidate already applied for this job.", errorCode: ErrorCodes.ApplicationAlreadyActive);
+        }
 
         // The application is now durably committed: the apply succeeded. Everything below is a
         // best-effort side effect. A failure in notification dispatch or semantic-scoring enqueue
@@ -336,13 +355,16 @@ public class ApplicationService : IApplicationService
         Domain.Entities.Application application = await GetTrackedApplicationForCandidateAsync(userId, applicationId);
         if (!ApplicationStatusWorkflow.CanCandidateWithdraw(application.Status))
         {
-            return ApiResponse<string>.UnprocessableEntity("This application can no longer be withdrawn.");
+            return ApiResponse<string>.UnprocessableEntity(
+                "This application can no longer be withdrawn.", errorCode: ErrorCodes.ApplicationNotWithdrawable);
         }
 
         // Withdrawal is candidate-initiated and non-punitive: it must be modelled as its own
         // closed state (Withdrawn), never as Rejected. Conflating it with Rejected mislabels the
         // candidate's history ("Không phù hợp") and is the reason re-apply used to be blocked.
         application.Status = ApplicationStatus.Withdrawn;
+        // INV-008 / BR-008: leaving the pipeline invalidates any pending interview.
+        CancelPendingInterviews(application);
 
         await _unitOfWork.BeginTransactionAsync();
         await _applicationRepository.UpdateAsync(application);
@@ -361,27 +383,27 @@ public class ApplicationService : IApplicationService
     {
         Domain.Entities.Application application = await GetTrackedApplicationForCandidateAsync(userId, applicationId);
 
-        if (!ApplicationStatusWorkflow.CanCandidateRespondToOffer(application.Status)
-            && application.Status != ApplicationStatus.Hired)
+        // INV-009: Hired must come only from the candidate accepting a Sent offer while the application
+        // is in Offer. No reviewer/Hired bypass — a business-state failure is 422, not 400.
+        if (!ApplicationStatusWorkflow.CanCandidateRespondToOffer(application.Status))
         {
-            return ApiResponse<string>.BadRequest("This application is not ready for offer acceptance.");
+            return ApiResponse<string>.UnprocessableEntity(
+                "This application is not waiting for an offer response.", errorCode: ErrorCodes.OfferNotActionable);
         }
 
-        if (application.Status == ApplicationStatus.Offer && application.Offer?.Status != OfferStatus.Sent)
+        ApplicationOffer? offer = await _offerRepository.GetTrackedByApplicationIdAsync(application.Id);
+        if (offer?.Status != OfferStatus.Sent)
         {
-            return ApiResponse<string>.BadRequest("An offer has not been sent for this application yet.");
+            return ApiResponse<string>.UnprocessableEntity(
+                "An offer has not been sent for this application yet.", errorCode: ErrorCodes.OfferNotActionable);
         }
 
         application.Status = ApplicationStatus.Hired;
-        ApplicationOffer? offer = await _offerRepository.GetTrackedByApplicationIdAsync(application.Id);
-        if (offer != null)
-        {
-            offer.Status = OfferStatus.Accepted;
-            offer.UpdatedAt = DbDateTime.Now;
-            await _offerRepository.UpdateAsync(offer);
-        }
+        offer.Status = OfferStatus.Accepted;
+        offer.UpdatedAt = DbDateTime.Now;
 
         await _unitOfWork.BeginTransactionAsync();
+        await _offerRepository.UpdateAsync(offer);
         await _applicationRepository.UpdateAsync(application);
         await _unitOfWork.SaveChangesAsync();
         await _unitOfWork.CommitAsync();
@@ -400,13 +422,15 @@ public class ApplicationService : IApplicationService
         Domain.Entities.Application application = await GetTrackedApplicationForCandidateAsync(userId, applicationId);
         if (!ApplicationStatusWorkflow.CanCandidateRespondToOffer(application.Status))
         {
-            return ApiResponse<string>.BadRequest("This application is not waiting for an offer response.");
+            return ApiResponse<string>.UnprocessableEntity(
+                "This application is not waiting for an offer response.", errorCode: ErrorCodes.OfferNotActionable);
         }
 
         ApplicationOffer? offer = await _offerRepository.GetTrackedByApplicationIdAsync(application.Id);
         if (offer?.Status != OfferStatus.Sent)
         {
-            return ApiResponse<string>.BadRequest("An offer has not been sent for this application yet.");
+            return ApiResponse<string>.UnprocessableEntity(
+                "An offer has not been sent for this application yet.", errorCode: ErrorCodes.OfferNotActionable);
         }
 
         application.Status = ApplicationStatus.OfferDeclined;
@@ -534,13 +558,26 @@ public class ApplicationService : IApplicationService
         ApplicationStatus? targetStatus = ParseApplicationStatus(request.TargetStatus);
         if (!targetStatus.HasValue)
         {
+            // Malformed input (unparseable status string) is a 400; an invalid but well-formed
+            // transition is a business-state failure (422) — see below.
             return ApiResponse<ApplicationReviewDetailDto>.BadRequest("Target application status is invalid.");
+        }
+
+        // INV-009: Hired and OfferDeclined are candidate-owned outcomes of an offer response. A
+        // reviewer (HR/Manager) must not drive the application out of Offer via this decision endpoint;
+        // those transitions only happen through accept-offer / decline-offer.
+        if (application.Status == ApplicationStatus.Offer)
+        {
+            return ApiResponse<ApplicationReviewDetailDto>.UnprocessableEntity(
+                "An offer outcome must come from the candidate accepting or declining the offer.",
+                errorCode: ErrorCodes.InvalidApplicationTransition);
         }
 
         if (!ApplicationStatusWorkflow.CanTransition(application.Status, targetStatus.Value))
         {
-            return ApiResponse<ApplicationReviewDetailDto>.BadRequest(
-                $"Invalid transition from {application.Status} to {targetStatus.Value}.");
+            return ApiResponse<ApplicationReviewDetailDto>.UnprocessableEntity(
+                $"Invalid transition from {application.Status} to {targetStatus.Value}.",
+                errorCode: ErrorCodes.InvalidApplicationTransition);
         }
 
         ApplicationStatus previousStatus = application.Status;
@@ -551,11 +588,32 @@ public class ApplicationService : IApplicationService
             application.ReviewedBy = reviewerId.Value;
         }
 
+        // INV-008 / BR-008: a reviewer rejection takes the application out of the pipeline; any pending
+        // interview must be cancelled.
+        if (targetStatus.Value == ApplicationStatus.Rejected)
+        {
+            CancelPendingInterviews(application);
+        }
+
         await _unitOfWork.BeginTransactionAsync();
         await _applicationRepository.UpdateAsync(application);
         await _unitOfWork.SaveChangesAsync();
         await _unitOfWork.CommitAsync();
-        await _notificationEventService.PublishApplicationStatusChangedAsync(application, previousStatus);
+
+        // INV-010: the status change is committed; notification is a best-effort side effect and must
+        // never turn a committed transition into a 500.
+        try
+        {
+            await _notificationEventService.PublishApplicationStatusChangedAsync(application, previousStatus);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "Application {ApplicationId} transitioned to {Status} but the status-changed notification failed to publish.",
+                application.Id,
+                application.Status);
+        }
 
         Domain.Entities.Application? refreshedApplication = await _applicationRepository.GetByIdAsync(applicationGuid);
         if (refreshedApplication == null)
@@ -645,7 +703,15 @@ public class ApplicationService : IApplicationService
     private async Task<Domain.Entities.Application?> GetExistingApplicationAsync(Guid userId, Guid jobId)
     {
         IReadOnlyList<Domain.Entities.Application> existingApplications = await _applicationRepository.GetByUserIdAsync(userId);
-        return existingApplications.FirstOrDefault(application => application.JobId == jobId);
+        List<Domain.Entities.Application> forJob = existingApplications
+            .Where(application => application.JobId == jobId)
+            .ToList();
+
+        // INV-003: never depend on an arbitrary/"latest" row. If an ACTIVE application exists it is the
+        // candidate's current relationship with the job; otherwise fall back to the most recent closed
+        // row (GetByUserIdAsync is ordered by AppliedAt desc) for history/Hired-blocker context.
+        return forJob.FirstOrDefault(application => !ApplicationStatusWorkflow.IsClosed(application.Status))
+            ?? forJob.FirstOrDefault();
     }
 
     /// <summary>
@@ -658,34 +724,45 @@ public class ApplicationService : IApplicationService
     private static ApplyJobEligibilityDto BuildApplyEligibility(
         Job job,
         CandidateProfile profile,
-        Domain.Entities.Application? existingApplication)
+        Domain.Entities.Application? existingApplication,
+        bool hasActiveApplication)
     {
-        List<string> blockers = [];
+        // Each blocker carries a stable machine error code (the first one becomes PrimaryErrorCode for
+        // the 4xx response). Order matters: the duplicate/hired checks come last so a real precondition
+        // failure is surfaced instead of being masked by history.
+        List<(string Code, string Message)> blockers = [];
 
         if (job.Status != JobStatus.Approved)
         {
-            blockers.Add("This job posting is not accepting new applications.");
+            blockers.Add((ErrorCodes.JobNotAcceptingApplications, "This job posting is not accepting new applications."));
         }
 
         if (job.Deadline.HasValue && job.Deadline.Value < DbDateTime.Now)
         {
-            blockers.Add("The application deadline for this job has passed.");
+            blockers.Add((ErrorCodes.JobDeadlinePassed, "The application deadline for this job has passed."));
         }
 
         if (string.IsNullOrWhiteSpace(profile.User.FullName) || string.IsNullOrWhiteSpace(profile.User.Email))
         {
-            blockers.Add("Your profile is missing required contact information.");
+            blockers.Add((ErrorCodes.CandidateProfileIncomplete, "Your profile is missing required contact information."));
         }
 
         if (GetCurrentResume(profile) == null)
         {
-            blockers.Add("Please upload your latest resume before applying.");
+            blockers.Add((ErrorCodes.ResumeRequired, "Please upload your latest resume before applying."));
         }
 
-        bool hasActiveApplication = HasActiveApplication(existingApplication);
         if (hasActiveApplication)
         {
-            blockers.Add("You have already applied for this job.");
+            blockers.Add((ErrorCodes.ApplicationAlreadyActive, "You have already applied for this job."));
+        }
+        // INV-015: Hired is closed-for-workflow but terminal for this jobId. A prior Hired (and no
+        // active application) blocks a fresh apply for the SAME job — this is a business blocker (422),
+        // not an active duplicate (409). Re-apply-eligible closed states (Rejected/Withdrawn/
+        // OfferDeclined) deliberately do NOT block.
+        else if (existingApplication is { Status: ApplicationStatus.Hired })
+        {
+            blockers.Add((ErrorCodes.ApplicationAlreadyHired, "You have already been hired for this job."));
         }
 
         return new ApplyJobEligibilityDto
@@ -696,7 +773,8 @@ public class ApplicationService : IApplicationService
             AlreadyApplied = hasActiveApplication,
             ExistingApplicationId = existingApplication?.Id.ToString(),
             ExistingApplicationStatus = existingApplication?.Status.ToString(),
-            Blockers = blockers,
+            Blockers = blockers.Select(blocker => blocker.Message).ToList(),
+            PrimaryErrorCode = blockers.Count == 0 ? null : blockers[0].Code,
             GuidanceMessage = blockers.Count == 0
                 ? "Your application will be submitted to the recruitment team for review."
                 : hasActiveApplication
@@ -706,14 +784,41 @@ public class ApplicationService : IApplicationService
     }
 
     /// <summary>
-    /// Determines whether the candidate currently holds an active (non-closed) application for the job.
+    /// Cancels any pending (Scheduled) interview when the application leaves the active pipeline
+    /// (Withdrawn/Rejected). INV-008 / BR-008: an interview is only actionable while the application
+    /// is in the Interview stage; once it leaves, pending interviews must not remain actionable.
+    /// Operates on the tracked application's loaded Interviews collection so it is saved in the same
+    /// transaction as the status change.
     /// </summary>
-    /// <param name="existingApplication">The most recent existing application, if any.</param>
-    /// <returns><c>true</c> when an active application exists; otherwise <c>false</c>.</returns>
-    private static bool HasActiveApplication(Domain.Entities.Application? existingApplication)
+    private static void CancelPendingInterviews(Domain.Entities.Application application)
     {
-        return existingApplication != null
-            && !ApplicationStatusWorkflow.IsClosed(existingApplication.Status);
+        foreach (Interview interview in application.Interviews)
+        {
+            if (interview.Status == InterviewStatus.Scheduled)
+            {
+                interview.Status = InterviewStatus.Canceled;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Determines whether a <see cref="DbUpdateException"/> was caused by the active-application
+    /// partial unique index. Checked by the constraint name plus the PostgreSQL unique-violation
+    /// SQLSTATE (23505) carried on the inner exception, without taking a hard dependency on Npgsql.
+    /// </summary>
+    private static bool IsActiveApplicationUniqueViolation(DbUpdateException exception)
+    {
+        for (Exception? current = exception; current != null; current = current.InnerException)
+        {
+            string message = current.Message;
+            if (message.Contains("ux_applications_active_user_job", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("23505", StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>

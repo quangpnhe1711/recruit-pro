@@ -1,5 +1,17 @@
 # State Machines
 
+> Trace to [00-DOMAIN-STATE-DEPENDENCY.md](00-DOMAIN-STATE-DEPENDENCY.md). Every transition here is
+> gated by the dependency model: a state is reachable only when the earlier checkpoint produced the
+> facts it needs, and `Application.status` gates Interview/Offer — never the reverse (INV-008).
+
+## Canonical state groups
+
+```
+ActiveApplicationStates      = { Applied, Screening, ManagerReview, Interview, Offer }
+ClosedForWorkflow            = { Rejected, Withdrawn, OfferDeclined, Hired }
+ReapplyEligibleClosedStates  = { Rejected, Withdrawn, OfferDeclined }   // Hired excluded (INV-015)
+```
+
 ## Application status
 
 `ApplicationStatus` (RecruitPro.Domain.Enums) — persisted as a string via
@@ -9,6 +21,8 @@ States: `Applied`, `Screening`, `ManagerReview`, `Interview`, `Offer`, `Hired`, 
 `OfferDeclined`, `Withdrawn`.
 
 Closed/terminal: `Hired`, `Rejected`, `OfferDeclined`, `Withdrawn` (`ApplicationStatusWorkflow.IsClosed`).
+Of these, only `Rejected`, `Withdrawn`, `OfferDeclined` are **re-apply-eligible**; `Hired` is terminal
+for its `jobId` (INV-015).
 
 ### Dependency model
 
@@ -55,7 +69,10 @@ workflow does **not** include `Withdrawn` as a target — withdrawal is a separa
 | Applied, Screening, ManagerReview, Interview | Withdraw | Withdrawn | POST /api/candidate/applications/{id}/withdraw | `CanCandidateWithdraw`; ownership |
 | Offer | Accept offer | Hired | POST …/accept-offer | offer must be `Sent` |
 | Offer | Decline offer | OfferDeclined | POST …/decline-offer | offer must be `Sent` |
-| Hired, Rejected, OfferDeclined, Withdrawn (closed) | Re-apply (new row) | Applied | POST /api/jobs/{jobId}/apply | BR-APPLICATION-001/002/004 |
+| Rejected, OfferDeclined, Withdrawn (re-apply-eligible closed) | Re-apply (new row) | Applied | POST /api/jobs/{jobId}/apply | BR-APPLICATION-001/002/004 |
+| Hired (closed, terminal for jobId) | Re-apply **forbidden** for same job | — | — | BR-APPLICATION-002, INV-015 |
+
+Re-apply always inserts a **new** `Application` row (INV-007); it never reactivates a closed row.
 
 Side effects: status changes emit notifications **after** the DB commit; a notification failure does
 not roll back or fail the request (BR-APPLICATION-005).
@@ -65,14 +82,50 @@ For the FE-facing labels, derived actions, cross-workflow dependencies, and noti
 
 ## Job status
 
-`JobStatus` — relevant to apply eligibility:
+`JobStatus` (RecruitPro.Domain.Enums) — actual enum values: `Draft`, `PendingApproval`, `Approved`,
+`Closed`, `Rejected`. (There is **no** `Archived`/`Deleted` value; an earlier draft of this doc named
+them — they do not exist. Enum gaps are tracked in [DECISION-LOG.md](DECISION-LOG.md).)
 
 | State | Public / listable | Apply-able | Notes |
 |---|---|---|---|
-| Draft | No | No | Not yet submitted |
+| Draft | No | No | HR drafting; not yet submitted |
 | PendingApproval | No | No | Awaiting manager approval |
 | Approved | Yes | **Yes** (until deadline) | The only apply-able state (BR-APPLICATION-004) |
-| Closed | Optional | No | No new applications |
-| Archived/Deleted | No | No | Excluded from search/selection |
+| Closed | History only | No | No new applications |
+| Rejected | No | No | Posting rejected during approval; excluded from selection |
 
 Only `Approved` jobs accept applications; `BuildApplyEligibility` blocks all others with HTTP 422.
+
+## Interview status
+
+`InterviewStatus` — values: `Scheduled`, `Completed`, `Canceled` (note the single-`l` spelling).
+
+An `Interview` record is **only valid/actionable while `Application.status = Interview`** (INV-008). It
+is a dependent record, not an independent workflow.
+
+| State | Valid when | Transitions | Notes |
+|---|---|---|---|
+| Scheduled | Application is `Interview` | → Completed, → Canceled | Active interview |
+| Completed | Application reached `Interview` | terminal | Feeds the `Interview → Offer/Rejected` decision |
+| Canceled | any | terminal | Set when application is withdrawn/rejected, or interview is dropped |
+
+When the application leaves the pipeline (`Withdrawn`/`Rejected`) a `Scheduled` interview must be
+`Canceled` or treated as stale (see 00-DOMAIN-STATE-DEPENDENCY §7; cascade enforcement tracked in
+DECISION-LOG DL-009).
+
+## Offer status
+
+`OfferStatus` — values: `Draft`, `Sent`, `Accepted`, `Declined`. (There is **no** `Cancelled` value.)
+
+An `Offer` is **only valid/actionable while `Application.status = Offer`** (INV-008). The offer never
+drives the application; the candidate's response on a `Sent` offer drives it (INV-009).
+
+| Offer state | Required Application state | Drives |
+|---|---|---|
+| Draft | Application is `Interview` or `Offer` | — |
+| Sent | Application = `Offer` | enables candidate accept/decline |
+| Accepted | Application → `Hired` (via candidate accept only) | hiring completion |
+| Declined | Application → `OfferDeclined` (via candidate decline) | candidate history |
+
+Forbidden combinations (must never occur): `Offer Sent` while Application is `Screening`; `Offer
+Accepted` while Application is not `Hired`; Application `Hired` with no `Accepted` offer.

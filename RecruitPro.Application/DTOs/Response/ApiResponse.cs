@@ -5,6 +5,12 @@ namespace RecruitPro.Application.DTOs.Response
         public bool Success { get; set; }
         public int StatusCode { get; set; }
         public string Message { get; set; }
+
+        /// <summary>
+        /// Stable machine-readable error code (ERROR-CONTRACT.md). Null on success and on responses
+        /// that have not yet been migrated to the error-code contract.
+        /// </summary>
+        public string? ErrorCode { get; set; }
         public T? Data { get; set; }
         public Dictionary<string, string[]>? Errors { get; set; }
         public object? Extra { get; set; }
@@ -15,7 +21,8 @@ namespace RecruitPro.Application.DTOs.Response
             string message,
             T? data = default,
             Dictionary<string, string[]>? errors = null,
-            object? extra = null)
+            object? extra = null,
+            string? errorCode = null)
         {
             Success = success;
             StatusCode = statusCode;
@@ -23,6 +30,7 @@ namespace RecruitPro.Application.DTOs.Response
             Data = data;
             Errors = errors;
             Extra = extra;
+            ErrorCode = errorCode;
         }
 
         public static ApiResponse<T> Ok(T data, string message = "Thành công")
@@ -40,9 +48,9 @@ namespace RecruitPro.Application.DTOs.Response
             return new ApiResponse<T>(true, 204, message);
         }
 
-        public static ApiResponse<T> BadRequest(string message)
+        public static ApiResponse<T> BadRequest(string message, string? errorCode = null)
         {
-            return new ApiResponse<T>(false, 400, message);
+            return new ApiResponse<T>(false, 400, message, errorCode: errorCode);
         }
 
         public static ApiResponse<T> ValidationError(string message, Dictionary<string, string[]> errors)
@@ -50,29 +58,29 @@ namespace RecruitPro.Application.DTOs.Response
             return new ApiResponse<T>(false, 400, message, default, errors);
         }
 
-        public static ApiResponse<T> Unauthorized(string message = "Không có quyền truy cập")
+        public static ApiResponse<T> Unauthorized(string message = "Không có quyền truy cập", string? errorCode = null)
         {
-            return new ApiResponse<T>(false, 401, message);
+            return new ApiResponse<T>(false, 401, message, errorCode: errorCode);
         }
 
-        public static ApiResponse<T> NotFound(string message = "Không tìm thấy dữ liệu")
+        public static ApiResponse<T> NotFound(string message = "Không tìm thấy dữ liệu", string? errorCode = null)
         {
-            return new ApiResponse<T>(false, 404, message);
+            return new ApiResponse<T>(false, 404, message, errorCode: errorCode);
         }
 
-        public static ApiResponse<T> Forbidden(string message = "Bạn không có quyền")
+        public static ApiResponse<T> Forbidden(string message = "Bạn không có quyền", string? errorCode = null)
         {
-            return new ApiResponse<T>(false, 403, message);
+            return new ApiResponse<T>(false, 403, message, errorCode: errorCode);
         }
 
-        public static ApiResponse<T> Conflict(string message, object? extra = null)
+        public static ApiResponse<T> Conflict(string message, object? extra = null, string? errorCode = null)
         {
-            return new ApiResponse<T>(false, 409, message, default, null, extra);
+            return new ApiResponse<T>(false, 409, message, default, null, extra, errorCode);
         }
 
-        public static ApiResponse<T> UnprocessableEntity(string message, object? extra = null)
+        public static ApiResponse<T> UnprocessableEntity(string message, object? extra = null, string? errorCode = null)
         {
-            return new ApiResponse<T>(false, 422, message, default, null, extra);
+            return new ApiResponse<T>(false, 422, message, default, null, extra, errorCode);
         }
 
         public static ApiResponse<T> Error(string message = "Lỗi hệ thống", object? extra = null)

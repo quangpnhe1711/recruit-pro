@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using RecruitPro.Application.Interfaces.IRepositories;
 using RecruitPro.Domain.Entities;
@@ -65,6 +66,52 @@ public sealed class RepositoryIntegrationTests : IClassFixture<PostgresTestFixtu
 
         string? rawStatus = await _factory.Fixture.GetApplicationStatusRawAsync(TestDataSeeder.ApplicationId);
         rawStatus.Should().Be("ManagerReview");
+    }
+
+    // T-DUP-004 / INV-014: the partial unique index (ux_applications_active_user_job) is the DB-level
+    // guarantee of "at most one active application per (candidate, job)". The seeded application is
+    // ManagerReview (active) for CandidateUserId + ApprovedJobId; a second ACTIVE row must be rejected
+    // by the database even if the service-level check were bypassed (e.g. a concurrent double-apply).
+    [Fact]
+    public async Task ActiveApplicationUniqueIndex_RejectsSecondActiveApplication_ForSameUserAndJob()
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        AppDbContext context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        context.Applications.Add(new Domain.Entities.Application
+        {
+            Id = Guid.NewGuid(),
+            UserId = TestDataSeeder.CandidateUserId,
+            JobId = TestDataSeeder.ApprovedJobId,
+            Status = ApplicationStatus.Applied,
+            AppliedAt = new DateTime(2026, 6, 1, 9, 0, 0, DateTimeKind.Unspecified)
+        });
+
+        Func<Task> act = () => context.SaveChangesAsync();
+
+        await act.Should().ThrowAsync<DbUpdateException>();
+    }
+
+    // INV-014 complement: a CLOSED duplicate (Withdrawn) is excluded from the index filter, so it is
+    // allowed — this is what keeps re-apply (INV-007) possible.
+    [Fact]
+    public async Task ActiveApplicationUniqueIndex_AllowsClosedDuplicate_ForSameUserAndJob()
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        AppDbContext context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        context.Applications.Add(new Domain.Entities.Application
+        {
+            Id = Guid.NewGuid(),
+            UserId = TestDataSeeder.CandidateUserId,
+            JobId = TestDataSeeder.ApprovedJobId,
+            Status = ApplicationStatus.Withdrawn,
+            AppliedAt = new DateTime(2026, 6, 1, 9, 0, 0, DateTimeKind.Unspecified)
+        });
+
+        Func<Task> act = () => context.SaveChangesAsync();
+
+        await act.Should().NotThrowAsync();
     }
 
     [Fact]

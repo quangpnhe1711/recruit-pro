@@ -3,7 +3,16 @@
 Format: each rule is enforceable, has explicit allowed/forbidden cases, names its backend and
 frontend enforcement points, the error it produces, and its tests.
 
-Closed states = `Hired`, `Rejected`, `OfferDeclined`, `Withdrawn`. Active = any non-closed state.
+Every rule traces to [00-DOMAIN-STATE-DEPENDENCY.md](00-DOMAIN-STATE-DEPENDENCY.md). State-group
+vocabulary used below:
+
+```
+ActiveApplicationStates      = { Applied, Screening, ManagerReview, Interview, Offer }
+ClosedForWorkflow            = { Rejected, Withdrawn, OfferDeclined, Hired }
+ReapplyEligibleClosedStates  = { Rejected, Withdrawn, OfferDeclined }   // Hired excluded
+```
+
+Active = any non-closed state. Closed = `ClosedForWorkflow`.
 
 ---
 
@@ -19,9 +28,16 @@ Closed states = `Hired`, `Rejected`, `OfferDeclined`, `Withdrawn`. Active = any 
 - An *active* application (`Applied`/`Screening`/`ManagerReview`/`Interview`/`Offer`) exists →
   duplicate apply forbidden.
 
-**Backend enforcement:** `ApplicationService.ApplyAsync` → `HasActiveApplication(existingApplication)`
-(`existingApplication` = most recent application for the job). The eligibility blocker
-"You have already applied for this job." is added only when an active application exists.
+**Backend enforcement:** `ApplicationService.ApplyAsync` → `HasActiveApplication(existingApplication)`.
+The eligibility blocker "You have already applied for this job." is added only when an active
+application exists.
+
+> **Target vs. current (INV-003).** The rule is `AlreadyApplied = EXISTS active application for
+> (candidate, job)` — set semantics. Current code resolves `existingApplication` via
+> `GetExistingApplicationAsync` → `FirstOrDefault(a => a.JobId == jobId)`, an **arbitrary** row, then
+> checks `IsClosed` on it. Under dirty/racy data (more than one row per job) this can read the wrong
+> row. Converging the check to an explicit `EXISTS active` query, plus a DB-level uniqueness guarantee
+> (INV-014), is tracked in [DECISION-LOG.md](DECISION-LOG.md) DL-008.
 
 **Frontend enforcement:** Apply button disabled when `eligibility.canApply == false`;
 `eligibility.alreadyApplied` is true only for an active application.
@@ -33,29 +49,43 @@ Closed states = `Hired`, `Rejected`, `OfferDeclined`, `Withdrawn`. Active = any 
 
 ---
 
-## BR-APPLICATION-002 — Re-apply after a closed application is allowed
+## BR-APPLICATION-002 — Re-apply is allowed after a re-apply-eligible closed application; `Hired` is terminal for the job
 
-**Description:** A closed application (withdrawn, rejected, offer-declined) must never block a new
-application. (Decision [DL-001].)
+**Description:** A closed application from `ReapplyEligibleClosedStates` (`Withdrawn`, `Rejected`,
+`OfferDeclined`) must never block a new application. `Hired` is closed-for-workflow but **not**
+re-apply-eligible for the same `jobId` — the candidate was already hired for that posting. (Decisions
+[DL-001], [DL-007]; INV-015.)
 
 **Allowed:**
 - Existing `Withdrawn` application → re-apply allowed.
 - Existing `Rejected` application → re-apply allowed.
-- Existing `OfferDeclined`/`Hired` application → re-apply allowed (a new posting cycle).
+- Existing `OfferDeclined` application → re-apply allowed.
 
-**Forbidden:** Nothing additional beyond BR-APPLICATION-001 (an active application still blocks).
+**Forbidden:**
+- An *active* application still blocks (BR-APPLICATION-001).
+- Existing `Hired` application for the **same** job → re-apply forbidden. A new hiring need is a new
+  job posting.
 
-**Backend enforcement:** Eligibility keys off `HasActiveApplication` (uses `IsClosed`), not "any
-application exists". Re-apply inserts a new row; the closed row is retained as history (DL-005).
+**Backend enforcement (target):** Eligibility allows a new application only when no active application
+exists **and** the most relevant closed state is in `ReapplyEligibleClosedStates`. A prior `Hired` for
+the same job adds a blocker.
 
-**Frontend enforcement:** After withdrawal the apply-context returns `canApply: true`,
-`alreadyApplied: false`, re-enabling the Apply button.
+> **Current code gap (DL-007).** Eligibility today keys solely off `HasActiveApplication` (i.e. "no
+> active application"), and `IsClosed` lumps `Hired` with the re-apply-eligible states. So the code
+> would currently **permit** re-apply after `Hired`. There is no `ReapplyEligibleClosedStates`
+> predicate yet. This rule is the binding target; closing the gap is tracked in DL-007.
 
-**Error:** None on the happy path → HTTP **201 Created**.
+**Frontend enforcement:** After a re-apply-eligible closed state the apply-context returns
+`canApply: true`, `alreadyApplied: false`, re-enabling the Apply button. After `Hired` for the same
+job, `canApply: false` with a "already hired for this job" blocker.
+
+**Error:** Happy path → HTTP **201 Created**. Re-apply attempt after `Hired` for same job → **422**
+(business blocker, not a duplicate-active 409).
 
 **Tests:** `ApplyAsync_AfterWithdrawal_AllowsReapplyAndReturnsCreated`,
 `ApplyAsync_AfterRejection_AllowsReapplyAndReturnsCreated`,
 `GetApplyScreenAsync_AfterWithdrawal_ReportsCanApplyAndNotAlreadyApplied`, `TEST-E2E-APPLICATION-001`.
+Planned: `ApplyAsync_AfterHired_ForSameJob_IsBlocked` (see [TEST-MATRIX.md](TEST-MATRIX.md) T-RE-003).
 
 ---
 
@@ -173,3 +203,91 @@ context; do not duplicate the workflow with ad hoc status-string checks.
 
 **Tests:** Covered by workflow, apply eligibility, withdrawal/re-apply, and notification tests in
 [TEST-MATRIX.md](TEST-MATRIX.md). Add targeted tests when a new dependent workflow output is added.
+
+---
+
+## BR-APPLICATION-008 — Interview validity is gated by `Application.status`
+
+**Description:** An `Interview` record is only valid/actionable while the application is at (or has
+reached) the `Interview` stage. The interview is a dependent record; it never drives the application
+(INV-008).
+
+**Allowed:** Schedule/complete/cancel an interview while `Application.status = Interview`.
+
+**Forbidden:**
+- Creating an actionable interview while the application is `Applied`/`Screening`/`ManagerReview`.
+- Treating a `Scheduled` interview as still actionable after the application becomes
+  `Withdrawn`/`Rejected`.
+
+**Required downstream effect:** When the application leaves the pipeline
+(`Withdrawn`/`Rejected`) a `Scheduled` interview must be `Canceled` or treated as stale.
+
+> **Current code gap (DL-009):** the withdraw/reject paths do not yet proactively cancel a pending
+> interview; the FE treats it as stale. Server-side cascade is the target.
+
+**Error:** Interview action on an application not in `Interview` → HTTP **422**.
+
+**Tests:** Planned — see [TEST-MATRIX.md](TEST-MATRIX.md) T-INT-001.
+
+---
+
+## BR-APPLICATION-009 — Offer validity is gated by `Application.status`; `Hired` only from candidate accept
+
+**Description:** An `Offer` is only valid/actionable while `Application.status = Offer`. The candidate's
+response to a `Sent` offer drives the application: accept → `Hired`, decline → `OfferDeclined`. HR/
+Manager must **not** use the reviewer decision endpoint to move `Offer → Hired` (INV-009).
+
+**Allowed:** `Offer` in state `Sent` while `Application = Offer`; candidate accept/decline.
+
+**Forbidden (must never occur):**
+- `Offer Sent` while application is `Screening` (or any non-`Offer` state).
+- `Offer Accepted` while application is not `Hired`; application `Hired` with no `Accepted` offer.
+- A reviewer transitioning `Offer → Hired` via `PATCH …/decision`.
+
+**Backend enforcement:** `CanCandidateRespondToOffer` (status == `Offer`); accept/decline endpoints
+require offer `Sent` and candidate ownership. Reviewer `AllowedTransitions` from `Offer` are only
+`Hired`/`OfferDeclined` and are reserved for the candidate-driven accept/decline actions.
+
+**Error:** Offer response when not in `Offer`/offer not `Sent` → HTTP **422**; not owned → **404**.
+
+**Tests:** Accept/decline tests in [TEST-MATRIX.md](TEST-MATRIX.md); planned T-OFR-001 for the
+forbidden combinations.
+
+---
+
+## BR-APPLICATION-010 — Notifications are post-commit side effects, never source of truth
+
+**Description:** Notification state must never drive application state; `Application.status` drives
+notifications (INV-010). A notification failure cannot roll back or fail a committed business action.
+
+**Backend enforcement:** Notifications publish **after** the DB commit, each isolated in try/catch.
+(Same mechanism as BR-APPLICATION-005 for apply.)
+
+**Error:** None propagated — the business action's HTTP result is unchanged by notification failure.
+
+**Tests:** `ApplyAsync_WhenNotificationPublishFails_StillReturnsCreated`,
+`PublishNewApplicationReceivedAsync_FansOutToHrAndDeduplicatesRecipients`.
+
+---
+
+## BR-APPLICATION-011 — Dashboard/analytics derive from canonical state groups
+
+**Description:** Reporting metrics must be computed from canonical state groups, never hard-coded per
+status (INV-011). In particular `Withdrawn` is neither `Rejected` nor active.
+
+**Canonical derivations:**
+```
+ActiveApplications  = Applied + Screening + ManagerReview + Interview + Offer
+ClosedApplications  = Rejected + Withdrawn + OfferDeclined + Hired
+PipelineApplications = ActiveApplications
+SuccessfulApplications = Hired
+CandidateWithdrawals = Withdrawn
+CompanyRejections   = Rejected
+```
+
+**Backend enforcement:** Active/closed counts derive from `ApplicationStatusWorkflow.IsClosed`
+(`ApplicationRepository`, `JobService`, `DashboardService`).
+
+**Forbidden:** Counting `Withdrawn` as `Rejected`, or as active pipeline.
+
+**Tests:** Active/closed split covered by workflow tests; planned analytics assertions T-DASH-001.

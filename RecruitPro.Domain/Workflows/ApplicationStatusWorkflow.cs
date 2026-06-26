@@ -31,10 +31,36 @@ public static class ApplicationStatusWorkflow
             : [];
     }
 
+    /// <summary>
+    /// The active (non-closed) application states. A candidate inside any of these is still in the
+    /// recruitment pipeline. Used for the "at most one active application per (candidate, job)"
+    /// invariant (INV-003) and the DB partial unique index (INV-014).
+    /// </summary>
+    public static readonly IReadOnlyList<ApplicationStatus> ActiveStatuses =
+    [
+        ApplicationStatus.Applied,
+        ApplicationStatus.Screening,
+        ApplicationStatus.ManagerReview,
+        ApplicationStatus.Interview,
+        ApplicationStatus.Offer,
+    ];
+
     public static bool IsClosed(ApplicationStatus status)
     {
         return status is ApplicationStatus.Hired
             or ApplicationStatus.Rejected
+            or ApplicationStatus.OfferDeclined
+            or ApplicationStatus.Withdrawn;
+    }
+
+    /// <summary>
+    /// A closed application from which a candidate may start a NEW application for the same job.
+    /// `Hired` is closed-for-workflow but terminal for that jobId (INV-015): a candidate already
+    /// hired for a posting must not re-apply to it.
+    /// </summary>
+    public static bool IsReapplyEligibleClosedStatus(ApplicationStatus status)
+    {
+        return status is ApplicationStatus.Rejected
             or ApplicationStatus.OfferDeclined
             or ApplicationStatus.Withdrawn;
     }

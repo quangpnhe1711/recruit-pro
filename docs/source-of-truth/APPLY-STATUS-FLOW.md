@@ -14,8 +14,10 @@ A candidate can submit `POST /api/jobs/{jobId}/apply` only when all checks below
 - Candidate has a current resume
 - Candidate does **not** already have an active application for the same job
 
-If the candidate has a **closed** application (`Rejected`, `Withdrawn`, `OfferDeclined`, `Hired`),
-re-apply creates a **new** application row with status `Applied`.
+If the candidate has a **re-apply-eligible closed** application (`Rejected`, `Withdrawn`,
+`OfferDeclined`), re-apply creates a **new** application row with status `Applied`. `Hired` is closed
+but **not** re-apply-eligible for the same job (INV-015) — a candidate already hired for that posting
+cannot re-apply to it.
 
 ## 2. Canonical backend statuses
 
@@ -66,8 +68,11 @@ domain facts and unlocks or blocks later workflow actions.
 ### Derived-state rules
 
 - `Active` is derived from application status, not stored separately: any non-closed state is active.
-- `AlreadyApplied` is true only when an active application exists for the same candidate and job.
-- `CanApply` depends on both job eligibility and application history; a closed old application alone is not a blocker.
+- `AlreadyApplied` is true only when an active application **exists** for the same candidate and job —
+  defined as `EXISTS active application`, not "the latest row is active" (INV-003). Dirty/racy data
+  must not be able to flip this by row ordering.
+- `CanApply` depends on both job eligibility and application history; a re-apply-eligible closed
+  application alone is not a blocker, but a prior `Hired` for the same job is.
 - Candidate actions depend on application status and ownership; reviewer actions depend on role and allowed transition.
 - Notification and scoring are downstream side effects; they depend on a committed application but must not decide whether the apply succeeded.
 - FE badges, CTAs, empty states, and blockers must be derived from these dependencies, not from isolated status strings.
@@ -123,7 +128,9 @@ These are the recommended labels returned to candidate list/detail screens:
 - Show `withdraw` only when status is `Applied`, `Screening`, `ManagerReview`, or `Interview`
 - Show `acceptOffer` / `declineOffer` only when status is `Offer`
 - Treat `Hired`, `Rejected`, `OfferDeclined`, `Withdrawn` as history/closed items
-- Re-apply is allowed only after a closed status and only if the job is still open for apply
+- Re-apply is allowed only after a **re-apply-eligible** closed status (`Rejected`, `Withdrawn`,
+  `OfferDeclined`) and only if the job is still open for apply. After `Hired`, do not offer re-apply
+  for the same job.
 - When rendering an application row, compute the visible actions from dependencies:
   application status + current user role + ownership + related offer/interview availability.
 - When rendering apply context, compute blockers from dependencies:

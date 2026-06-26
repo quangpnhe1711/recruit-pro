@@ -156,11 +156,15 @@ public class InterviewService : IInterviewService
             return ApiResponse<InterviewCreatedResponseDto>.NotFound("Không tìm thấy hồ sơ ứng tuyển.");
         }
 
+        // INV-008: an interview is only valid/actionable when the application is at the ManagerReview
+        // hand-off or already in the Interview stage. Scheduling for any other stage is an invalid
+        // business state (422), not a malformed request (400).
         if (application.Status != ApplicationStatus.ManagerReview &&
             application.Status != ApplicationStatus.Interview)
         {
-            return ApiResponse<InterviewCreatedResponseDto>.BadRequest(
-                "Chỉ có thể lên lịch từ bước quản lý duyệt hoặc khi chuỗi phỏng vấn đang diễn ra.");
+            return ApiResponse<InterviewCreatedResponseDto>.UnprocessableEntity(
+                "Chỉ có thể lên lịch từ bước quản lý duyệt hoặc khi chuỗi phỏng vấn đang diễn ra.",
+                errorCode: ErrorCodes.InterviewNotActionable);
         }
 
         if (!string.IsNullOrWhiteSpace(request.CandidateId)
