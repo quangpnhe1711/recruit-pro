@@ -1,7 +1,15 @@
 # Test Matrix — Application Domain
 
 All tests below are in `RecruitPro.Tests` and run under `dotnet test` (xUnit + Moq + FluentAssertions;
-integration via Testcontainers PostgreSQL). Full suite at time of writing: **138 passed, 0 failed**.
+integration via Testcontainers PostgreSQL).
+
+> **Current full backend suite: 197 passed, 0 failed (verified 2026-06-26).** The 138 / 156 / 187
+> figures cited in the sections below are historical milestones (each "after this pass"); **197** is the
+> canonical current count.
+>
+> **Frontend E2E (Playwright, `recruit-pro-internal/e2e/`): E2E-OWN-001/002/003 — implemented and
+> passing (5 specs).** See the [Frontend E2E section](#frontend-e2e-playwright--implemented) below and
+> `docs/testing/e2e-ownership-manual-checklist.md` (both repos).
 
 | Test ID | Test | Layer | Rule / Bug | Expected |
 |---|---|---|---|---|
@@ -138,17 +146,33 @@ Full suite after this pass: **156 passed, 0 failed** (was 138). New/updated test
 | T-OWN-008 | `AppliedAndScreening_OwnedByHR` (notification) | BR-OWN-006 | Phase 6 (notification routing) |
 | T-OWN-009 | `ManagerReview_OwnedByDepartmentHead` (notification) | BR-OWN-007 | Phase 6 |
 
-### Frontend (planned verification)
+### Frontend E2E (Playwright) — implemented
 
-| ID | Verification |
-|---|---|
-| FV-OWN-001 | Department screen can show/edit the DepartmentHead. |
-| FV-OWN-002 | Job create screen shows Department and Recruiter selectors. |
-| FV-OWN-003 | Job create screen displays the DepartmentHead based on the selected Department. |
-| FV-OWN-004 | Job detail shows Recruiter and DepartmentHead. |
-| FV-OWN-005 | Application detail shows Assigned Recruiter and Assigned DepartmentHead. |
-| FV-STATUS-001 | My Applications: a `Screening` application shows the Screening badge, not `Rejected`/`Từ chối`. |
-| FV-STATUS-002 | My Applications: an `Interview` application shows the Interview badge, not `Rejected`/`Từ chối`. |
-| FV-STATUS-003 | `ManagerReview` displays as "Head Review". |
-| FV-STATUS-004 | An unknown status displays neutral `Unknown`, never `Rejected`. |
-| FV-STATUS-005 | No Vietnamese label drives status logic (filter/actions key off canonical status). |
+Deterministic, backend-free Playwright specs in `recruit-pro-internal/e2e/` (session seeded into
+`localStorage`; all `/api/**` responses mocked via route interception). Run with `npm run e2e`
+(`npm run e2e:install` once for the Chromium binary). Manual fallback / acceptance criteria:
+`docs/testing/e2e-ownership-manual-checklist.md` (present in both repos).
+
+| Test ID | Spec | Scenario | Expected |
+|---|---|---|---|
+| E2E-OWN-001 | `candidate-my-applications.e2e.ts` | Candidate My Applications status display | `Screening`→Screening, `Interview`→Interview, `ManagerReview`→**Head Review**, `Rejected`→Rejected, unknown→**Unknown** (never Rejected); no Vietnamese status in badges |
+| E2E-OWN-002 | `headdepartment-approval.e2e.ts` | DepartmentHead approval queue + detail | queue loads with DepartmentHead wording + English job status; approve/reject submits `PATCH /api/hr/jobs/{id}/status` (never the non-hr alias); no optimistic approval |
+| E2E-OWN-003 | `hr-ownership.e2e.ts` | HR ownership display | job list shows recruiter + department-head names with safe fallback (`Chưa có trưởng bộ phận`); English job-status labels |
+
+### Frontend verification (manual / covered by E2E)
+
+> Phase 4 frontend is **implemented**. FV-STATUS-001…005 are now exercised by **E2E-OWN-001**;
+> FV-OWN-001…005 are verified via **E2E-OWN-002/003** plus the manual checklist.
+
+| ID | Verification | Covered by |
+|---|---|---|
+| FV-OWN-001 | Department screen can show/edit the DepartmentHead. | manual checklist |
+| FV-OWN-002 | Job create screen shows Department and Recruiter selectors. | manual checklist |
+| FV-OWN-003 | Job create screen displays the DepartmentHead based on the selected Department. | manual checklist |
+| FV-OWN-004 | Job detail shows Recruiter and DepartmentHead. | E2E-OWN-003 |
+| FV-OWN-005 | Application detail shows Assigned Recruiter and Assigned DepartmentHead. | manual checklist |
+| FV-STATUS-001 | My Applications: a `Screening` application shows the Screening badge, not `Rejected`/`Từ chối`. | E2E-OWN-001 |
+| FV-STATUS-002 | My Applications: an `Interview` application shows the Interview badge, not `Rejected`/`Từ chối`. | E2E-OWN-001 |
+| FV-STATUS-003 | `ManagerReview` displays as "Head Review". | E2E-OWN-001 |
+| FV-STATUS-004 | An unknown status displays neutral `Unknown`, never `Rejected`. | E2E-OWN-001 |
+| FV-STATUS-005 | No Vietnamese label drives status logic (filter/actions key off canonical status). | E2E-OWN-001 |

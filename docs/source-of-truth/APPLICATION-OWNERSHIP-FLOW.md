@@ -4,8 +4,9 @@
 assigned owners on HR/internal endpoints (Phase 2), and **DepartmentHead-scoped review authorization**
 (Phase 3) are all **implemented**. The `ManagerReview → Interview/Rejected` decision is now restricted to
 the application's assigned DepartmentHead or a SystemAdmin (BR-OWN-007), resolved via
-`IApplicationOwnershipResolver`. **Notification use (Phase 6)** and **frontend (Phase 4)** remain
-**not implemented**. `ManagerReview` (code status) **=** the **DepartmentHeadReview** business stage.
+`IApplicationOwnershipResolver`. **Frontend (Phase 4) is implemented** (ownership display, approval UI,
+canonical English status, Playwright E2E); **notification use (Phase 6)** remains **not implemented**.
+`ManagerReview` (code status) **=** the **DepartmentHeadReview** business stage.
 
 ---
 
@@ -97,8 +98,8 @@ AssignedDepartmentHeadId =
 | Stage ownership | HR drives `Applied/Screening`; **`ManagerReview → Interview/Rejected` is now authorized against the application's `AssignedDepartmentHeadId` or a SystemAdmin** (else 403), with a Manager-role fallback only when no head was snapshotted (`UpdateApplicationDecisionAsync` guard). | **Closed** — tied to the assigned DepartmentHead, not "any Manager". |
 | HR-first on apply | `new_application_received` → `Job.CreatedBy` + `HR` role (`NotificationEventService.PublishNewApplicationReceivedAsync`). DepartmentHead is **not** notified on apply. | Already HR-first by role; target switches the source to `AssignedRecruiterId`. |
 
-The **snapshot mechanism is implemented (Phase 1)**; DepartmentHead-scoped *review authorization*
-(Phase 3) and notification routing (Phase 6) remain scheduled in
+The **snapshot mechanism (Phase 1)** and **DepartmentHead-scoped review authorization (Phase 3)** are
+**implemented**; only notification routing (Phase 6) remains scheduled in
 [IMPLEMENTATION-PLAN-OWNERSHIP.md](IMPLEMENTATION-PLAN-OWNERSHIP.md).
 
 ---

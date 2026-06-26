@@ -39,7 +39,7 @@ reachable when the earlier workflow checkpoint has produced the facts it needs.
 |---|---|---|
 | `Applied` | Valid job + valid candidate profile/resume + no active duplicate | Notification, semantic scoring, HR queue |
 | `Screening` | A committed `Applied` application exists and HR accepted it into screening | Candidate status notification, HR review queue |
-| `ManagerReview` | HR screening passed | Manager review queue, department/hiring-manager context |
+| `ManagerReview` | HR screening passed | Manager review queue, department-head review context |
 | `Interview` | Manager review passed | Interview scheduling and interviewer assignment |
 | `Offer` | Interview stage passed and HR/Manager is ready to send offer | Offer draft/send/response |
 | `Hired` | Offer exists and candidate accepted it | Hiring completion/reporting |
@@ -138,9 +138,11 @@ Accepted` while Application is not `Hired`; Application `Hired` with no `Accepte
 
 ## Recruitment ownership per state
 
-> **Status:** Phase 1 — the ownership **fields exist** (`Application.AssignedRecruiterId` /
-> `AssignedDepartmentHeadId`, snapshotted on apply) but **no status enum is renamed** and there are **no
-> transition changes**. This section gives the ownership reading of each existing state.
+> **Status:** Phase 3 (implemented) — the ownership **fields exist** (`Application.AssignedRecruiterId` /
+> `AssignedDepartmentHeadId`, snapshotted on apply) and `ManagerReview → Interview/Rejected` is now
+> **authorized** against the assigned DepartmentHead/SystemAdmin (see "Current (Phase 3, implemented)"
+> below). **No status enum is renamed** — only the actor authorization tightened. This section gives the
+> ownership reading of each existing state.
 > **`ManagerReview` = the DepartmentHeadReview business stage.** Business roles: Candidate,
 > HR / Recruiter, DepartmentHead, SystemAdmin. See
 > [RECRUITMENT-OWNERSHIP-MATRIX.md](RECRUITMENT-OWNERSHIP-MATRIX.md).
