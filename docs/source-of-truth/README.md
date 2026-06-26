@@ -34,7 +34,7 @@ state-dependency model that every rule, state machine, contract, and test traces
 | [TEST-MATRIX.md](TEST-MATRIX.md) | Tests mapped to requirements and rules. |
 | [DECISION-LOG.md](DECISION-LOG.md) | Decisions taken during hardening, with rationale, and remaining work. |
 
-### Recruitment ownership (DepartmentHead) — Phase 0 design + Phase 1 data foundation
+### Recruitment ownership (DepartmentHead) — Phase 0 design + Phase 1–3 backend implemented
 
 | Document | Purpose |
 |---|---|
@@ -43,10 +43,12 @@ state-dependency model that every rule, state machine, contract, and test traces
 | [JOB-APPROVAL-FLOW.md](JOB-APPROVAL-FLOW.md) | HR creates → DepartmentHead approves → public/applyable. |
 | [APPLICATION-OWNERSHIP-FLOW.md](APPLICATION-OWNERSHIP-FLOW.md) | Apply snapshots owners; HR-first, DepartmentHead-after-screening. |
 | [NOTIFICATION-EVENT-MATRIX.md](NOTIFICATION-EVENT-MATRIX.md) | Planned notification events/routing (**not implemented**). |
-| [IMPLEMENTATION-PLAN-OWNERSHIP.md](IMPLEMENTATION-PLAN-OWNERSHIP.md) | Phased coding plan; **Phase 1 (DB/EF/snapshot) implemented**, later phases planned. |
+| [IMPLEMENTATION-PLAN-OWNERSHIP.md](IMPLEMENTATION-PLAN-OWNERSHIP.md) | Phased coding plan; **Phases 1–3 (DB/EF/snapshot, DTO/API exposure, approval + ManagerReview guards) implemented**; FE (Phase 4) + notifications (Phase 6) planned. |
 
 > `ManagerReview` (code enum) **=** the **DepartmentHeadReview** business stage — the enum is **not**
-> renamed. Notification and frontend ownership work are **not implemented** yet.
+> renamed (nor are the `Manager`/`HeadDepartment` roles). Job approval and ManagerReview decisions are
+> now scoped to the DepartmentHead/SystemAdmin (BR-OWN-003/007). **Notification and frontend ownership
+> work are still not implemented** (Phases 6 and 4).
 
 ## Key invariants (read first)
 

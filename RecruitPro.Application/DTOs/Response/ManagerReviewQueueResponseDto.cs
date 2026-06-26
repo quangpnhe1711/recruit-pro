@@ -14,6 +14,12 @@ public class ManagerReviewQueueItemDto
     public DateTime? AppliedAt { get; set; }
     public int CompletedInterviews { get; set; }
     public int TotalInterviews { get; set; }
+
+    // Phase 2/3 ownership snapshot (BR-OWN-005/007): the department head who owns this review-stage item.
+    public string? AssignedRecruiterId { get; set; }
+    public string? AssignedRecruiterName { get; set; }
+    public string? AssignedDepartmentHeadId { get; set; }
+    public string? AssignedDepartmentHeadName { get; set; }
 }
 
 public class ManagerReviewQueueSummaryDto

@@ -64,6 +64,26 @@ namespace RecruitPro.Application.DTOs.Response
         [JsonPropertyName("reviewedBy")]
         public UserDto? ReviewedBy { get; set; }
 
+        // Phase 2/3 ownership snapshot (HR/internal view): the recruiter and department head assigned at
+        // apply time (BR-OWN-005). Null when not assigned.
+        [JsonPropertyName("assignedRecruiterId")]
+        public string? AssignedRecruiterId { get; set; }
+
+        [JsonPropertyName("assignedRecruiterName")]
+        public string? AssignedRecruiterName { get; set; }
+
+        [JsonPropertyName("assignedRecruiterEmail")]
+        public string? AssignedRecruiterEmail { get; set; }
+
+        [JsonPropertyName("assignedDepartmentHeadId")]
+        public string? AssignedDepartmentHeadId { get; set; }
+
+        [JsonPropertyName("assignedDepartmentHeadName")]
+        public string? AssignedDepartmentHeadName { get; set; }
+
+        [JsonPropertyName("assignedDepartmentHeadEmail")]
+        public string? AssignedDepartmentHeadEmail { get; set; }
+
         [JsonPropertyName("score")]
         public double? Score { get; set; }
 

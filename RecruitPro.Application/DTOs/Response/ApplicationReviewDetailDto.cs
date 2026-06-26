@@ -57,4 +57,12 @@ public class ApplicationReviewDetailDto
     public ApplicationReviewInsightDto Insights { get; set; } = new();
     public List<ApplicationReviewInterviewDto> Interviews { get; set; } = [];
     public UserDto? ReviewedBy { get; set; }
+
+    // Phase 2/3 ownership snapshot (BR-OWN-005). Null when not assigned.
+    public string? AssignedRecruiterId { get; set; }
+    public string? AssignedRecruiterName { get; set; }
+    public string? AssignedRecruiterEmail { get; set; }
+    public string? AssignedDepartmentHeadId { get; set; }
+    public string? AssignedDepartmentHeadName { get; set; }
+    public string? AssignedDepartmentHeadEmail { get; set; }
 }

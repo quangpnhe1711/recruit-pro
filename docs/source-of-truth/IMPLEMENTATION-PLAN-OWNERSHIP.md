@@ -27,6 +27,13 @@ Verified starting point (current code):
 > `dotnet build` + `dotnet test` green (162 tests). **Simpler model used:** `EffectiveDepartmentHead =
 > Department.HeadUserId ?? Job.ApprovedBy`; `Job.HiringManagerId` deferred. Notification and frontend
 > remain **not implemented** (Phases 6 and 4).
+>
+> **Pre-commit cleanup (2026-06-26).** Source-of-truth consistency closed before committing: the
+> active-application partial unique index (`ux_applications_active_user_job`, INV-014) is now also in
+> `init.sql` + a dedicated patch (`db/patches/20260626-add-active-application-unique-index.sql`, with a
+> duplicate-active guard); seeded `Offer`/`Hired` applications now have consistent `application_offers`
+> rows (Offer→`Sent`, Hired→`Accepted`). Fresh Postgres load of `init.sql` verified **0 dirty rows** for
+> all active-duplicate, offer/hired-consistency, and ownership checks; both patches re-run idempotently.
 
 **Goal:** introduce the ownership columns and seed the demo personas/department head.
 - Add `departments.head_user_id` (nullable FK → users).
@@ -48,6 +55,13 @@ until Phase 2+.
 
 ## Phase 2 — Backend entities / mapping / DTO / API
 
+> **Status: IMPLEMENTED (2026-06-26).** Entities/mappings landed in Phase 1. Phase 2 exposed the
+> ownership fields on DTOs/API: Department (`headUser*`) via `GET/PUT /api/departments`; Job
+> (`recruiter*`, `departmentHead*`, `effectiveDepartmentHead*`, audit `createdBy/approvedBy`) on HR
+> detail/list; Application (`assignedRecruiter*`, `assignedDepartmentHead*`) on HR/internal endpoints;
+> plus `GET /api/users/assignable-recruitment-owners`. Field names use `assigned*` (not the legacy
+> `assignedManagerId`). `Job.HiringManagerId` deferred. Build + 181 tests green.
+
 **Goal:** surface the new columns through the domain + API without changing behavior.
 - Add properties to `Department` (`HeadUserId` + navigation), `Job` (`RecruiterId`, optional
   `HiringManagerId`), `Application` (`AssignedRecruiterId`, `AssignedDepartmentHeadId`).
@@ -65,6 +79,21 @@ until Phase 2+.
 ---
 
 ## Phase 3 — Job approval guard + application ownership snapshot
+
+> **Status: IMPLEMENTED (2026-06-26).** Apply-time snapshot landed in Phase 1. Phase 3 added the
+> authorization guards: job **approve/reject** is scoped to `Department.HeadUserId` or `SystemAdmin`
+> (`JobService.PatchJobAsync` — 403 otherwise, 422 `DEPARTMENT_HEAD_REQUIRED` when no head, `ApprovedBy`
+> = acting user); the **ManagerReview → Interview/Rejected** decision is scoped to the application's
+> `AssignedDepartmentHeadId` or `SystemAdmin` (`ApplicationService.UpdateApplicationDecisionAsync`), with
+> a Manager-role fallback only when no head was snapshotted. Ownership resolution centralized in
+> `IApplicationOwnershipResolver`. The legacy `Manager` role is **not** renamed; `ManagerReview` status
+> unchanged (= DepartmentHeadReview).
+>
+> **Pre-commit hardening (2026-06-26):** the formerly-unauthenticated `PATCH /api/jobs/{id}/status` now
+> requires auth and routes through the same `PatchJobAsync` guard (the old `UpdateJobStatusAsync` was
+> removed) — no remaining public approval bypass. The `/api/departments` lookup route was preserved
+> (moved to `DepartmentController`, same path + payload, now incl. head). Build + **187 tests** green
+> (current working tree; not yet committed).
 
 **Goal:** route approval to the DepartmentHead and snapshot owners at apply time.
 - Job approval: authorize the approver against `Department.HeadUserId` (+ `HeadDepartment` role),

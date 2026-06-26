@@ -45,10 +45,17 @@ public class JobController : ControllerBase
         return StatusCode(result.StatusCode, result);
     }
 
+    // Hardened: this previously-public endpoint now requires auth and routes through the same guarded
+    // path as PATCH /api/hr/jobs/{id}/status — approve/reject is scoped to the DepartmentHead or
+    // SystemAdmin (BR-OWN-003). It is an alias of the HR status endpoint and returns the same shape.
     [HttpPatch("api/jobs/{jobId}/status")]
+    [Authorize(Roles = "HR,Manager,HeadDepartment,SystemAdmin")]
     public async Task<IActionResult> UpdateJobStatus(string jobId, [FromBody] UpdateJobStatusRequest request)
     {
-        var result = await _jobService.UpdateJobStatusAsync(jobId, request);
+        var result = await _jobService.PatchJobAsync(jobId, new PatchJobRequest
+        {
+            ApprovalStatus = request.Status
+        }, User.TryGetCurrentUserId(), User.GetRoles());
         return StatusCode(result.StatusCode, result);
     }
 
@@ -92,22 +99,25 @@ public class JobController : ControllerBase
         return StatusCode(result.StatusCode, result);
     }
 
+    // SystemAdmin + HeadDepartment are admitted here so the department head / admin can approve/reject;
+    // the service guard (BR-OWN-003) restricts the Approved/Rejected transition to the job's department
+    // head or a SystemAdmin. General field edits remain available to HR/Manager.
     [HttpPatch("api/hr/jobs/{jobId}")]
-    [Authorize(Roles = "HR,Manager")]
+    [Authorize(Roles = "HR,Manager,HeadDepartment,SystemAdmin")]
     public async Task<IActionResult> PatchJob(string jobId, [FromBody] PatchJobRequest request)
     {
-        var result = await _jobService.PatchJobAsync(jobId, request);
+        var result = await _jobService.PatchJobAsync(jobId, request, User.TryGetCurrentUserId(), User.GetRoles());
         return StatusCode(result.StatusCode, result);
     }
 
     [HttpPatch("api/hr/jobs/{jobId}/status")]
-    [Authorize(Roles = "HR,Manager")]
+    [Authorize(Roles = "HR,Manager,HeadDepartment,SystemAdmin")]
     public async Task<IActionResult> PatchHrJobStatus(string jobId, [FromBody] UpdateJobStatusRequest request)
     {
         var result = await _jobService.PatchJobAsync(jobId, new PatchJobRequest
         {
             ApprovalStatus = request.Status
-        });
+        }, User.TryGetCurrentUserId(), User.GetRoles());
         return StatusCode(result.StatusCode, result);
     }
 

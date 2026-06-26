@@ -10,9 +10,13 @@ public static class TestDataSeeder
     public static readonly Guid CandidateRoleId = Guid.Parse("10000000-0000-0000-0000-000000000001");
     public static readonly Guid HrRoleId = Guid.Parse("10000000-0000-0000-0000-000000000002");
     public static readonly Guid ManagerRoleId = Guid.Parse("10000000-0000-0000-0000-000000000003");
+    public static readonly Guid HeadDepartmentRoleId = Guid.Parse("10000000-0000-0000-0000-000000000004");
+    public static readonly Guid SystemAdminRoleId = Guid.Parse("10000000-0000-0000-0000-000000000005");
     public static readonly Guid CandidateUserId = Guid.Parse("20000000-0000-0000-0000-000000000001");
     public static readonly Guid HrUserId = Guid.Parse("20000000-0000-0000-0000-000000000002");
     public static readonly Guid ManagerUserId = Guid.Parse("20000000-0000-0000-0000-000000000003");
+    public static readonly Guid HeadDepartmentUserId = Guid.Parse("20000000-0000-0000-0000-000000000004");
+    public static readonly Guid SystemAdminUserId = Guid.Parse("20000000-0000-0000-0000-000000000005");
     public static readonly Guid DepartmentId = Guid.Parse("30000000-0000-0000-0000-000000000001");
     public static readonly Guid DotNetSkillId = Guid.Parse("40000000-0000-0000-0000-000000000001");
     public static readonly Guid SqlSkillId = Guid.Parse("40000000-0000-0000-0000-000000000002");
@@ -35,6 +39,8 @@ public static class TestDataSeeder
         Role candidateRole = new() { Id = CandidateRoleId, Name = "Candidate" };
         Role hrRole = new() { Id = HrRoleId, Name = "HR" };
         Role managerRole = new() { Id = ManagerRoleId, Name = "Manager" };
+        Role headDepartmentRole = new() { Id = HeadDepartmentRoleId, Name = "HeadDepartment" };
+        Role systemAdminRole = new() { Id = SystemAdminRoleId, Name = "SystemAdmin" };
 
         User candidate = new()
         {
@@ -68,6 +74,34 @@ public static class TestDataSeeder
             FullName = "Manager User",
             PasswordHash = BCrypt.Net.BCrypt.HashPassword("Pass@123"),
             Phone = "0900000003",
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+
+        // Phase 2/3: a dedicated HeadDepartment-role user (distinct from the Manager-role user). Used by
+        // the assignable-owners directory and department-head assignment tests.
+        User headDepartment = new()
+        {
+            Id = HeadDepartmentUserId,
+            Username = "head.user",
+            Email = "head@recruitpro.test",
+            FullName = "Head Department User",
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword("Pass@123"),
+            Phone = "0900000004",
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+
+        // Phase 2/3: a SystemAdmin user — used to verify the SystemAdmin approval override (a real row so
+        // Job.ApprovedBy = SystemAdmin satisfies the FK).
+        User systemAdmin = new()
+        {
+            Id = SystemAdminUserId,
+            Username = "admin.user",
+            Email = "admin@recruitpro.test",
+            FullName = "System Admin User",
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword("Pass@123"),
+            Phone = "0900000005",
             CreatedAt = now,
             UpdatedAt = now
         };
@@ -195,12 +229,14 @@ public static class TestDataSeeder
             Notes = "Initial round"
         });
 
-        db.Roles.AddRange(candidateRole, hrRole, managerRole);
-        db.Users.AddRange(candidate, hr, manager);
+        db.Roles.AddRange(candidateRole, hrRole, managerRole, headDepartmentRole, systemAdminRole);
+        db.Users.AddRange(candidate, hr, manager, headDepartment, systemAdmin);
         db.UserRoles.AddRange(
             new UserRole { UserId = CandidateUserId, RoleId = CandidateRoleId, AssignedAt = now },
             new UserRole { UserId = HrUserId, RoleId = HrRoleId, AssignedAt = now },
-            new UserRole { UserId = ManagerUserId, RoleId = ManagerRoleId, AssignedAt = now });
+            new UserRole { UserId = ManagerUserId, RoleId = ManagerRoleId, AssignedAt = now },
+            new UserRole { UserId = HeadDepartmentUserId, RoleId = HeadDepartmentRoleId, AssignedAt = now },
+            new UserRole { UserId = SystemAdminUserId, RoleId = SystemAdminRoleId, AssignedAt = now });
         db.Departments.Add(engineering);
         db.Skills.AddRange(dotNet, sql);
         db.CandidateProfiles.Add(profile);

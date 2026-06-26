@@ -51,7 +51,7 @@ They must not be treated as independent workflow truth.
 |---|---|---|---|
 | Applied | Screening, Rejected | HR | PATCH /api/hr/applications/{id}/decision |
 | Screening | ManagerReview, Rejected | HR | PATCH /api/hr/applications/{id}/decision |
-| ManagerReview | Interview, Rejected | Manager | PATCH /api/hr/applications/{id}/decision |
+| ManagerReview | Interview, Rejected | **Assigned DepartmentHead** or SystemAdmin (Manager fallback only when no head snapshotted) | PATCH /api/hr/applications/{id}/decision |
 | Interview | Offer, Rejected | HR/Manager | PATCH /api/hr/applications/{id}/decision |
 | Offer | Hired, OfferDeclined | Candidate (accept/decline) | POST /api/candidate/applications/{id}/accept-offer · /decline-offer |
 | Hired | — (terminal) | — | — |
@@ -130,11 +130,13 @@ drives the application; the candidate's response on a `Sent` offer drives it (IN
 Forbidden combinations (must never occur): `Offer Sent` while Application is `Screening`; `Offer
 Accepted` while Application is not `Hired`; Application `Hired` with no `Accepted` offer.
 
-## Recruitment ownership per state (Planned vocabulary)
+## Recruitment ownership per state
 
-> **Status:** Phase 0 — description/vocabulary only. **No status enum is renamed.** This section adds
-> the ownership reading of each existing state. **`ManagerReview` = the DepartmentHeadReview business
-> stage.** Business roles: Candidate, HR / Recruiter, DepartmentHead, SystemAdmin. See
+> **Status:** Phase 1 — the ownership **fields exist** (`Application.AssignedRecruiterId` /
+> `AssignedDepartmentHeadId`, snapshotted on apply) but **no status enum is renamed** and there are **no
+> transition changes**. This section gives the ownership reading of each existing state.
+> **`ManagerReview` = the DepartmentHeadReview business stage.** Business roles: Candidate,
+> HR / Recruiter, DepartmentHead, SystemAdmin. See
 > [RECRUITMENT-OWNERSHIP-MATRIX.md](RECRUITMENT-OWNERSHIP-MATRIX.md).
 
 | Status (code) | Business stage | Owner | Notes |
@@ -153,6 +155,8 @@ Job statuses keep their meaning; ownership note: `Draft`/`PendingApproval` are o
 and the DepartmentHead (approval queue) respectively; `Approved`/`Rejected` are the DepartmentHead's
 decision (audit in `Job.ApprovedBy`). See [JOB-APPROVAL-FLOW.md](JOB-APPROVAL-FLOW.md).
 
-**Current vs planned:** today `ManagerReview → Interview` is driven by the generic `Manager` role; the
-target ties `ManagerReview` ownership to the application's assigned DepartmentHead
-(`Application.AssignedDepartmentHeadId` _(planned)_). No code transition changes in Phase 0.
+**Current (Phase 3, implemented):** `ManagerReview → Interview/Rejected` is authorized against the
+application's `AssignedDepartmentHeadId` or a SystemAdmin (Manager-role fallback only when no head was
+snapshotted) — `UpdateApplicationDecisionAsync` returns 403 otherwise. The earlier HR stages and the
+`Interview → Offer/Rejected` stage keep their existing HR/Manager behavior. **No status enum or
+transition changes** — only the actor authorization tightened.

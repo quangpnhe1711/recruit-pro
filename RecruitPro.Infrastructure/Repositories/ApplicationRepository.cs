@@ -314,7 +314,9 @@ public class ApplicationRepository : IApplicationRepository
             .Include(application => application.Interviews)
             .Include(application => application.ReviewedByNavigation)
                 .ThenInclude(user => user.UserRoles)
-                    .ThenInclude(userRole => userRole.Role);
+                    .ThenInclude(userRole => userRole.Role)
+            .Include(application => application.AssignedRecruiter)
+            .Include(application => application.AssignedDepartmentHead);
     }
 
     private IQueryable<JobApplication> BuildTrackedApplicationQuery()
@@ -342,7 +344,9 @@ public class ApplicationRepository : IApplicationRepository
             .Include(application => application.Offer)
                 .ThenInclude(offer => offer.ApplicationOfferBenefits)
             .Include(application => application.Interviews)
-            .Include(application => application.ReviewedByNavigation);
+            .Include(application => application.ReviewedByNavigation)
+            .Include(application => application.AssignedRecruiter)
+            .Include(application => application.AssignedDepartmentHead);
     }
 
     public async Task<bool> HasActiveApplicationAsync(Guid userId, Guid jobId)

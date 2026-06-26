@@ -30,6 +30,10 @@ Every API response uses `ApiResponse<T>` (RecruitPro.Application.DTOs.Response):
 > `JOB_DEADLINE_PASSED`, `CANDIDATE_PROFILE_INCOMPLETE`, `RESUME_REQUIRED`, `APPLICATION_NOT_FOUND`,
 > `APPLICATION_NOT_WITHDRAWABLE`, `INVALID_APPLICATION_TRANSITION`, `INTERVIEW_NOT_ACTIONABLE`,
 > `OFFER_NOT_ACTIONABLE`, `UNAUTHENTICATED`, `FORBIDDEN`, `VALIDATION_ERROR`.
+>
+> **Ownership / job-approval (Phase 2/3):** `DEPARTMENT_HEAD_REQUIRED`, `INVALID_DEPARTMENT_HEAD`,
+> `JOB_RECRUITER_REQUIRED`, `INVALID_JOB_RECRUITER`, `INVALID_JOB_TRANSITION`, `DEPARTMENT_NOT_FOUND`.
+> (`JOB_RECRUITER_REQUIRED`/`INVALID_JOB_TRANSITION` are reserved constants; not all are emitted yet.)
 
 ## HTTP status semantics (binding)
 
@@ -59,6 +63,12 @@ Every API response uses `ApiResponse<T>` (RecruitPro.Application.DTOs.Response):
 | Withdraw/any, application not found or not owned | 404 | `Không tìm thấy hồ sơ ứng tuyển.` | `GetTrackedApplicationForCandidateAsync` |
 | Apply/withdraw, job id not a GUID or missing | 404 | `Job with ID {id} not found.` | `GetJobAsync` |
 | Invalid reviewer transition | 400 | `Invalid transition from {a} to {b}.` | `UpdateApplicationDecisionAsync` |
+| Approve/reject a job, department has no head | 422 | `This job's department has no head assigned…` (`DEPARTMENT_HEAD_REQUIRED`) | `JobService.PatchJobAsync` guard (BR-OWN-003) |
+| Approve/reject a job, actor is not the dept head/SystemAdmin | 403 | `Only the department head or a system administrator can approve or reject this job.` (`FORBIDDEN`) | `JobService.PatchJobAsync` guard |
+| Advance ManagerReview, actor is not the assigned head/SystemAdmin | 403 | `Only the assigned department head or a system administrator can advance this application from manager review.` (`FORBIDDEN`) | `ApplicationService.UpdateApplicationDecisionAsync` guard (BR-OWN-007) |
+| Create job, no valid department | 422 | `A valid department is required to create a job.` (`DEPARTMENT_NOT_FOUND`) | `JobService.CreateJobAsync` |
+| Create job, recruiter not an existing HR user | 422 | `The selected recruiter must be an existing user with the HR role.` (`INVALID_JOB_RECRUITER`) | `JobService.CreateJobAsync` |
+| Update department head, not an existing HeadDepartment/SystemAdmin user | 422 | `The selected department head must be an existing user with the HeadDepartment role.` (`INVALID_DEPARTMENT_HEAD`) | `JobService.UpdateDepartmentAsync` |
 | Notification / async-scoring side-effect failure after commit | (no error) | apply still returns 201 | `ApplyAsync` try/catch |
 
 ## 500 eradication

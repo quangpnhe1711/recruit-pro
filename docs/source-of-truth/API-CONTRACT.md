@@ -70,7 +70,7 @@ All responses use the `ApiResponse<T>` envelope ([ERROR-CONTRACT.md](ERROR-CONTR
 |---|---|---|
 | GET /api/hr/applications | HR, Manager | paged list; filter by status incl. `withdrawn` |
 | GET /api/hr/applications/{id} | HR, Manager | review detail; 404 if invalid id |
-| PATCH /api/hr/applications/{id}/decision | HR, Manager | workflow-validated transition (BR-APPLICATION-006) |
+| PATCH /api/hr/applications/{id}/decision | HR, Manager | workflow-validated transition (BR-APPLICATION-006). **ManagerReview → Interview/Rejected** is scoped to the application's assigned DepartmentHead or SystemAdmin (BR-OWN-007); else 403. Manager-role fallback only when no head was snapshotted. |
 | GET /api/hr/applications/{id}/cv | HR, Manager | 404 if no CV |
 | POST /api/hr/applications/{id}/send-email | HR, Manager | composes candidate email |
 | GET /api/manager/applications/review-queue | Manager | ManagerReview queue |
@@ -82,48 +82,72 @@ Candidate (`Candidate`) hitting HR endpoints → **403** `Bạn không có quy�
 
 ## Ownership fields
 
-> **Status (updated 2026-06-26, Phase 1):** the **data model** is now **implemented** — the columns
-> `departments.head_user_id`, `jobs.recruiter_id`, `applications.assigned_recruiter_id`,
-> `applications.assigned_department_head_id` exist in `init.sql` (+ patch) and are mapped on the
-> `Department`, `Job`, and `Application` EF entities; apply snapshots the assigned owners (BR-OWN-005).
-> The **API response fields below are still NOT exposed** — surfacing them on the DTOs is **Phase 2**
-> ([IMPLEMENTATION-PLAN-OWNERSHIP.md](IMPLEMENTATION-PLAN-OWNERSHIP.md)). `Job.HiringManagerId` is
-> deferred; the effective head is `Department.HeadUserId ?? Job.ApprovedBy`.
+> **Status (updated 2026-06-26, Phase 2/3):** the data model **and** its API surface are now
+> **implemented**. Ownership fields are exposed on the Department, Job, and HR/internal Application
+> responses below; `init.sql` columns + EF mappings back them. `Job.HiringManagerId` is **deferred** —
+> the effective head is `Department.HeadUserId ?? Job.ApprovedBy`. Notification routing remains
+> **Phase 6, not implemented**; frontend remains **Phase 4, not implemented**.
 
-**Department (planned response fields):**
-
-```
-headUserId
-headUserName
-headUserEmail
-```
-
-**Job (planned response fields):**
+**Department response fields (implemented)** — `GET /api/departments`, `GET /api/departments/{id}`,
+`PUT /api/departments/{id}`:
 
 ```
-recruiterId
-recruiterName
-departmentHeadId            // from Department.HeadUserId
-departmentHeadName
-effectiveDepartmentHeadId   // resolved head: HiringManagerId ?? Department.HeadUserId ?? ApprovedBy
-effectiveDepartmentHeadName
-approvedBy                  // audit (exists today as Job.ApprovedBy)
-approvedByName
+id, name, description
+headUserId, headUserName, headUserEmail   // null when no head assigned
 ```
 
-**Application (planned response fields):**
+**Job response fields (implemented)** — HR detail `GET /api/hr/jobs/{id}` and list `GET /api/hr/jobs`:
 
 ```
-assignedRecruiterId
-assignedRecruiterName
-assignedDepartmentHeadId
-assignedDepartmentHeadName
+recruiterId, recruiterName, recruiterEmail
+departmentHeadId, departmentHeadName, departmentHeadEmail     // from Department.HeadUser
+effectiveDepartmentHeadId, effectiveDepartmentHeadName, ...   // Department.HeadUser ?? ApprovedBy user
+createdBy, createdByName        // audit
+approvedBy, approvedByName      // audit (decision actor)
+```
+(The HR list carries the id+name subset incl. `effectiveDepartmentHead*`.)
+
+**Application response fields (implemented)** — HR/internal endpoints (`GET /api/hr/applications`,
+`GET /api/hr/applications/{id}`, `GET /api/manager/applications/review-queue`):
+
+```
+assignedRecruiterId, assignedRecruiterName, assignedRecruiterEmail
+assignedDepartmentHeadId, assignedDepartmentHeadName, assignedDepartmentHeadEmail
 ```
 
-**Compatibility:** if implementation keeps the legacy name `assignedManagerId`, the contract docs and
-the field's description must state that, in this workflow, it means the **assigned Department Head**.
-`createdBy`/`approvedBy` remain **audit** fields and are not the long-term owners (BR-OWN-002/003).
+The implemented field names are `assignedRecruiter*` / `assignedDepartmentHead*` (the legacy
+`assignedManagerId` name was **not** used). `createdBy`/`approvedBy` remain **audit** fields, not the
+long-term owners (BR-OWN-002/003). Candidate-facing endpoints do **not** expose these owner fields.
 
-These fields back the planned notification routing in
+## Assignable recruitment owners
+
+## GET /api/users/assignable-recruitment-owners
+
+- **Auth:** `HR`, `HeadDepartment`, `SystemAdmin`.
+- **Response 200:** `{ recruiters: [{ id, fullName, email }], departmentHeads: [{ id, fullName, email }] }`.
+  `recruiters` = HR-role users; `departmentHeads` = HeadDepartment-role users. **Candidates never appear.**
+- **Tests:** `OwnershipServiceIntegrationTests.AssignableRecruitmentOwners_*` (T-OWN-012/013).
+
+## Department endpoints
+
+| Method & path | Auth | Notes |
+|---|---|---|
+| GET /api/departments | (public) | lookup; now includes `headUser*` |
+| GET /api/departments/{id} | HR, Manager, HeadDepartment, SystemAdmin | department detail incl. head |
+| PUT /api/departments/{id} | HR, Manager, HeadDepartment, SystemAdmin | set `headUserId` (+ name/description); head must be a HeadDepartment/SystemAdmin user (else 422 `INVALID_DEPARTMENT_HEAD`) |
+
+## Job approval (authorization, BR-OWN-003)
+
+`PATCH /api/hr/jobs/{id}`, `PATCH /api/hr/jobs/{id}/status`, **and `PATCH /api/jobs/{id}/status`** now
+scope the **Approved/Rejected** transition to the job's **DepartmentHead (`Department.HeadUserId`)** or a
+**SystemAdmin**. The formerly-public `PATCH /api/jobs/{id}/status` is now an **authenticated alias**
+(`HR,Manager,HeadDepartment,SystemAdmin`) routed through the same guard — no auth → **401**:
+- not the head / not SystemAdmin → **403** `FORBIDDEN`;
+- department has no head → **422** `DEPARTMENT_HEAD_REQUIRED`.
+On approve/reject, `Job.ApprovedBy` is set to the acting user (decision-actor audit). Other field edits
+and non-approval status moves remain available to HR/Manager. `POST /api/hr/jobs` requires a valid
+department and accepts `recruiterId` (falls back to the creating user when omitted).
+
+These ownership fields back the planned notification routing in
 [NOTIFICATION-EVENT-MATRIX.md](NOTIFICATION-EVENT-MATRIX.md) and the snapshot logic in
 [APPLICATION-OWNERSHIP-FLOW.md](APPLICATION-OWNERSHIP-FLOW.md).

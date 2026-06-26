@@ -15,8 +15,10 @@ namespace RecruitPro.Application.Interfaces.IRepositories
         Task<Job?> GetByIdAsync(Guid id);
         Task<Job?> GetTrackedByIdAsync(Guid id);
         Task<Department?> GetDepartmentByIdAsync(Guid departmentId);
+        Task<Department?> GetTrackedDepartmentByIdAsync(Guid departmentId);
         Task<Department?> GetDepartmentByNameAsync(string departmentName);
         Task<IReadOnlyList<Department>> GetDepartmentsAsync();
+        Task UpdateDepartmentAsync(Department department);
         Task<IReadOnlyList<Skill>> GetSkillsAsync();
         Task<IReadOnlyList<Job>> GetAllApprovedForSemanticSearchAsync();
         Task AddAsync(Job job);

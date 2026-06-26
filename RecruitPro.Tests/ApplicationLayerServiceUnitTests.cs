@@ -530,6 +530,7 @@ public sealed class JobServiceUnitTests
             repository.Object,
             Mock.Of<IApplicationRepository>(),
             Mock.Of<ISkillRepository>(),
+            Mock.Of<IUserRepository>(),
             Mock.Of<IUnitOfWork>(),
             Mock.Of<ISemanticDiscoveryService>(),
             TestMapperFactory.Create());
@@ -548,6 +549,7 @@ public sealed class JobServiceUnitTests
             Mock.Of<IJobRepository>(),
             Mock.Of<IApplicationRepository>(),
             Mock.Of<ISkillRepository>(),
+            Mock.Of<IUserRepository>(),
             Mock.Of<IUnitOfWork>(),
             Mock.Of<ISemanticDiscoveryService>(),
             TestMapperFactory.Create());

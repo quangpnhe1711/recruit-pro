@@ -1,7 +1,9 @@
 # Job Approval Flow
 
-**Status:** Phase 0 — **Target design**. Fields marked _(planned)_ are not implemented yet.
-**Current** behavior is verified from code and called out explicitly.
+**Status:** Phase 2/3 — the ownership data model **and** the approval guard are **implemented**.
+Approve/reject is now authorized against the job's **DepartmentHead (`Department.HeadUserId`)** or a
+**SystemAdmin** (BR-OWN-003), with `Job.ApprovedBy` set to the acting user. Only the **frontend
+(Phase 4)** remains. Behavior below is verified from code.
 
 ---
 
@@ -11,7 +13,7 @@
 HR / Recruiter creates a job (Draft)
         ↓ submit for approval
 Job is PendingApproval (not public, not applyable)
-        ↓ Department determines the DepartmentHead (Department.HeadUserId)  [planned]
+        ↓ approval authorized against Department.HeadUserId or SystemAdmin [Phase 3, implemented]
 DepartmentHead approves or rejects
         ↓ approve → Approved → public + applyable (until deadline)
         ↓ reject  → Rejected → not public, not applyable
@@ -19,7 +21,8 @@ DepartmentHead approves or rejects
 
 - **HR creates the job** and selects the **Department** and the **Recruiter phụ trách** (owning
   recruiter). _(Recruiter selection is planned; today the creator is captured as `Job.CreatedBy`.)_
-- **The Department determines the DepartmentHead.** Target: `Department.HeadUserId`. _(Planned.)_
+- **The Department determines the DepartmentHead.** `Department.HeadUserId` exists (Phase 1); routing
+  approval *authorization* to it is _(planned — Phase 3)_.
 - **The DepartmentHead approves/rejects** the job for their Department.
 - **Approved** jobs become **public/applyable** (subject to deadline, INV-001/BR-APPLICATION-004).
 - **Rejected / non-approved** jobs are **not public/applyable** (`Draft`, `PendingApproval`, `Closed`,
@@ -31,8 +34,8 @@ DepartmentHead approves or rejects
 
 | Field | Meaning | Status |
 |---|---|---|
-| `Department.HeadUserId` | The Department's head — default approver and business reviewer. | **Planned** (does not exist; `Department` has only `Id/Name/Description`). |
-| `Job.RecruiterId` | Business owner: the recruiter who handles the job's applications. | **Planned** (does not exist). |
+| `Department.HeadUserId` | The Department's head — default approver and business reviewer. | **Implemented (Phase 1)** — column + EF mapping + seed (`Department.cs:17`). Approval *authorization* by it is Phase 3. |
+| `Job.RecruiterId` | Business owner: the recruiter who handles the job's applications. | **Implemented (Phase 1)** — column + EF mapping + backfill (`Job.cs:19`). Job create/edit capture is Phase 2–4. |
 | `Job.CreatedBy` | **Audit** — who created the job. Legacy fallback for recruiter ownership only. | **Current** (`Job.cs:13`, `Guid`). |
 | `Job.ApprovedBy` | **Audit** — who approved the job. Legacy fallback for head ownership only. | **Current** (`Job.cs:15`, `Guid?`). |
 | `Job.DepartmentId` | The job's Department. | **Current** (`Job.cs:11`, `Guid?`). |
@@ -48,14 +51,18 @@ DepartmentHead approves or rejects
 
 | Aspect | Current behavior | Gap vs target |
 |---|---|---|
-| Who can approve | `[Authorize(Roles = "Manager")]` on `GET /api/manager/jobs/approval-queue` and `…/approval-detail` (`JobController.cs:71-85`); the status change itself runs through `PatchJobAsync` (`HR,Manager`). | Approval is gated by the **generic `Manager` role**, not by `Department.HeadUserId`. Any Manager can approve any Department's job. |
-| Approver identity | Recorded in `Job.ApprovedBy` when set. | No link to `Department.HeadUserId` (field absent). |
-| Department head data | `HeadDepartment` role exists in `init.sql` + FE, but no `Department.HeadUserId` column. | Need `Department.HeadUserId` to route approval to the correct head. |
-| Public listing / apply gating | Only `Approved` jobs accept applications (`BuildApplyEligibility`, INV-001); FE `JobDetailScreen.jobApplyState` disables the CTA otherwise. | Conformant — unchanged by this refactor. |
+| Who can approve | `PatchJobAsync` guard: the **Approved/Rejected** transition requires `currentUserId == Department.HeadUserId` **or** the `SystemAdmin` role; else 403 `FORBIDDEN`. No head on the department → 422 `DEPARTMENT_HEAD_REQUIRED`. The controller admits `HR,Manager,HeadDepartment,SystemAdmin`. | **Closed** — approval is scoped to the specific Department head (no longer "any Manager"). |
+| Approver identity | `Job.ApprovedBy` is set to the acting user (decision-actor audit) on approve/reject. | Conformant. |
+| Department head data | `Department.HeadUserId` exists and is settable via `PUT /api/departments/{id}` (validated against the HeadDepartment/SystemAdmin role). | Conformant. |
+| `PATCH /api/jobs/{id}/status` | **Hardened (Phase 2/3):** now requires auth (`HR,Manager,HeadDepartment,SystemAdmin`) and routes through the same `PatchJobAsync` guard as `/api/hr/jobs/{id}/status` — an authenticated alias (the old unguarded `UpdateJobStatusAsync` was removed). | **Closed** — no longer a public approval bypass. |
+| Public listing / apply gating | Only `Approved` jobs accept applications (`BuildApplyEligibility`, INV-001); FE `JobDetailScreen.jobApplyState` disables the CTA otherwise. | Conformant — unchanged. |
 
-**Conclusion:** the approval *gate* exists and works, but ownership *routing to a specific Department
-head* is **not** implemented. This document is the target; the gap is scheduled in
-[IMPLEMENTATION-PLAN-OWNERSHIP.md](IMPLEMENTATION-PLAN-OWNERSHIP.md) (Phases 1–3).
+**Conclusion:** the approval *gate* exists and works, the ownership *data model*
+(`Department.HeadUserId`, `Job.RecruiterId`) is implemented, and approval is now authorized
+*against the specific Department head* (or a SystemAdmin) in `JobService.PatchJobAsync` (Phase 3, done).
+Both status routes (`/api/hr/jobs/{id}/status` and the hardened `/api/jobs/{id}/status` alias) go through
+that guard. What remains is the **frontend** (Phase 4) and **notifications** (Phase 6) in
+[IMPLEMENTATION-PLAN-OWNERSHIP.md](IMPLEMENTATION-PLAN-OWNERSHIP.md).
 
 ---
 

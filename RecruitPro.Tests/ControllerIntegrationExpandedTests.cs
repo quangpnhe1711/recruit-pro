@@ -98,6 +98,11 @@ public sealed class ControllerIntegrationExpandedTests : IClassFixture<PostgresT
         createResponse.StatusCode.Should().Be(HttpStatusCode.Created);
         string jobId = createJson.RootElement.GetProperty("data").GetProperty("jobId").GetString()!;
 
+        // BR-OWN-003: HR can edit, but only the department head (or SystemAdmin) may approve. The seeded
+        // Engineering department's head is the Manager-role user, so approval is done with that token.
+        string managerToken = _factory.Fixture.CreateJwt(TestDataSeeder.ManagerUserId.ToString(), "Manager");
+        PostgresTestFixture.SetBearerToken(_client, managerToken);
+
         HttpResponseMessage patchResponse = await _client.PatchAsJsonAsync($"/api/hr/jobs/{jobId}", new
         {
             title = "Platform QA Senior",

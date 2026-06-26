@@ -22,6 +22,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IOfferService, OfferService>();
         services.AddScoped<IApplicationSemanticScoringService, ApplicationSemanticScoringService>();
         services.AddScoped<ISemanticDiscoveryService, SemanticDiscoveryService>();
+        services.AddScoped<IUserService, UserService>();
+        services.AddScoped<IApplicationOwnershipResolver, ApplicationOwnershipResolver>();
 
         return services;
     }

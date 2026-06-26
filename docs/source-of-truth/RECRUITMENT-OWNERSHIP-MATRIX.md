@@ -1,9 +1,12 @@
 # Recruitment Ownership Matrix
 
-**Status:** Phase 0 — **Target design** for recruitment ownership. Notification routing here is
-**Planned**, not implemented. Data-source fields marked _(planned)_ do not exist in code yet (see
-[API-CONTRACT.md](API-CONTRACT.md) §Planned ownership fields and
-[IMPLEMENTATION-PLAN-OWNERSHIP.md](IMPLEMENTATION-PLAN-OWNERSHIP.md)).
+**Status:** Phase 2/3 — the ownership **data model, API exposure, and authorization are implemented**:
+`Department.HeadUserId`, `Job.RecruiterId`, `Application.AssignedRecruiterId`,
+`Application.AssignedDepartmentHeadId` exist in `init.sql` + EF, are exposed on DTOs, and now gate job
+approval (BR-OWN-003) and ManagerReview decisions (BR-OWN-007). **Notification routing** in this matrix
+remains **Planned / Phase 6, not implemented** — the "Future notification recipient" column describes
+the target; today notifications still use the **Fallback** column (role membership + audit fields). See
+[API-CONTRACT.md](API-CONTRACT.md) and [IMPLEMENTATION-PLAN-OWNERSHIP.md](IMPLEMENTATION-PLAN-OWNERSHIP.md).
 
 Business roles: **Candidate**, **HR / Recruiter**, **DepartmentHead**, **SystemAdmin**.
 `ManagerReview` (code status) **=** the **DepartmentHead review** business stage.
@@ -45,13 +48,17 @@ Business roles: **Candidate**, **HR / Recruiter**, **DepartmentHead**, **SystemA
 
 ---
 
-## 3. Current vs planned data source (verified)
+## 3. Data source — implemented vs still-planned use (verified)
 
-| Logical owner | Planned field | Exists today? | Current fallback in code |
-|---|---|---|---|
-| Job recruiter (business owner) | `Job.RecruiterId` | **No** (planned) | `Job.CreatedBy` (`Job.cs:13`) |
-| Department head (approver/reviewer) | `Department.HeadUserId` | **No** (planned) | `Manager` role membership; `Job.ApprovedBy` (`Job.cs:15`) |
-| Per-application recruiter | `Application.AssignedRecruiterId` | **No** (planned) | n/a (only `Application.ReviewedBy` exists, `Application.cs:15`) |
-| Per-application head | `Application.AssignedDepartmentHeadId` (or compat `AssignedManagerId`) | **No** (planned) | n/a (only `Application.ReviewedBy`) |
+> The **fields all exist (Phase 1)** and are now **used** for DTO exposure (Phase 2), job-approval
+> authorization, and ManagerReview authorization (Phase 3). Only **notification routing (Phase 6)** is
+> still planned; until then the listed fallback runs for notifications.
+
+| Logical owner | Field | Exists today? | Used today by | Fallback in code |
+|---|---|---|---|---|
+| Job recruiter (business owner) | `Job.RecruiterId` | **Yes** (Phase 1, `Job.cs:19`) | apply snapshot; create-job capture/validation; job DTOs | `Job.CreatedBy` (`Job.cs:13`) when null |
+| Department head (approver/reviewer) | `Department.HeadUserId` | **Yes** (Phase 1, `Department.cs:17`) | apply snapshot; **job approval authz (Phase 3)**; department DTOs/update | `SystemAdmin` override; `Job.ApprovedBy` (audit) |
+| Per-application recruiter | `Application.AssignedRecruiterId` | **Yes** (Phase 1, `Application.cs:21`) | snapshotted on apply; HR/internal application DTOs | `Job.CreatedBy` when `RecruiterId` null |
+| Per-application head | `Application.AssignedDepartmentHeadId` | **Yes** (Phase 1, `Application.cs:23`) | snapshotted on apply; **ManagerReview authz (Phase 3)**; application DTOs | `Job.ApprovedBy` when `HeadUserId` null; Manager-role fallback only when head is null |
 
 See [APPLICATION-OWNERSHIP-FLOW.md](APPLICATION-OWNERSHIP-FLOW.md) for the snapshot resolution order.

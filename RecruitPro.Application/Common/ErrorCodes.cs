@@ -20,6 +20,14 @@ public static class ErrorCodes
     public const string InterviewNotActionable = "INTERVIEW_NOT_ACTIONABLE";
     public const string OfferNotActionable = "OFFER_NOT_ACTIONABLE";
 
+    // Ownership / job-approval domain (Phase 2/3)
+    public const string DepartmentHeadRequired = "DEPARTMENT_HEAD_REQUIRED";
+    public const string InvalidDepartmentHead = "INVALID_DEPARTMENT_HEAD";
+    public const string JobRecruiterRequired = "JOB_RECRUITER_REQUIRED";
+    public const string InvalidJobRecruiter = "INVALID_JOB_RECRUITER";
+    public const string InvalidJobTransition = "INVALID_JOB_TRANSITION";
+    public const string DepartmentNotFound = "DEPARTMENT_NOT_FOUND";
+
     // Cross-cutting
     public const string Unauthenticated = "UNAUTHENTICATED";
     public const string Forbidden = "FORBIDDEN";

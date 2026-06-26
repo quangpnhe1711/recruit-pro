@@ -1,7 +1,11 @@
 # Application Ownership Flow
 
-**Status:** Phase 0 — **Target design**. Snapshot fields are _(planned)_; current behavior is verified
-and labelled. `ManagerReview` (code status) **=** the **DepartmentHeadReview** business stage.
+**Status:** Phase 2/3 — the apply-time **owner snapshot** (Phase 1), the **DTO/API exposure** of the
+assigned owners on HR/internal endpoints (Phase 2), and **DepartmentHead-scoped review authorization**
+(Phase 3) are all **implemented**. The `ManagerReview → Interview/Rejected` decision is now restricted to
+the application's assigned DepartmentHead or a SystemAdmin (BR-OWN-007), resolved via
+`IApplicationOwnershipResolver`. **Notification use (Phase 6)** and **frontend (Phase 4)** remain
+**not implemented**. `ManagerReview` (code status) **=** the **DepartmentHeadReview** business stage.
 
 ---
 
@@ -9,7 +13,7 @@ and labelled. `ManagerReview` (code status) **=** the **DepartmentHeadReview** b
 
 ```
 Candidate applies to an Approved job
-        ↓ at apply time, snapshot the owners onto the application  [planned]
+        ↓ at apply time, snapshot the owners onto the application  [implemented — Phase 1]
 Application = Applied
         ↓ owned by HR / Recruiter (AssignedRecruiterId)
 HR screens → Screening                 (owned by HR / Recruiter)
@@ -45,17 +49,17 @@ When the Candidate applies, the application should **snapshot** the current recr
 so that later changes to the job's recruiter or the department's head do not silently re-route in-flight
 applications.
 
-Planned fields:
+Fields (implemented, Phase 1):
 
 ```
-Application.AssignedRecruiterId        (planned)
-Application.AssignedDepartmentHeadId   (planned)
+Application.AssignedRecruiterId        (implemented — Application.cs:21)
+Application.AssignedDepartmentHeadId   (implemented — Application.cs:23)
 ```
 
-If implementation keeps the legacy name `Application.AssignedManagerId`, the docs and code comments must
-state that, in this workflow, it means the **assigned Department Head**.
+The implemented names are `AssignedRecruiterId` / `AssignedDepartmentHeadId` (the legacy
+`AssignedManagerId` name was **not** used).
 
-Snapshot resolution order (target):
+Snapshot resolution order (implemented, Phase 1 — `ApplicationService.ApplyAsync:166-174`):
 
 ```
 AssignedRecruiterId =
@@ -63,10 +67,12 @@ AssignedRecruiterId =
     ?? Job.CreatedBy                         // legacy fallback (audit field)
 
 AssignedDepartmentHeadId =
-    Job.HiringManagerId                      // optional per-job override (planned)
-    ?? Job.Department.HeadUserId             // department default (planned)
+    Job.Department.HeadUserId                // department default
     ?? Job.ApprovedBy                        // legacy fallback (audit field)
 ```
+
+`Job.HiringManagerId` (an optional per-job head override) is **deferred** — the implemented model is
+`EffectiveDepartmentHead = Department.HeadUserId ?? Job.ApprovedBy`.
 
 ---
 
@@ -86,13 +92,14 @@ AssignedDepartmentHeadId =
 
 | Aspect | Current behavior | Gap vs target |
 |---|---|---|
-| Owner snapshot fields | **None.** `Application` has `UserId`, `JobId`, `ReviewedBy?`, `Status`, `AppliedAt`, scores (`Application.cs`). | Add `AssignedRecruiterId` + `AssignedDepartmentHeadId` (or compat `AssignedManagerId`). |
-| Reviewer of record | `Application.ReviewedBy` is set when a reviewer acts; it is **not** a pre-assigned owner taken at apply time. | Snapshot at apply time, independent of who later reviews. |
-| Stage ownership | HR drives `Applied/Screening`; the generic `Manager` role drives `ManagerReview → Interview` (`[Authorize(Roles="HR,Manager")]` on decision endpoints; [APPLY-STATUS-FLOW.md](APPLY-STATUS-FLOW.md) §5). | Tie `ManagerReview` ownership to the application's **assigned DepartmentHead**, not "any Manager". |
+| Owner snapshot fields | **Implemented (Phase 1).** `Application.AssignedRecruiterId` + `AssignedDepartmentHeadId` exist and are set on apply (`Application.cs:21-23`, `ApplicationService.cs:166-174`). | — done; DTO/API exposure is Phase 2. |
+| Reviewer of record | `Application.ReviewedBy` is set when a reviewer acts; it is **not** the apply-time owner. | Snapshot now taken at apply time (`AssignedRecruiterId`/`AssignedDepartmentHeadId`), independent of `ReviewedBy`. |
+| Stage ownership | HR drives `Applied/Screening`; **`ManagerReview → Interview/Rejected` is now authorized against the application's `AssignedDepartmentHeadId` or a SystemAdmin** (else 403), with a Manager-role fallback only when no head was snapshotted (`UpdateApplicationDecisionAsync` guard). | **Closed** — tied to the assigned DepartmentHead, not "any Manager". |
 | HR-first on apply | `new_application_received` → `Job.CreatedBy` + `HR` role (`NotificationEventService.PublishNewApplicationReceivedAsync`). DepartmentHead is **not** notified on apply. | Already HR-first by role; target switches the source to `AssignedRecruiterId`. |
 
-This document is the target; the snapshot mechanism and DepartmentHead-scoped review are scheduled in
-[IMPLEMENTATION-PLAN-OWNERSHIP.md](IMPLEMENTATION-PLAN-OWNERSHIP.md) (Phases 2–3).
+The **snapshot mechanism is implemented (Phase 1)**; DepartmentHead-scoped *review authorization*
+(Phase 3) and notification routing (Phase 6) remain scheduled in
+[IMPLEMENTATION-PLAN-OWNERSHIP.md](IMPLEMENTATION-PLAN-OWNERSHIP.md).
 
 ---
 

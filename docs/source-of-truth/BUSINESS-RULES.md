@@ -32,12 +32,17 @@ Active = any non-closed state. Closed = `ClosedForWorkflow`.
 The eligibility blocker "You have already applied for this job." is added only when an active
 application exists.
 
-> **Target vs. current (INV-003).** The rule is `AlreadyApplied = EXISTS active application for
-> (candidate, job)` — set semantics. Current code resolves `existingApplication` via
-> `GetExistingApplicationAsync` → `FirstOrDefault(a => a.JobId == jobId)`, an **arbitrary** row, then
-> checks `IsClosed` on it. Under dirty/racy data (more than one row per job) this can read the wrong
-> row. Converging the check to an explicit `EXISTS active` query, plus a DB-level uniqueness guarantee
-> (INV-014), is tracked in [DECISION-LOG.md](DECISION-LOG.md) DL-008.
+> **INV-003 / INV-014 (implemented).** The rule is `AlreadyApplied = EXISTS active application for
+> (candidate, job)` — set semantics. The service resolves it via an explicit **EXISTS-active** query
+> (`IApplicationRepository.HasActiveApplicationAsync`, used in `ApplyAsync`/`BuildApplyEligibility`),
+> not an arbitrary `FirstOrDefault` row, so dirty/racy multi-row data cannot read the wrong row
+> (INV-003; test T-DUP-003). As defense-in-depth a **DB-level partial unique index**
+> `ux_applications_active_user_job` enforces it at the database (INV-014) — defined in EF
+> (`AppDbContext`), migration `20260626023451`, `init.sql`, and patch
+> `db/patches/20260626-add-active-application-unique-index.sql`. A concurrent double-apply that slips
+> past the service check is caught (`ApplicationService.ApplyAsync` maps the unique violation) and
+> returns the same stable **409**. Tests T-DUP-003 / T-DUP-004; rationale in
+> [DECISION-LOG.md](DECISION-LOG.md) DL-008.
 
 **Frontend enforcement:** Apply button disabled when `eligibility.canApply == false`;
 `eligibility.alreadyApplied` is true only for an active application.
@@ -66,14 +71,15 @@ re-apply-eligible for the same `jobId` — the candidate was already hired for t
 - Existing `Hired` application for the **same** job → re-apply forbidden. A new hiring need is a new
   job posting.
 
-**Backend enforcement (target):** Eligibility allows a new application only when no active application
-exists **and** the most relevant closed state is in `ReapplyEligibleClosedStates`. A prior `Hired` for
-the same job adds a blocker.
+**Backend enforcement:** Eligibility allows a new application only when no active application exists
+**and** the most relevant closed state is re-apply-eligible. A prior `Hired` for the same job adds a
+blocker.
 
-> **Current code gap (DL-007).** Eligibility today keys solely off `HasActiveApplication` (i.e. "no
-> active application"), and `IsClosed` lumps `Hired` with the re-apply-eligible states. So the code
-> would currently **permit** re-apply after `Hired`. There is no `ReapplyEligibleClosedStates`
-> predicate yet. This rule is the binding target; closing the gap is tracked in DL-007.
+> **Implemented (DL-007).** `BuildApplyEligibility` adds an `APPLICATION_ALREADY_HIRED` blocker when a
+> prior `Hired` application exists for the same job (`ApplicationService.cs:771-773`), and
+> `ApplicationStatusWorkflow.IsReapplyEligibleClosedStatus` treats only `Rejected`/`Withdrawn`/
+> `OfferDeclined` as re-apply-eligible (`Hired` excluded). Re-apply after `Hired` for the same job is
+> therefore blocked with **422**.
 
 **Frontend enforcement:** After a re-apply-eligible closed state the apply-context returns
 `canApply: true`, `alreadyApplied: false`, re-enabling the Apply button. After `Hired` for the same
@@ -84,8 +90,8 @@ job, `canApply: false` with a "already hired for this job" blocker.
 
 **Tests:** `ApplyAsync_AfterWithdrawal_AllowsReapplyAndReturnsCreated`,
 `ApplyAsync_AfterRejection_AllowsReapplyAndReturnsCreated`,
-`GetApplyScreenAsync_AfterWithdrawal_ReportsCanApplyAndNotAlreadyApplied`, `TEST-E2E-APPLICATION-001`.
-Planned: `ApplyAsync_AfterHired_ForSameJob_IsBlocked` (see [TEST-MATRIX.md](TEST-MATRIX.md) T-RE-003).
+`GetApplyScreenAsync_AfterWithdrawal_ReportsCanApplyAndNotAlreadyApplied`, `TEST-E2E-APPLICATION-001`,
+`ApplyAsync_AfterHired_ForSameJob_IsBlocked` ([TEST-MATRIX.md](TEST-MATRIX.md) T-RE-003 / T-WF-004).
 
 ---
 
@@ -222,12 +228,15 @@ reached) the `Interview` stage. The interview is a dependent record; it never dr
 **Required downstream effect:** When the application leaves the pipeline
 (`Withdrawn`/`Rejected`) a `Scheduled` interview must be `Canceled` or treated as stale.
 
-> **Current code gap (DL-009):** the withdraw/reject paths do not yet proactively cancel a pending
-> interview; the FE treats it as stale. Server-side cascade is the target.
+> **Implemented (DL-009):** the withdraw and reject paths proactively cancel pending interviews —
+> `CancelPendingInterviews` sets every `Scheduled` interview to `Canceled` inside the same transaction
+> as the status change (`ApplicationService.cs:375` withdraw, `:603` reject; `Completed` interviews are
+> untouched).
 
 **Error:** Interview action on an application not in `Interview` → HTTP **422**.
 
-**Tests:** Planned — see [TEST-MATRIX.md](TEST-MATRIX.md) T-INT-001.
+**Tests:** `CreateInterview_WhenApplicationNotInInterviewStage_Returns422` (T-INT-001),
+`Withdraw_FromInterviewStage_CancelsPendingInterview` (T-INT-002) — see [TEST-MATRIX.md](TEST-MATRIX.md).
 
 ---
 
@@ -250,8 +259,12 @@ require offer `Sent` and candidate ownership. Reviewer `AllowedTransitions` from
 
 **Error:** Offer response when not in `Offer`/offer not `Sent` → HTTP **422**; not owned → **404**.
 
-**Tests:** Accept/decline tests in [TEST-MATRIX.md](TEST-MATRIX.md); planned T-OFR-001 for the
-forbidden combinations.
+> **Seed data quality (init.sql):** the seed now satisfies this rule — every `Offer` application has an
+> offer row in `Sent` and every `Hired` application has an `Accepted` offer row (init.sql seeds
+> `application_offers`; verified on a fresh load — BR-APPLICATION-009 contradictions = 0).
+
+**Tests:** Accept/decline tests in [TEST-MATRIX.md](TEST-MATRIX.md); T-OFR-001 covers the forbidden
+combinations.
 
 ---
 
@@ -296,12 +309,12 @@ CompanyRejections   = Rejected
 
 # Recruitment Ownership Rules (BR-OWN-*)
 
-> **Status:** the **data foundation is implemented (Phase 1, 2026-06-26)** — `Department.HeadUserId`,
-> `Job.RecruiterId`, `Application.AssignedRecruiterId`, `Application.AssignedDepartmentHeadId` exist in
-> `init.sql` + EF, and apply snapshots the owners (BR-OWN-005). Still **planned**: job-approval routing
-> by `Department.HeadUserId` (Phase 3), DTO/API field exposure (Phase 2), frontend (Phase 4), and
-> **notification routing (Phase 6, not implemented)**. Backend status enums and roles are **not**
-> renamed; `ManagerReview` (code) **=** the **DepartmentHeadReview** business stage. See
+> **Status (updated 2026-06-26, Phase 2/3):** the data foundation (Phase 1) **and** the backend API +
+> authorization are now **implemented** — DTO/API field exposure (Phase 2), job-approval routing by
+> `Department.HeadUserId` (Phase 3, BR-OWN-003), and DepartmentHead-scoped ManagerReview decisions
+> (BR-OWN-007). Still **not implemented**: frontend (Phase 4) and **notification routing (Phase 6)**.
+> `Job.HiringManagerId` is deferred. Backend status enums and roles are **not** renamed; `ManagerReview`
+> (code) **=** the **DepartmentHeadReview** business stage. See
 > [01-system-overview.md](01-system-overview.md),
 > [RECRUITMENT-OWNERSHIP-MATRIX.md](RECRUITMENT-OWNERSHIP-MATRIX.md), and
 > [IMPLEMENTATION-PLAN-OWNERSHIP.md](IMPLEMENTATION-PLAN-OWNERSHIP.md).
@@ -313,22 +326,35 @@ Each Department should have a DepartmentHead user (`Department.HeadUserId`). The
 default job approver and default business reviewer for that Department. If a Department has no head, job
 approval and DepartmentHead review cannot be routed safely.
 **Phase 1 (implemented):** `Department.HeadUserId` column + EF mapping exist; seed sets it to the
-DepartmentHead persona. **Still planned:** approval *authorization* by `Department.HeadUserId` (Phase 3)
-— today approval is still gated by the generic `Manager` role.
+DepartmentHead persona. **Phase 2/3 (implemented):** `GET/PUT /api/departments/{id}` expose and set the
+head; setting a head validates the user exists and has the `HeadDepartment`/`SystemAdmin` role (else
+422 `INVALID_DEPARTMENT_HEAD`). _No `IsActive` flag exists on `User` yet, so "active" = "exists" — a
+documented follow-up._
 
 ## BR-OWN-002 — HR creates the job; CreatedBy is an audit field
 HR / Recruiter creates a job, capturing **Department** and **Recruiter phụ trách**
 (`Job.RecruiterId`, the business owner of the job's applications). `Job.CreatedBy` is an **audit**
 field and must **not** be treated as the long-term recruiter owner except as a legacy fallback.
 **Phase 1 (implemented):** `Job.RecruiterId` column + EF mapping exist; seed/backfill sets
-`recruiter_id = created_by` (the demo jobs are created by the HR persona). **Still planned:** the job
-create/edit flow capturing/validating `RecruiterId` explicitly (Phases 2–4).
+`recruiter_id = created_by` (the demo jobs are created by the HR persona). **Phase 2/3 (implemented):**
+`POST /api/hr/jobs` accepts `recruiterId` and validates it is an existing HR user (else 422
+`INVALID_JOB_RECRUITER`); when omitted it falls back to the creating user (compatibility fallback).
+A valid department is required (else 422 `DEPARTMENT_NOT_FOUND`). **Still planned:** the frontend job
+create/edit UI (Phase 4).
 
 ## BR-OWN-003 — DepartmentHead approves the job; ApprovedBy is an audit field
 A job is not public/applyable until approved. The approver is the Department's head
-(`Department.HeadUserId` _(planned)_). `Job.ApprovedBy` **(current)** is an **audit** field, not the
+(`Department.HeadUserId`). `Job.ApprovedBy` is an **audit** field (the decision actor), not the
 long-term head owner except as a legacy fallback.
-**Current:** approval is authorized by the `Manager` role (`JobController` approval endpoints).
+**Phase 3 (implemented):** `JobService.PatchJobAsync` authorizes the **Approved/Rejected** transition
+against `Department.HeadUserId` **or** a `SystemAdmin`:
+- not the head and not SystemAdmin → **403** `FORBIDDEN`;
+- the department has no head → **422** `DEPARTMENT_HEAD_REQUIRED`.
+On approve/reject, `Job.ApprovedBy` is set to the acting user. The controller admits
+`HR,Manager,HeadDepartment,SystemAdmin` so the head/admin can reach the endpoint; the service guard
+enforces the specific head. Both status routes — `/api/hr/jobs/{id}/status` and the hardened
+`/api/jobs/{id}/status` alias (now authenticated, routed through the same guard) — are covered. Other
+status moves keep HR/Manager behavior.
 
 ## BR-OWN-004 — Candidate applies only to approved jobs
 A candidate can apply only when `Job.Status = Approved` (and the deadline has not passed). Only approved
@@ -351,8 +377,12 @@ On apply, the primary owner is `AssignedRecruiterId` (the HR / Recruiter). The D
 
 ## BR-OWN-007 — DepartmentHead participates after HR screening
 When HR moves the application to `ManagerReview` / DepartmentHeadReview, the primary owner becomes
-`AssignedDepartmentHeadId`. **Current:** the `ManagerReview → Interview` transition is driven by the
-generic `Manager` role, not a per-application assigned head.
+`AssignedDepartmentHeadId`. **Phase 3 (implemented):** `ApplicationService.UpdateApplicationDecisionAsync`
+authorizes the **ManagerReview → Interview/Rejected** transition against the application's
+`AssignedDepartmentHeadId` **or** a `SystemAdmin` (else **403** `FORBIDDEN`). Temporary migration
+fallback: a `Manager`-role user may act **only** when no head was snapshotted (`AssignedDepartmentHeadId`
+is null). Earlier HR stages (`Applied→Screening`, `Screening→ManagerReview`) and `Interview→Offer/Rejected`
+keep the existing HR/Manager behavior. Ownership is resolved via `IApplicationOwnershipResolver`.
 
 ## BR-OWN-008 — Interview and offer responsibilities
 Interview: HR coordinates, DepartmentHead evaluates/participates, Candidate attends. Offer: HR sends,
@@ -363,4 +393,7 @@ notification routing in [NOTIFICATION-EVENT-MATRIX.md](NOTIFICATION-EVENT-MATRIX
 SystemAdmin manages configuration and access and may override/maintain data, but is **never** the
 default owner or recipient of recruitment workflow items.
 
-**Tests:** Planned — see [TEST-MATRIX.md](TEST-MATRIX.md) §Planned ownership tests (T-OWN-001…009).
+**Tests:** Ownership tests T-OWN-001, T-OWN-007*, and the Phase 2/3 set T-OWN-010…027 are
+**implemented and passing** (department head exposure/assignment, assignable owners, job recruiter
+persistence, approval guard, ManagerReview guard). FE checks (FV-OWN-*) and Phase-6 notification tests
+remain planned — see [TEST-MATRIX.md](TEST-MATRIX.md).

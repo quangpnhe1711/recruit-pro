@@ -9,6 +9,7 @@ using RecruitPro.Application.Exceptions;
 using RecruitPro.Application.Interfaces;
 using RecruitPro.Application.Interfaces.IRepositories;
 using RecruitPro.Application.Interfaces.IServices;
+using RecruitPro.Domain.Constants;
 using RecruitPro.Domain.Entities;
 using RecruitPro.Domain.Enums;
 using RecruitPro.Domain.Workflows;
@@ -588,6 +589,20 @@ public class ApplicationService : IApplicationService
                 errorCode: ErrorCodes.InvalidApplicationTransition);
         }
 
+        // BR-OWN-007 — ManagerReview = the DepartmentHeadReview business stage. Advancing a ManagerReview
+        // application (to Interview or Rejected) is reserved for the application's assigned DepartmentHead
+        // or a SystemAdmin. The earlier HR-owned stages (Applied→Screening, Screening→ManagerReview) and
+        // the Interview→Offer/Rejected stage keep their existing HR/Manager behavior.
+        if (application.Status == ApplicationStatus.ManagerReview
+            && targetStatus.Value is ApplicationStatus.Interview or ApplicationStatus.Rejected)
+        {
+            ApiResponse<ApplicationReviewDetailDto>? guardFailure = await GuardManagerReviewDecisionAsync(application, reviewerId);
+            if (guardFailure != null)
+            {
+                return guardFailure;
+            }
+        }
+
         ApplicationStatus previousStatus = application.Status;
         application.Status = targetStatus.Value;
 
@@ -830,6 +845,52 @@ public class ApplicationService : IApplicationService
     }
 
     /// <summary>
+    /// Authorizes a ManagerReview (DepartmentHeadReview) decision against the application's assigned
+    /// department head (resolved via the shared ownership logic) or a SystemAdmin. Returns a non-null
+    /// 403 failure to short-circuit; null when allowed. Temporary migration fallback (BR-OWN-007): when
+    /// no head was snapshotted, a Manager-role user may still act.
+    /// </summary>
+    private async Task<ApiResponse<ApplicationReviewDetailDto>?> GuardManagerReviewDecisionAsync(
+        Domain.Entities.Application application,
+        Guid? reviewerId)
+    {
+        Guid? assignedHeadId = ApplicationOwnershipResolver.Resolve(application).DepartmentHeadUserId;
+
+        if (reviewerId.HasValue && assignedHeadId.HasValue && reviewerId.Value == assignedHeadId.Value)
+        {
+            return null;
+        }
+
+        IReadOnlyCollection<string> reviewerRoles = await GetUserRoleNamesAsync(reviewerId);
+        if (reviewerRoles.Contains(RoleNames.SystemAdmin))
+        {
+            return null;
+        }
+
+        if (assignedHeadId == null && reviewerRoles.Contains(RoleNames.Manager))
+        {
+            return null;
+        }
+
+        return ApiResponse<ApplicationReviewDetailDto>.Forbidden(
+            "Only the assigned department head or a system administrator can advance this application from manager review.",
+            errorCode: ErrorCodes.Forbidden);
+    }
+
+    private async Task<IReadOnlyCollection<string>> GetUserRoleNamesAsync(Guid? userId)
+    {
+        if (!userId.HasValue)
+        {
+            return [];
+        }
+
+        User? user = await _userRepository.GetByIdAsync(userId.Value);
+        return user == null
+            ? []
+            : user.UserRoles.Select(userRole => userRole.Role.Name).ToArray();
+    }
+
+    /// <summary>
     /// Retrieves job.
     /// </summary>
     /// <param name="jobId">The <paramref name="jobId"/> value.</param>
@@ -966,6 +1027,12 @@ public class ApplicationService : IApplicationService
                 Phone = application.ReviewedByNavigation.Phone,
                 Roles = application.ReviewedByNavigation.UserRoles.Select(userRole => userRole.Role.Name).ToList()
             },
+            AssignedRecruiterId = application.AssignedRecruiterId?.ToString(),
+            AssignedRecruiterName = application.AssignedRecruiter?.FullName,
+            AssignedRecruiterEmail = application.AssignedRecruiter?.Email,
+            AssignedDepartmentHeadId = application.AssignedDepartmentHeadId?.ToString(),
+            AssignedDepartmentHeadName = application.AssignedDepartmentHead?.FullName,
+            AssignedDepartmentHeadEmail = application.AssignedDepartmentHead?.Email,
             Score = (double?)effectiveFinalScore ?? fallbackScore,
             RuleScore = application.RuleScore,
             SemanticScore = application.SemanticScore,
@@ -1169,7 +1236,13 @@ public class ApplicationService : IApplicationService
                 AvatarUrl = application.ReviewedByNavigation.AvatarUrl,
                 Phone = application.ReviewedByNavigation.Phone,
                 Roles = application.ReviewedByNavigation.UserRoles.Select(userRole => userRole.Role.Name).ToList()
-            }
+            },
+            AssignedRecruiterId = application.AssignedRecruiterId?.ToString(),
+            AssignedRecruiterName = application.AssignedRecruiter?.FullName,
+            AssignedRecruiterEmail = application.AssignedRecruiter?.Email,
+            AssignedDepartmentHeadId = application.AssignedDepartmentHeadId?.ToString(),
+            AssignedDepartmentHeadName = application.AssignedDepartmentHead?.FullName,
+            AssignedDepartmentHeadEmail = application.AssignedDepartmentHead?.Email
         };
     }
 
@@ -1197,7 +1270,11 @@ public class ApplicationService : IApplicationService
             Status = application.Status.ToString(),
             AppliedAt = application.AppliedAt,
             CompletedInterviews = application.Interviews.Count(interview => interview.Status == InterviewStatus.Completed),
-            TotalInterviews = application.Interviews.Count
+            TotalInterviews = application.Interviews.Count,
+            AssignedRecruiterId = application.AssignedRecruiterId?.ToString(),
+            AssignedRecruiterName = application.AssignedRecruiter?.FullName,
+            AssignedDepartmentHeadId = application.AssignedDepartmentHeadId?.ToString(),
+            AssignedDepartmentHeadName = application.AssignedDepartmentHead?.FullName
         };
     }
 

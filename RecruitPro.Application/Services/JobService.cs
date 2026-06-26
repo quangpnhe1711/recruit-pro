@@ -2,12 +2,14 @@ using System.Text.Json;
 using AutoMapper;
 using RecruitPro.Application.Common;
 using RecruitPro.Application.DTOs.Request;
+using RecruitPro.Application.DTOs.Request.Departments;
 using RecruitPro.Application.DTOs.Request.Jobs;
 using RecruitPro.Application.DTOs.Response;
 using RecruitPro.Application.Exceptions;
 using RecruitPro.Application.Interfaces;
 using RecruitPro.Application.Interfaces.IRepositories;
 using RecruitPro.Application.Interfaces.IServices;
+using RecruitPro.Domain.Constants;
 using RecruitPro.Domain.Entities;
 using RecruitPro.Domain.Enums;
 
@@ -18,6 +20,7 @@ public class JobService : IJobService
     private readonly IJobRepository _jobRepository;
     private readonly IApplicationRepository _applicationRepository;
     private readonly ISkillRepository _skillRepository;
+    private readonly IUserRepository _userRepository;
     private readonly IUnitOfWork _unitOfWork;
     private readonly ISemanticDiscoveryService _semanticDiscoveryService;
     private readonly IMapper _mapper;
@@ -35,6 +38,7 @@ public class JobService : IJobService
         IJobRepository jobRepository,
         IApplicationRepository applicationRepository,
         ISkillRepository skillRepository,
+        IUserRepository userRepository,
         IUnitOfWork unitOfWork,
         ISemanticDiscoveryService semanticDiscoveryService,
         IMapper mapper)
@@ -42,6 +46,7 @@ public class JobService : IJobService
         _jobRepository = jobRepository;
         _applicationRepository = applicationRepository;
         _skillRepository = skillRepository;
+        _userRepository = userRepository;
         _unitOfWork = unitOfWork;
         _semanticDiscoveryService = semanticDiscoveryService;
         _mapper = mapper;
@@ -114,16 +119,84 @@ public class JobService : IJobService
     /// Retrieves departments.
     /// </summary>
     /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
-    public async Task<ApiResponse<IReadOnlyList<DepartmentDto>>> GetDepartmentsAsync()
+    public async Task<ApiResponse<IReadOnlyList<DepartmentResponseDto>>> GetDepartmentsAsync()
     {
         IReadOnlyList<Department> departments = await _jobRepository.GetDepartmentsAsync();
-        return ApiResponse<IReadOnlyList<DepartmentDto>>.Ok(
-            departments.Select(department => new DepartmentDto
+        return ApiResponse<IReadOnlyList<DepartmentResponseDto>>.Ok(
+            departments.Select(MapDepartment).ToList());
+    }
+
+    /// <summary>
+    /// Retrieves a single department with its head (Phase 2/3).
+    /// </summary>
+    public async Task<ApiResponse<DepartmentResponseDto>> GetDepartmentAsync(string departmentId)
+    {
+        if (!Guid.TryParse(departmentId, out Guid departmentGuid))
+        {
+            return ApiResponse<DepartmentResponseDto>.NotFound("Department not found.", errorCode: ErrorCodes.DepartmentNotFound);
+        }
+
+        Department? department = await _jobRepository.GetDepartmentByIdAsync(departmentGuid);
+        if (department == null)
+        {
+            return ApiResponse<DepartmentResponseDto>.NotFound("Department not found.", errorCode: ErrorCodes.DepartmentNotFound);
+        }
+
+        return ApiResponse<DepartmentResponseDto>.Ok(MapDepartment(department));
+    }
+
+    /// <summary>
+    /// Updates a department's head (BR-OWN-001) and optional name/description. The head must be an
+    /// existing user with the HeadDepartment or SystemAdmin role (no IsActive flag exists yet, so
+    /// "active" = "exists" — role-by-existence validation; see docs follow-up).
+    /// </summary>
+    public async Task<ApiResponse<DepartmentResponseDto>> UpdateDepartmentAsync(string departmentId, UpdateDepartmentRequest request)
+    {
+        if (!Guid.TryParse(departmentId, out Guid departmentGuid))
+        {
+            return ApiResponse<DepartmentResponseDto>.NotFound("Department not found.", errorCode: ErrorCodes.DepartmentNotFound);
+        }
+
+        Department? department = await _jobRepository.GetTrackedDepartmentByIdAsync(departmentGuid);
+        if (department == null)
+        {
+            return ApiResponse<DepartmentResponseDto>.NotFound("Department not found.", errorCode: ErrorCodes.DepartmentNotFound);
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.HeadUserId))
+        {
+            if (!Guid.TryParse(request.HeadUserId, out Guid headUserGuid))
             {
-                Id = department.Id.ToString(),
-                Name = department.Name,
-                Description = department.Description
-            }).ToList());
+                return ApiResponse<DepartmentResponseDto>.UnprocessableEntity(
+                    "The selected department head is not a valid user.", errorCode: ErrorCodes.InvalidDepartmentHead);
+            }
+
+            User? headUser = await _userRepository.GetByIdAsync(headUserGuid);
+            if (headUser == null || !UserHasAnyRole(headUser, RoleNames.HeadDepartment, RoleNames.SystemAdmin))
+            {
+                return ApiResponse<DepartmentResponseDto>.UnprocessableEntity(
+                    "The selected department head must be an existing user with the HeadDepartment role.",
+                    errorCode: ErrorCodes.InvalidDepartmentHead);
+            }
+
+            department.HeadUserId = headUser.Id;
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Name))
+        {
+            department.Name = request.Name.Trim();
+        }
+
+        if (request.Description != null)
+        {
+            department.Description = request.Description;
+        }
+
+        await _jobRepository.UpdateDepartmentAsync(department);
+        await _unitOfWork.SaveChangesAsync();
+
+        Department refreshed = await _jobRepository.GetDepartmentByIdAsync(departmentGuid) ?? department;
+        return ApiResponse<DepartmentResponseDto>.Ok(MapDepartment(refreshed), "Department updated.");
     }
 
     /// <summary>
@@ -225,28 +298,9 @@ public class JobService : IJobService
         });
     }
 
-    /// <summary>
-    /// Updates job status.
-    /// </summary>
-    /// <param name="jobId">The <paramref name="jobId"/> value.</param>
-    /// <param name="request">The <paramref name="request"/> value.</param>
-    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
-    /// <exception cref="ArgumentException">Thrown when the operation fails validation or encounters an invalid state.</exception>
-    public async Task<ApiResponse<JobDetailResponseDto>> UpdateJobStatusAsync(string jobId, UpdateJobStatusRequest request)
-    {
-        Job job = await GetTrackedJobAsync(jobId);
-        if (!Enum.TryParse(request.Status, true, out JobStatus newStatus))
-        {
-            throw new ArgumentException($"Invalid job status: {request.Status}");
-        }
-
-        job.Status = newStatus;
-        await _jobRepository.UpdateAsync(job);
-        await _unitOfWork.SaveChangesAsync();
-        await TryRefreshJobEmbeddingAsync(job.Id);
-
-        return ApiResponse<JobDetailResponseDto>.Ok(MapLegacyJobDetail(job));
-    }
+    // NOTE: the former unguarded `UpdateJobStatusAsync` was removed during Phase 2/3 hardening. The
+    // `PATCH /api/jobs/{id}/status` endpoint now routes through `PatchJobAsync`, which enforces the
+    // DepartmentHead/SystemAdmin approval guard (BR-OWN-003).
 
     /// <summary>
     /// Retrieves hr jobs.
@@ -290,7 +344,13 @@ public class JobService : IJobService
                     Id = job.CreatedByNavigation.Id.ToString(),
                     FullName = job.CreatedByNavigation.FullName,
                     Email = job.CreatedByNavigation.Email
-                }
+                },
+                RecruiterId = job.RecruiterId?.ToString(),
+                RecruiterName = job.Recruiter?.FullName,
+                DepartmentHeadId = job.Department?.HeadUserId?.ToString(),
+                DepartmentHeadName = job.Department?.HeadUser?.FullName,
+                EffectiveDepartmentHeadId = (job.Department?.HeadUserId ?? job.ApprovedBy)?.ToString(),
+                EffectiveDepartmentHeadName = (job.Department?.HeadUser ?? job.ApprovedByNavigation)?.FullName
             }).ToList(),
             Meta = PaginationMetaBuilder.Build(request.Page, request.PageSize, total),
             Stats = new HrJobStatsDto
@@ -472,7 +532,36 @@ public class JobService : IJobService
     /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<HrCreateJobResponseDto>> CreateJobAsync(CreateJobRequest request, Guid currentUserId)
     {
+        // BR-OWN-002: a job must belong to a Department (so a DepartmentHead can own its approval/review).
         Department? department = await ResolveDepartmentAsync(request.DepartmentId, request.Department);
+        if (department == null)
+        {
+            return ApiResponse<HrCreateJobResponseDto>.UnprocessableEntity(
+                "A valid department is required to create a job.", errorCode: ErrorCodes.DepartmentNotFound);
+        }
+
+        // BR-OWN-002: RecruiterId is the business owner. When provided it must be an existing HR user;
+        // when omitted we fall back to the creating user (compatibility fallback, JOB-APPROVAL-FLOW.md).
+        Guid recruiterId = currentUserId;
+        if (!string.IsNullOrWhiteSpace(request.RecruiterId))
+        {
+            if (!Guid.TryParse(request.RecruiterId, out Guid parsedRecruiterId))
+            {
+                return ApiResponse<HrCreateJobResponseDto>.UnprocessableEntity(
+                    "The selected recruiter is not a valid user.", errorCode: ErrorCodes.InvalidJobRecruiter);
+            }
+
+            User? recruiter = await _userRepository.GetByIdAsync(parsedRecruiterId);
+            if (recruiter == null || !UserHasAnyRole(recruiter, RoleNames.Hr))
+            {
+                return ApiResponse<HrCreateJobResponseDto>.UnprocessableEntity(
+                    "The selected recruiter must be an existing user with the HR role.",
+                    errorCode: ErrorCodes.InvalidJobRecruiter);
+            }
+
+            recruiterId = recruiter.Id;
+        }
+
         List<JobSkill> jobSkills = await BuildJobSkillsAsync(request.SkillRequirements, request.SkillIds, request.Skills);
         List<string> benefits = request.Benefits.Count > 0 ? request.Benefits : request.Responsibilities;
 
@@ -481,8 +570,9 @@ public class JobService : IJobService
             Id = Guid.NewGuid(),
             Title = request.Title,
             ShortPitch = request.ShortPitch,
-            DepartmentId = department?.Id,
+            DepartmentId = department.Id,
             CreatedBy = currentUserId,
+            RecruiterId = recruiterId,
             EmploymentType = ParseEmploymentType(request.EmploymentType),
             WorkMode = ParseWorkMode(request.WorkMode),
             Location = request.Location ?? string.Empty,
@@ -520,7 +610,7 @@ public class JobService : IJobService
     /// <param name="jobId">The <paramref name="jobId"/> value.</param>
     /// <param name="request">The <paramref name="request"/> value.</param>
     /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
-    public async Task<ApiResponse<HrJobStatusResponseDto>> PatchJobAsync(string jobId, PatchJobRequest request)
+    public async Task<ApiResponse<HrJobStatusResponseDto>> PatchJobAsync(string jobId, PatchJobRequest request, Guid? currentUserId = null, IReadOnlyCollection<string>? currentUserRoles = null)
     {
         if (!Guid.TryParse(jobId, out Guid jobGuid))
         {
@@ -552,6 +642,21 @@ public class JobService : IJobService
         JobStatus? parsedStatus = ParseJobStatus(request.ApprovalStatus);
         if (parsedStatus.HasValue)
         {
+            // BR-OWN-003 / JOB-APPROVAL-FLOW.md: approval and rejection are scoped to the job's
+            // DepartmentHead (Department.HeadUserId) or a SystemAdmin. Other status moves (Draft,
+            // PendingApproval, Closed) keep the existing HR/Manager behavior.
+            if (parsedStatus.Value is JobStatus.Approved or JobStatus.Rejected)
+            {
+                ApiResponse<HrJobStatusResponseDto>? guardFailure = await GuardDepartmentHeadApprovalAsync(job, currentUserId, currentUserRoles);
+                if (guardFailure != null)
+                {
+                    return guardFailure;
+                }
+
+                // ApprovedBy records the decision actor (audit), per the current model.
+                job.ApprovedBy = currentUserId;
+            }
+
             job.Status = parsedStatus.Value;
         }
 
@@ -677,27 +782,6 @@ public class JobService : IJobService
         return job;
     }
 
-    /// <summary>
-    /// Retrieves tracked job.
-    /// </summary>
-    /// <param name="jobId">The <paramref name="jobId"/> value.</param>
-    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
-    /// <exception cref="NotFoundException">Thrown when the operation fails validation or encounters an invalid state.</exception>
-    private async Task<Job> GetTrackedJobAsync(string jobId)
-    {
-        if (!Guid.TryParse(jobId, out Guid jobGuid))
-        {
-            throw new NotFoundException($"Job with ID {jobId} not found.");
-        }
-
-        Job? job = await _jobRepository.GetTrackedByIdAsync(jobGuid);
-        if (job == null)
-        {
-            throw new NotFoundException($"Job with ID {jobId} not found.");
-        }
-
-        return job;
-    }
 
     private async Task TryRefreshJobEmbeddingAsync(Guid jobId)
     {
@@ -731,6 +815,11 @@ public class JobService : IJobService
 
     private static JobDetailResponseDto MapLegacyJobDetail(Job job)
     {
+        // Effective department head = the department's head, falling back to the approver (audit). See
+        // BR-OWN-003 / RECRUITMENT-OWNERSHIP-MATRIX.md.
+        Guid? effectiveHeadId = job.Department?.HeadUserId ?? job.ApprovedBy;
+        User? effectiveHeadUser = job.Department?.HeadUser ?? job.ApprovedByNavigation;
+
         return new JobDetailResponseDto
         {
             Id = job.Id,
@@ -751,7 +840,24 @@ public class JobService : IJobService
             Posted = job.CreatedAt?.ToString("yyyy-MM-dd") ?? string.Empty,
             VacancyCount = job.VacancyCount,
             Status = job.Status.ToString(),
-            Description = ParseJsonArray(job.Description)
+            Description = ParseJsonArray(job.Description),
+
+            RecruiterId = job.RecruiterId?.ToString(),
+            RecruiterName = job.Recruiter?.FullName,
+            RecruiterEmail = job.Recruiter?.Email,
+
+            DepartmentHeadId = job.Department?.HeadUserId?.ToString(),
+            DepartmentHeadName = job.Department?.HeadUser?.FullName,
+            DepartmentHeadEmail = job.Department?.HeadUser?.Email,
+
+            EffectiveDepartmentHeadId = effectiveHeadId?.ToString(),
+            EffectiveDepartmentHeadName = effectiveHeadUser?.FullName,
+            EffectiveDepartmentHeadEmail = effectiveHeadUser?.Email,
+
+            CreatedBy = job.CreatedBy.ToString(),
+            CreatedByName = job.CreatedByNavigation?.FullName,
+            ApprovedBy = job.ApprovedBy?.ToString(),
+            ApprovedByName = job.ApprovedByNavigation?.FullName
         };
     }
 
@@ -833,6 +939,61 @@ public class JobService : IJobService
     /// <param name="departmentId">The <paramref name="departmentId"/> value.</param>
     /// <param name="departmentName">The <paramref name="departmentName"/> value.</param>
     /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
+    /// <summary>
+    /// Authorizes a job approve/reject against the job's DepartmentHead (Department.HeadUserId) or a
+    /// SystemAdmin. Returns a non-null failure response to short-circuit; null when allowed.
+    /// </summary>
+    private async Task<ApiResponse<HrJobStatusResponseDto>?> GuardDepartmentHeadApprovalAsync(
+        Job job,
+        Guid? currentUserId,
+        IReadOnlyCollection<string>? currentUserRoles)
+    {
+        Guid? headUserId = null;
+        if (job.DepartmentId.HasValue)
+        {
+            // The tracked job includes its (original) Department; reload if the patch just changed it.
+            headUserId = job.Department != null && job.Department.Id == job.DepartmentId.Value
+                ? job.Department.HeadUserId
+                : (await _jobRepository.GetDepartmentByIdAsync(job.DepartmentId.Value))?.HeadUserId;
+        }
+
+        if (headUserId == null)
+        {
+            return ApiResponse<HrJobStatusResponseDto>.UnprocessableEntity(
+                "This job's department has no head assigned; assign a department head before approving or rejecting.",
+                errorCode: ErrorCodes.DepartmentHeadRequired);
+        }
+
+        bool isHead = currentUserId.HasValue && currentUserId.Value == headUserId.Value;
+        bool isSystemAdmin = currentUserRoles != null && currentUserRoles.Contains(RoleNames.SystemAdmin);
+        if (!isHead && !isSystemAdmin)
+        {
+            return ApiResponse<HrJobStatusResponseDto>.Forbidden(
+                "Only the department head or a system administrator can approve or reject this job.",
+                errorCode: ErrorCodes.Forbidden);
+        }
+
+        return null;
+    }
+
+    private static bool UserHasAnyRole(User user, params string[] roleNames)
+    {
+        return user.UserRoles.Any(userRole => roleNames.Contains(userRole.Role.Name));
+    }
+
+    private static DepartmentResponseDto MapDepartment(Department department)
+    {
+        return new DepartmentResponseDto
+        {
+            Id = department.Id.ToString(),
+            Name = department.Name,
+            Description = department.Description,
+            HeadUserId = department.HeadUserId?.ToString(),
+            HeadUserName = department.HeadUser?.FullName,
+            HeadUserEmail = department.HeadUser?.Email
+        };
+    }
+
     private async Task<Department?> ResolveDepartmentAsync(string? departmentId, string? departmentName)
     {
         if (!string.IsNullOrWhiteSpace(departmentId) && Guid.TryParse(departmentId, out Guid parsedDepartmentId))

@@ -64,9 +64,11 @@ Full suite after this pass: **156 passed, 0 failed** (was 138). New/updated test
 
 ## Ownership tests (T-OWN-*)
 
-> **Status (updated 2026-06-26, Phase 1):** the snapshot + persistence tests are **implemented and
-> passing** (full suite **162 passed, 0 failed**). The remaining T-OWN tests depend on later phases
-> (approval routing — Phase 3; create-job DTO — Phase 2) and stay **planned**. See
+> **Status (updated 2026-06-26, Phase 2/3 + hardening):** the snapshot/persistence tests (Phase 1) **and**
+> the Phase 2/3 API + authorization tests (T-OWN-010…027) **and** the pre-commit hardening tests
+> (T-OWN-028…032 + departments-route compatibility) are **implemented and passing** — full suite
+> **187 passed, 0 failed** (was 162). The only remaining T-OWN items are the frontend checks (FV-OWN-*,
+> Phase 4) and Phase-6 notification tests. See
 > [IMPLEMENTATION-PLAN-OWNERSHIP.md](IMPLEMENTATION-PLAN-OWNERSHIP.md) and
 > [BUSINESS-RULES.md](BUSINESS-RULES.md) BR-OWN-*.
 
@@ -81,17 +83,50 @@ Full suite after this pass: **156 passed, 0 failed** (was 138). New/updated test
 | T-OWN-007c | `ApplicationOwnershipTests.ApplyAsync_PrefersDepartmentHead_OverApprovedBy_WhenBothPresent` | unit | BR-OWN-005 | head not overridden by the audit fallback |
 | T-OWN-007d | `RepositoryIntegrationTests.Application_PersistsOwnershipSnapshotFields` | integration (PG) | BR-OWN-005 | snapshot fields round-trip through EF + PostgreSQL |
 
+### Backend — implemented (Phase 2/3)
+
+| Test ID | Test | Layer | Rule | Expected |
+|---|---|---|---|---|
+| T-OWN-010 | `OwnershipServiceIntegrationTests.Department_ReturnsHeadUserInfo` | integration (PG) | BR-OWN-001 | department detail returns `headUser*` |
+| T-OWN-011 | `Department_Update_SetsHeadUserId` (+ `_RejectsCandidateAsHead`) | integration (PG) | BR-OWN-001 | head set+persisted; non-HeadDepartment/SystemAdmin → 422 `INVALID_DEPARTMENT_HEAD` |
+| T-OWN-012 | `AssignableRecruitmentOwners_ExcludesCandidates` | integration (PG) | BR-OWN-009 | candidate absent from both lists |
+| T-OWN-013 | `AssignableRecruitmentOwners_ReturnsHrAndHeadDepartment` | integration (PG) | BR-OWN-002 | recruiters=HR, departmentHeads=HeadDepartment |
+| T-OWN-014 | `CreateJob_PersistsRecruiterId` | integration (PG) | BR-OWN-002 | created job persists supplied `RecruiterId` |
+| T-OWN-015 | `CreateJob_DefaultsRecruiterToCurrentHr_WhenMissing` | integration (PG) | BR-OWN-002 | omitted recruiter → creating user |
+| T-OWN-016 | `JobDetail_ReturnsRecruiterAndDepartmentHead` | integration (PG) | BR-OWN-002/003 | job detail returns recruiter + department head |
+| T-OWN-017 | `JobList_ReturnsEffectiveDepartmentHead` | integration (PG) | BR-OWN-003 | HR list returns `effectiveDepartmentHeadId` |
+| T-OWN-018 | `OwnershipGuardUnitTests.DepartmentHead_CanApproveOwnDepartmentJob` | unit | BR-OWN-003 | head approves → 200 Approved |
+| T-OWN-019 | `NonDepartmentHead_CannotApproveOtherDepartmentJob` | unit | BR-OWN-003 | non-head/non-admin → 403 `FORBIDDEN`, status unchanged |
+| T-OWN-020 | `SystemAdmin_CanApproveAnyDepartmentJob` | unit | BR-OWN-003 | SystemAdmin → 200 Approved |
+| T-OWN-021 | `JobApproval_WhenDepartmentHasNoHead_Returns422` | unit | BR-OWN-003 | no head → 422 `DEPARTMENT_HEAD_REQUIRED` |
+| T-OWN-022 | `ApprovedJob_SetsApprovedByToCurrentDepartmentHead` | unit | BR-OWN-003 | `Job.ApprovedBy` = acting head |
+| T-OWN-023 | `HrCanMoveAppliedToScreening` | unit | BR-OWN-006 | HR stage unaffected by head guard → 200 |
+| T-OWN-024 | `HrCanMoveScreeningToManagerReview` | unit | BR-OWN-006 | HR stage → 200 |
+| T-OWN-025 | `AssignedDepartmentHeadCanMoveManagerReviewToInterview` | unit | BR-OWN-007 | assigned head → 200 Interview |
+| T-OWN-026 | `NonAssignedHeadCannotMoveManagerReviewToInterview` | unit | BR-OWN-007 | non-head/non-admin → 403 `FORBIDDEN` |
+| T-OWN-027 | `ManagerReviewGuard_FallsBackOnlyWhenAssignedHeadMissing` | unit | BR-OWN-007 | Manager fallback only when head null; else 403 |
+
+(T-OWN-002/003/004 from the Phase-0 plan are subsumed by T-OWN-014/018/019.)
+
+### Backend — pre-commit hardening (Phase 2/3)
+
+| Test ID | Test | Layer | Rule | Expected |
+|---|---|---|---|---|
+| T-OWN-028 | `JobStatusGuardIntegrationTests.UpdateJobStatus_WithoutAuth_Returns401` | integration (PG) | BR-OWN-003 | hardened `PATCH /api/jobs/{id}/status` requires auth → 401 |
+| T-OWN-029 | `UpdateJobStatus_ApproveByNonHead_Returns403` | integration (PG) | BR-OWN-003 | HR (non-head) → 403 `FORBIDDEN` |
+| T-OWN-030 | `UpdateJobStatus_ApproveByDepartmentHead_Succeeds` | integration (PG) | BR-OWN-003 | dept head → 200 Approved |
+| T-OWN-031 | `UpdateJobStatus_ApproveBySystemAdmin_Succeeds` | integration (PG) | BR-OWN-003 | SystemAdmin → 200 Approved |
+| T-OWN-032 | `UpdateJobStatus_WhenDepartmentHasNoHead_Returns422` | integration (PG) | BR-OWN-003 | no head → 422 `DEPARTMENT_HEAD_REQUIRED` |
+| T-OWN-033 | `Departments_LookupRoute_StillReturnsDepartmentsWithHead` | integration (PG) | compat | `GET /api/departments` still works, now incl. head |
+
 ### Backend — planned (later phases)
 
 | Test ID | Intended test | Rule | Phase |
 |---|---|---|---|
-| T-OWN-002 | `CreateJob_CapturesDepartmentAndRecruiter` | BR-OWN-002 | Phase 2 (create-job DTO carries `RecruiterId`) |
-| T-OWN-003 | `DepartmentHead_CanApproveJob` | BR-OWN-003 | Phase 3 (approval routing by `Department.HeadUserId`) |
-| T-OWN-004 | `NonDepartmentHead_CannotApproveJob` | BR-OWN-003 | Phase 3 |
 | T-OWN-005 | `ApprovedJob_BecomesPublicAndApplyable` | BR-OWN-004 | already enforced (INV-001); explicit test deferred |
 | T-OWN-006 | `Candidate_CannotApplyToNonApprovedJob` | BR-OWN-004 | already enforced; explicit test deferred |
-| T-OWN-008 | `AppliedAndScreening_OwnedByHR` | BR-OWN-006 | Phase 6 (notification routing) |
-| T-OWN-009 | `ManagerReview_OwnedByDepartmentHead` | BR-OWN-007 | Phase 6 |
+| T-OWN-008 | `AppliedAndScreening_OwnedByHR` (notification) | BR-OWN-006 | Phase 6 (notification routing) |
+| T-OWN-009 | `ManagerReview_OwnedByDepartmentHead` (notification) | BR-OWN-007 | Phase 6 |
 
 ### Frontend (planned verification)
 

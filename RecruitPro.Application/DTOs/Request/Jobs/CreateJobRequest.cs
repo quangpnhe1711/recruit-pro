@@ -11,6 +11,10 @@ public class CreateJobRequest
 
     public string? Department { get; set; }
 
+    // Phase 2/3: the recruiter who will own this job's applications (Job.RecruiterId). When omitted, the
+    // creating HR user is used as a compatibility fallback (documented in JOB-APPROVAL-FLOW.md).
+    public string? RecruiterId { get; set; }
+
     public string? EmploymentType { get; set; }
 
     public string? WorkMode { get; set; }

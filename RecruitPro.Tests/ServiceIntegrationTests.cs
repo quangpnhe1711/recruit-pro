@@ -88,11 +88,13 @@ public sealed class ServiceIntegrationTests : IClassFixture<PostgresTestFixture>
         createResponse.Data!.ApprovalStatus.Should().Be("PendingApproval");
 
         string createdJobId = createResponse.Data.JobId;
+        // BR-OWN-003: approval is scoped to the job's department head. The seeded Engineering department's
+        // head is the Manager-role user, so the approve transition is performed as that user.
         var patchResponse = await service.PatchJobAsync(createdJobId, new PatchJobRequest
         {
             Title = "QA Automation Engineer II",
             ApprovalStatus = "Approved"
-        });
+        }, TestDataSeeder.ManagerUserId, new[] { "Manager" });
 
         patchResponse.Success.Should().BeTrue();
         patchResponse.Data!.ApprovalStatus.Should().Be("Approved");

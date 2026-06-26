@@ -1,11 +1,11 @@
 # Notification Event Matrix
 
-**Status:** Phase 0 — **Planned routing only. Notification is NOT (re)implemented in this phase.**
-This document defines the **target** event set and recipient routing for the ownership refactor. A
-partial notification system already exists in code (see §3 Current reality); the recipient *sources*
-below (`AssignedRecruiterId`, `Department.HeadUserId`, …) are **planned** and depend on the ownership
-fields described in [APPLICATION-OWNERSHIP-FLOW.md](APPLICATION-OWNERSHIP-FLOW.md) and
-[API-CONTRACT.md](API-CONTRACT.md).
+**Status:** **Notification routing is NOT (re)implemented — this remains Phase 6.** This document
+defines the **target** event set and recipient routing for the ownership refactor. As of Phase 2/3 the
+ownership *fields* (`AssignedRecruiterId`, `AssignedDepartmentHeadId`, `Department.HeadUserId`) and a
+read-only `IApplicationOwnershipResolver` now **exist** and could back this routing — but the existing
+notification publishers have **not** been switched to them yet. A partial notification system already
+exists in code (see §3 Current reality) and is unchanged by Phase 2/3.
 
 Recipient roles use business names: **Candidate**, **HR / Recruiter**, **DepartmentHead**.
 

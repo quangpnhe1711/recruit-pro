@@ -213,6 +213,14 @@ namespace RecruitPro.Infrastructure.Repositories
         {
             return _context.Departments
                 .AsNoTracking()
+                .Include(department => department.HeadUser)
+                .FirstOrDefaultAsync(department => department.Id == departmentId);
+        }
+
+        public Task<Department?> GetTrackedDepartmentByIdAsync(Guid departmentId)
+        {
+            return _context.Departments
+                .Include(department => department.HeadUser)
                 .FirstOrDefaultAsync(department => department.Id == departmentId);
         }
 
@@ -227,8 +235,15 @@ namespace RecruitPro.Infrastructure.Repositories
         {
             return await _context.Departments
                 .AsNoTracking()
+                .Include(department => department.HeadUser)
                 .OrderBy(department => department.Name)
                 .ToListAsync();
+        }
+
+        public Task UpdateDepartmentAsync(Department department)
+        {
+            _context.Departments.Update(department);
+            return Task.CompletedTask;
         }
 
         public async Task<IReadOnlyList<Skill>> GetSkillsAsync()
@@ -277,8 +292,10 @@ namespace RecruitPro.Infrastructure.Repositories
             return _context.Jobs
                 .AsNoTracking()
                 .Include(job => job.Department)
+                    .ThenInclude(department => department!.HeadUser)
                 .Include(job => job.CreatedByNavigation)
                 .Include(job => job.ApprovedByNavigation)
+                .Include(job => job.Recruiter)
                 .Include(job => job.JobSkills)
                     .ThenInclude(jobSkill => jobSkill.Skill)
                 .Include(job => job.Applications);

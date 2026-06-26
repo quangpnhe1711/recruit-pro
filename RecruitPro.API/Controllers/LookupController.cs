@@ -14,12 +14,7 @@ public class LookupController : ControllerBase
         _jobService = jobService;
     }
 
-    [HttpGet("departments")]
-    public async Task<IActionResult> GetDepartments()
-    {
-        var result = await _jobService.GetDepartmentsAsync();
-        return StatusCode(result.StatusCode, result);
-    }
+    // NOTE: GET /api/departments moved to DepartmentController (now returns the department head).
 
     [HttpGet("skills")]
     public async Task<IActionResult> GetSkills()
