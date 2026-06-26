@@ -65,4 +65,17 @@ public sealed class ApplicationStatusWorkflowTests
     {
         ApplicationStatusWorkflow.CanPrepareOffer(status).Should().Be(expected);
     }
+
+    // INV-015: Hired is closed-for-workflow but NOT re-apply-eligible; the other closed states are.
+    [Theory]
+    [InlineData(ApplicationStatus.Rejected, true)]
+    [InlineData(ApplicationStatus.Withdrawn, true)]
+    [InlineData(ApplicationStatus.OfferDeclined, true)]
+    [InlineData(ApplicationStatus.Hired, false)]
+    [InlineData(ApplicationStatus.Applied, false)]
+    [InlineData(ApplicationStatus.Offer, false)]
+    public void IsReapplyEligibleClosedStatus_ExcludesHiredAndActiveStates(ApplicationStatus status, bool expected)
+    {
+        ApplicationStatusWorkflow.IsReapplyEligibleClosedStatus(status).Should().Be(expected);
+    }
 }

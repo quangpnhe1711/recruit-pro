@@ -155,6 +155,8 @@ public sealed class ApplicationReapplyRegressionTests
 
         var applicationRepository = new Mock<IApplicationRepository>();
         applicationRepository.Setup(repository => repository.GetByUserIdAsync(UserId)).ReturnsAsync([activeApplication]);
+        // INV-003: the duplicate decision is the EXISTS-active query, not the fetched row.
+        applicationRepository.Setup(repository => repository.HasActiveApplicationAsync(UserId, JobId)).ReturnsAsync(true);
 
         ApplicationService service = CreateService(applicationRepository: applicationRepository.Object);
 
@@ -163,6 +165,7 @@ public sealed class ApplicationReapplyRegressionTests
         response.Success.Should().BeFalse();
         response.StatusCode.Should().Be(409);
         response.Message.Should().Be("Candidate already applied for this job.");
+        response.ErrorCode.Should().Be("APPLICATION_ALREADY_ACTIVE");
         applicationRepository.Verify(repository => repository.AddAsync(It.IsAny<Domain.Entities.Application>()), Times.Never);
     }
 

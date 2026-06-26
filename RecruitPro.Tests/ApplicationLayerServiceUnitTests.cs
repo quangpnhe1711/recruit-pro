@@ -121,6 +121,8 @@ public sealed class ApplicationServiceUnitTests
                     Status = ApplicationStatus.Applied
                 }
             ]);
+        // INV-003: duplicate detection is the EXISTS-active query.
+        applicationRepository.Setup(repository => repository.HasActiveApplicationAsync(userId, jobId)).ReturnsAsync(true);
 
         var service = new ApplicationService(
             applicationRepository.Object,

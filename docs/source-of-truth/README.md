@@ -20,8 +20,12 @@ them out to the same depth is tracked in [DECISION-LOG.md](DECISION-LOG.md) as r
 
 ## Documents
 
+Read **[00-DOMAIN-STATE-DEPENDENCY.md](00-DOMAIN-STATE-DEPENDENCY.md) first** — it defines the
+state-dependency model that every rule, state machine, contract, and test traces back to.
+
 | Document | Purpose |
 |---|---|
+| [00-DOMAIN-STATE-DEPENDENCY.md](00-DOMAIN-STATE-DEPENDENCY.md) | **Read first.** Source of truth per decision, state classification, canonical groups, dependency map, invariants. |
 | [BUSINESS-RULES.md](BUSINESS-RULES.md) | Enforceable business rules (BR-*) with BE/FE enforcement points and tests. |
 | [STATE-MACHINE.md](STATE-MACHINE.md) | Application and Job state machines, allowed/forbidden transitions. |
 | [APPLY-STATUS-FLOW.md](APPLY-STATUS-FLOW.md) | Candidate apply-flow statuses, UI labels, actors, and notification behavior. |
@@ -32,11 +36,15 @@ them out to the same depth is tracked in [DECISION-LOG.md](DECISION-LOG.md) as r
 
 ## Key invariants (read first)
 
-- A candidate has **at most one _active_ application per job**. Active = not in a closed state.
-- **Closed** application states are `Hired`, `Rejected`, `OfferDeclined`, `Withdrawn`.
+- A candidate has **at most one _active_ application per job** — enforced as `EXISTS active`, not
+  "latest row is active" (INV-003). Active = not in a closed state.
+- **Closed** application states are `Hired`, `Rejected`, `OfferDeclined`, `Withdrawn`. Of these, only
+  `Rejected`, `Withdrawn`, `OfferDeclined` are **re-apply-eligible**; **`Hired` is terminal for its
+  `jobId`** (closed + counted in analytics, but not re-apply-eligible — INV-015).
 - **Withdrawal is its own state (`Withdrawn`)** — never `Rejected`. It is candidate-initiated and
   non-punitive.
-- **Re-apply after a closed application is allowed.** A closed application must never block a new one.
+- **Re-apply after a re-apply-eligible closed application is allowed** and creates a **new** row; such
+  a closed application must never block a new one. Re-apply after `Hired` for the same job is blocked.
 - A **duplicate of an active application → HTTP 409**. Any other unmet apply precondition → **422**.
   **500 is reserved for genuinely unexpected infrastructure failures only.**
 - A successfully committed write must **never** be reported as 500 because a downstream best-effort

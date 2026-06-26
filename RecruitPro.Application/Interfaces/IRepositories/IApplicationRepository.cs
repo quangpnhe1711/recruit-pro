@@ -23,6 +23,7 @@ public interface IApplicationRepository
     Task<JobApplication?> GetByIdAsync(Guid applicationId);
     Task<JobApplication?> GetTrackedByIdAsync(Guid applicationId);
     Task<bool> CandidateAlreadyAppliedAsync(Guid userId, Guid jobId);
+    Task<bool> HasActiveApplicationAsync(Guid userId, Guid jobId);
     Task AddAsync(JobApplication application);
     Task UpdateAsync(JobApplication application);
 }

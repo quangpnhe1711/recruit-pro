@@ -137,6 +137,14 @@ public partial class AppDbContext : DbContext
             entity.HasOne(d => d.User).WithMany(p => p.Applications)
                 .HasForeignKey(d => d.UserId)
                 .HasConstraintName("applications_user_id_fkey");
+
+            // INV-014: at most one ACTIVE application per (candidate, job) enforced at the database
+            // level as defense-in-depth behind the service check (INV-003). Closed rows (Hired,
+            // Rejected, OfferDeclined, Withdrawn) are history and are excluded from the filter so
+            // re-apply remains possible. Status is persisted as the enum name string.
+            entity.HasIndex(e => new { e.UserId, e.JobId }, "ux_applications_active_user_job")
+                .IsUnique()
+                .HasFilter("status IN ('Applied', 'Screening', 'ManagerReview', 'Interview', 'Offer')");
         });
 
         modelBuilder.Entity<ApplicationOffer>(entity =>

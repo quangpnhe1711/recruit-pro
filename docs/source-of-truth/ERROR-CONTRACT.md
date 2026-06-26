@@ -21,10 +21,15 @@ Every API response uses `ApiResponse<T>` (RecruitPro.Application.DTOs.Response):
 - `errors` — present for validation failures (field → messages).
 - `extra` — diagnostic payload; for 500 in non-development it is limited to `{ traceId }`.
 
-> **Note / known gap:** the envelope does not yet carry a stable machine `error_code`. The frontend
-> currently branches on HTTP status + message. Adding `error_code` across all endpoints is tracked as
-> remaining work in [DECISION-LOG.md](DECISION-LOG.md). The status-code contract below is the stable
-> machine-readable contract today.
+> **Update:** the envelope now carries an optional stable machine `errorCode`
+> (`ApiResponse.ErrorCode`; constants in `RecruitPro.Application.Common.ErrorCodes`, mirrored on the FE
+> in `src/common/utils/apiError.ts`). It is populated for the application/apply/withdraw/offer/
+> interview domain and the cross-cutting validation/auth paths; rollout to every remaining endpoint is
+> incremental. Frontend precedence: **errorCode → HTTP status → localized message**. Codes:
+> `APPLICATION_ALREADY_ACTIVE`, `APPLICATION_ALREADY_HIRED`, `JOB_NOT_ACCEPTING_APPLICATIONS`,
+> `JOB_DEADLINE_PASSED`, `CANDIDATE_PROFILE_INCOMPLETE`, `RESUME_REQUIRED`, `APPLICATION_NOT_FOUND`,
+> `APPLICATION_NOT_WITHDRAWABLE`, `INVALID_APPLICATION_TRANSITION`, `INTERVIEW_NOT_ACTIONABLE`,
+> `OFFER_NOT_ACTIONABLE`, `UNAUTHENTICATED`, `FORBIDDEN`, `VALIDATION_ERROR`.
 
 ## HTTP status semantics (binding)
 
@@ -45,6 +50,7 @@ Every API response uses `ApiResponse<T>` (RecruitPro.Application.DTOs.Response):
 | Condition | Status | Message | Source |
 |---|---|---|---|
 | Apply, active application exists | 409 | `Candidate already applied for this job.` | `ApplyAsync` |
+| Apply, prior `Hired` for same job (terminal, INV-015) | 422 | `You have already been hired for this job.` (`errorCode: APPLICATION_ALREADY_HIRED`) | `BuildApplyEligibility` |
 | Apply, job not `Approved` | 422 | `This job posting is not accepting new applications.` | `BuildApplyEligibility` |
 | Apply, deadline passed | 422 | `The application deadline for this job has passed.` | `BuildApplyEligibility` |
 | Apply, profile missing contact | 422 | `Your profile is missing required contact information.` | `BuildApplyEligibility` |

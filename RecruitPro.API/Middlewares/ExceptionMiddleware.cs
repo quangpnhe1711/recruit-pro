@@ -1,4 +1,5 @@
 using FluentValidation;
+using RecruitPro.Application.Common;
 using RecruitPro.Application.DTOs.Response;
 using RecruitPro.Application.Exceptions;
 
@@ -52,8 +53,8 @@ namespace RecruitPro.API.Middlewares
                 response = statusCode switch
                 {
                     400 => ApiResponse<object>.BadRequest(customException.Message),
-                    401 => ApiResponse<object>.Unauthorized(customException.Message),
-                    403 => ApiResponse<object>.Forbidden(customException.Message),
+                    401 => ApiResponse<object>.Unauthorized(customException.Message, ErrorCodes.Unauthenticated),
+                    403 => ApiResponse<object>.Forbidden(customException.Message, ErrorCodes.Forbidden),
                     404 => ApiResponse<object>.NotFound(customException.Message),
                     409 => ApiResponse<object>.Conflict(customException.Message),
                     422 => ApiResponse<object>.UnprocessableEntity(customException.Message),
@@ -70,6 +71,7 @@ namespace RecruitPro.API.Middlewares
                         group => group.Select(error => error.ErrorMessage).Distinct().ToArray());
 
                 response = ApiResponse<object>.ValidationError("Dữ liệu không hợp lệ.", errors);
+                response.ErrorCode = ErrorCodes.ValidationError;
             }
             else
             {
