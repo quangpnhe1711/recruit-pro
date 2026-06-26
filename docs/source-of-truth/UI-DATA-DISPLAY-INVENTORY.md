@@ -1,5 +1,27 @@
 # UI Data Display & Status Presentation Inventory
 
+> ✅ **UPDATE (2026-06-26, post-refactor re-audit).** The frontend conformance refactor has since
+> **landed** (commits `e1b2dc5`, `bd54439`). Re-verified against the current `develop` tree: **UI-001,
+> UI-002, UI-003, UI-005 are FIXED** and **UI-013 is wired** for the candidate flows (and, after the
+> contract re-audit pass, for the reviewer decision / interview / offer flows too). The centralized
+> `src/common/status/*` modules and `src/common/utils/apiError.ts` now **exist and are consumed**. The
+> 2026-06-26 CORRECTION banner below was accurate for the *pre-refactor* tree and is retained for
+> history only. Remaining items are Medium/Low (UI-004 reviewer matrix — backend-guarded; UI-006
+> HR-side refetch; UI-007 manager tone strings; UI-008 residual interview `"confirmed"` write token).
+> No HIGH finding remains. (Follow-up: UI-008 is now FIXED — the interview create request sends the
+> canonical `InterviewStatus.Scheduled` instead of `"confirmed"`; only local read-side interview
+> normalizers remain, Low.) Verified current state:
+> [FE-BE-WORKFLOW-CONTRACT-AUDIT.md](FE-BE-WORKFLOW-CONTRACT-AUDIT.md).
+
+> ⚠️ **CORRECTION (2026-06-26 FE↔BE contract audit) — superseded by the UPDATE above.** The "Frontend
+> Conformance phase executed" banner immediately below was **inaccurate at the time it was written**. A
+> pre-refactor re-audit of the actual `recruit-pro-internal` code
+> (clean working tree on `develop`) found that the claimed remediations were **not yet applied**: UI-001,
+> UI-002, UI-003 were **still present**, UI-005 and UI-013 were **not fixed**, and the centralized
+> `src/common/status/*` modules and `src/common/utils/apiError.ts` **did not exist**. (All of these have
+> since been implemented — see the UPDATE above.) The only conformance change that had landed at that
+> point was the `Withdrawn` neutral badge (INV-004, commit `243e848`).
+
 > **Update — Frontend Conformance phase executed.** The HIGH findings below were remediated. See
 > [UI-STATUS-PRESENTATION.md](UI-STATUS-PRESENTATION.md) for the centralized status contract.
 >

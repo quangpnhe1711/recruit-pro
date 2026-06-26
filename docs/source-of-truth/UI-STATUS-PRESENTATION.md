@@ -1,5 +1,29 @@
 # UI Status Presentation (Frontend)
 
+> ✅ **UPDATE (2026-06-26, post-refactor re-audit).** The frontend conformance refactor has since
+> **landed** (commits `e1b2dc5` "centralize frontend status presentation and workflow UI" and `bd54439`
+> "add stable errorCode contract"). The centralized modules described below now **exist and are
+> consumed**: `src/common/status/{applicationStatus,jobStatus,interviewStatus,offerStatus,
+> statusPresentation}.ts`, `src/common/utils/apiError.ts` (`ERROR_CODES`, `getApplicationErrorMessage`),
+> and the state-group helpers (`ACTIVE_/WITHDRAWABLE_/OFFER_ACTIONABLE_…APPLICATION_STATUSES`,
+> `isOfferActionableStatus`, `isOpenForApplicationJobStatus`, `InterviewDraftState`). The tables below
+> are now an accurate description of the code, **not** merely the design intent. The 2026-06-26
+> CORRECTION banner immediately below was accurate for the *pre-refactor* tree and is retained for
+> history only. Verified current state:
+> [FE-BE-WORKFLOW-CONTRACT-AUDIT.md](FE-BE-WORKFLOW-CONTRACT-AUDIT.md).
+
+> ⚠️ **CORRECTION (2026-06-26 FE↔BE contract audit) — superseded by the UPDATE above.** This document
+> described a *target* frontend architecture that was **not implemented** in the `recruit-pro-internal`
+> codebase *at the time of the pre-refactor audit*. The modules listed
+> below under "Centralized modules" — `src/common/status/applicationStatus.ts`, `jobStatus.ts`,
+> `interviewStatus.ts`, `offerStatus.ts`, `statusPresentation.ts` — **did not exist** (there was no
+> `src/common/status/` directory). `src/common/utils/apiError.ts`, `ERROR_CODES`, and
+> `getApplicationErrorMessage` **did not exist**. The state-group helpers
+> (`ACTIVE_APPLICATION_STATUSES`, `WITHDRAWABLE_APPLICATION_STATUSES`, `isOfferActionableStatus`,
+> `isOpenForApplicationJobStatus`, `InterviewDraftState`, …) **did not exist**. The only centralized
+> status logic present then was `src/common/utils/applicationPresentation.ts`. (All of these now exist —
+> see the UPDATE above.)
+
 How the frontend (`recruit-pro-internal`) maps backend status enums to labels, tone/badges, and
 actions. Produced by the Frontend Conformance phase. Backend was **not** modified in that phase.
 
