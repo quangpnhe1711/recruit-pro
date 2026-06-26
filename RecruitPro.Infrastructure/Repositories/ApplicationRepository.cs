@@ -344,4 +344,15 @@ public class ApplicationRepository : IApplicationRepository
             .Include(application => application.Interviews)
             .Include(application => application.ReviewedByNavigation);
     }
+
+    public async Task<bool> HasActiveApplicationAsync(Guid userId, Guid jobId)
+    {
+        return await _context.Applications
+            .AnyAsync(a =>
+                a.UserId == userId &&
+                a.JobId == jobId &&
+                a.Status != ApplicationStatus.Withdrawn &&
+                a.Status != ApplicationStatus.Rejected &&
+                a.Status != ApplicationStatus.OfferDeclined);
+    }
 }
