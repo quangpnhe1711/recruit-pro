@@ -94,9 +94,7 @@ namespace RecruitPro.Infrastructure.Migrations
 
                     b.HasIndex("ReviewedBy");
 
-                    b.HasIndex(new[] { "UserId", "JobId" }, "ux_applications_active_user_job")
-                        .IsUnique()
-                        .HasFilter("status IN ('Applied', 'Screening', 'ManagerReview', 'Interview', 'Offer')");
+                    b.HasIndex("UserId");
 
                     b.ToTable("applications", (string)null);
                 });
@@ -1276,10 +1274,6 @@ namespace RecruitPro.Infrastructure.Migrations
                         .HasColumnName("id")
                         .HasDefaultValueSql("gen_random_uuid()");
 
-                    b.Property<string>("Body")
-                        .HasColumnType("text")
-                        .HasColumnName("body");
-
                     b.Property<string>("Content")
                         .HasColumnType("text")
                         .HasColumnName("content");
@@ -1289,24 +1283,6 @@ namespace RecruitPro.Infrastructure.Migrations
                         .HasColumnType("timestamp without time zone")
                         .HasColumnName("created_at")
                         .HasDefaultValueSql("CURRENT_TIMESTAMP");
-
-                    b.Property<string>("DataJson")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("data_json");
-
-                    b.Property<Guid?>("EntityId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("entity_id");
-
-                    b.Property<string>("EntityType")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("entity_type");
-
-                    b.Property<string>("EventCode")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("event_code");
 
                     b.Property<bool?>("IsRead")
                         .ValueGeneratedOnAdd()
@@ -1318,11 +1294,6 @@ namespace RecruitPro.Infrastructure.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)")
                         .HasColumnName("title");
-
-                    b.Property<string>("Type")
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
-                        .HasColumnName("type");
 
                     b.Property<Guid>("UserId")
                         .HasColumnType("uuid")

@@ -272,6 +272,22 @@ public class ApplicationRepository : IApplicationRepository
         return _context.Applications.AsNoTracking().AnyAsync(application => application.UserId == userId && application.JobId == jobId);
     }
 
+    // INV-003: "already applied" is EXISTS an ACTIVE application for (candidate, job) — set
+    // semantics, independent of row ordering. Closed rows (incl. Hired) are history and never count
+    // here. Translated to a single SQL EXISTS over the active status set.
+    public Task<bool> HasActiveApplicationAsync(Guid userId, Guid jobId)
+    {
+        return _context.Applications
+            .AsNoTracking()
+            .AnyAsync(application =>
+                application.UserId == userId
+                && application.JobId == jobId
+                && application.Status != ApplicationStatus.Hired
+                && application.Status != ApplicationStatus.Rejected
+                && application.Status != ApplicationStatus.OfferDeclined
+                && application.Status != ApplicationStatus.Withdrawn);
+    }
+
     public async Task AddAsync(JobApplication application)
     {
         await _context.Applications.AddAsync(application);

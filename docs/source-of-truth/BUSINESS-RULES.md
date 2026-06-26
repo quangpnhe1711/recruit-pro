@@ -33,11 +33,10 @@ The eligibility blocker "You have already applied for this job." is added only w
 application exists.
 
 > **Target vs. current (INV-003).** The rule is `AlreadyApplied = EXISTS active application for
-> (candidate, job)` — set semantics. Current code resolves `existingApplication` via
-> `GetExistingApplicationAsync` → `FirstOrDefault(a => a.JobId == jobId)`, an **arbitrary** row, then
-> checks `IsClosed` on it. Under dirty/racy data (more than one row per job) this can read the wrong
-> row. Converging the check to an explicit `EXISTS active` query, plus a DB-level uniqueness guarantee
-> (INV-014), is tracked in [DECISION-LOG.md](DECISION-LOG.md) DL-008.
+> (candidate, job)` — set semantics. **Implemented:** the decision uses
+> `IApplicationRepository.HasActiveApplicationAsync(userId, jobId)` (a SQL `EXISTS` over the active
+> status set), independent of row ordering, backed by the DB-level partial unique index (INV-014).
+> See [DECISION-LOG.md](DECISION-LOG.md) DL-008/DL-011. Verified by T-DUP-003/T-DUP-004.
 
 **Frontend enforcement:** Apply button disabled when `eligibility.canApply == false`;
 `eligibility.alreadyApplied` is true only for an active application.
@@ -66,14 +65,11 @@ re-apply-eligible for the same `jobId` — the candidate was already hired for t
 - Existing `Hired` application for the **same** job → re-apply forbidden. A new hiring need is a new
   job posting.
 
-**Backend enforcement (target):** Eligibility allows a new application only when no active application
-exists **and** the most relevant closed state is in `ReapplyEligibleClosedStates`. A prior `Hired` for
-the same job adds a blocker.
-
-> **Current code gap (DL-007).** Eligibility today keys solely off `HasActiveApplication` (i.e. "no
-> active application"), and `IsClosed` lumps `Hired` with the re-apply-eligible states. So the code
-> would currently **permit** re-apply after `Hired`. There is no `ReapplyEligibleClosedStates`
-> predicate yet. This rule is the binding target; closing the gap is tracked in DL-007.
+**Backend enforcement (implemented):** `BuildApplyEligibility` allows a new application only when no
+active application exists; a prior `Hired` for the same job adds a 422 blocker
+(`APPLICATION_ALREADY_HIRED`). `ApplicationStatusWorkflow.IsReapplyEligibleClosedStatus` returns true
+only for `Rejected`/`Withdrawn`/`OfferDeclined`. See [DECISION-LOG.md](DECISION-LOG.md) DL-007.
+Verified by T-RE-003 and T-WF-004.
 
 **Frontend enforcement:** After a re-apply-eligible closed state the apply-context returns
 `canApply: true`, `alreadyApplied: false`, re-enabling the Apply button. After `Hired` for the same
@@ -222,12 +218,14 @@ reached) the `Interview` stage. The interview is a dependent record; it never dr
 **Required downstream effect:** When the application leaves the pipeline
 (`Withdrawn`/`Rejected`) a `Scheduled` interview must be `Canceled` or treated as stale.
 
-> **Current code gap (DL-009):** the withdraw/reject paths do not yet proactively cancel a pending
-> interview; the FE treats it as stale. Server-side cascade is the target.
+> **Implemented (DL-009):** `ApplicationService.CancelPendingInterviews` sets every `Scheduled`
+> interview to `Canceled` in the same transaction as `Withdrawn`/`Rejected`. Completed interviews are
+> left as history.
 
-**Error:** Interview action on an application not in `Interview` → HTTP **422**.
+**Error:** Interview action on an application not in `Interview`/`ManagerReview` → HTTP **422**
+(`INTERVIEW_NOT_ACTIONABLE`).
 
-**Tests:** Planned — see [TEST-MATRIX.md](TEST-MATRIX.md) T-INT-001.
+**Tests:** T-INT-001, T-INT-002 — see [TEST-MATRIX.md](TEST-MATRIX.md).
 
 ---
 

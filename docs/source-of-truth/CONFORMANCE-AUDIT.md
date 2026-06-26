@@ -38,8 +38,14 @@ PostgreSQL):
 | INV-009 | reviewer blocked from transitioning out of `Offer`; `AcceptOffer` Hired-bypass removed | T-OFR-001/002/003, `UpdateApplicationDecision_FromOffer_IsRejected` |
 | INV-010 | post-commit status-changed notification wrapped in try/catch | covered by existing 500-eradication + new transition tests |
 | INV-013 | offer/transition/interview business failures → 422 (was 400) | T-OFR-001, T-INT-001, decision tests |
-| INV-014 | partial unique index `ux_applications_active_user_job` (model + migration) + 409 mapping | T-DUP-004 (`ActiveApplicationUniqueIndex_*`) |
+| INV-014 | partial unique index `ux_applications_active_user_job` in **init.sql** (schema source of truth) mirrored in `AppDbContext.OnModelCreating` + 409 mapping | T-DUP-004 (`ConcurrentApply_AllowsOnlyOneActiveApplication`) + `ActiveApplicationUniqueIndex_*` |
 | INV-015 | `IsReapplyEligibleClosedStatus`; Hired blocker → 422 | T-RE-003 (`ApplyAsync_AfterHired_ForSameJob_IsBlocked`) |
 
 After this pass: **all 13 audited invariants PASS in code and tests.** See [DECISION-LOG.md](DECISION-LOG.md)
-DL-007/008/009 and the final report for residual risks.
+DL-007/008/009/011 and the final report for residual risks.
+
+> **Scope:** this audit and its remediation are **backend-only**. Frontend conformance (UI/status
+> presentation, common status constants, cache invalidation, FE error-code consumption) is
+> **deferred to a later phase and is NOT claimed here**. The DB schema fix lives in `init.sql` (the
+> schema source of truth) mirrored in `AppDbContext.OnModelCreating` — **not** in an EF migration
+> (DL-011).

@@ -1434,6 +1434,26 @@ CREATE INDEX IF NOT EXISTS ix_copilot_saved_rules_job_user_deleted ON public.cop
 CREATE INDEX IF NOT EXISTS ix_copilot_candidate_tags_job_tag ON public.copilot_candidate_tags USING btree (job_id, tag_name);
 
 --
+-- INV-014: at most one ACTIVE application per (candidate, job).
+-- DB-level guarantee behind the service-layer EXISTS-active check (INV-003), mirrored in
+-- AppDbContext.OnModelCreating so EF EnsureCreated / Testcontainers enforce the same invariant.
+-- Closed states (Hired, Rejected, OfferDeclined, Withdrawn) are excluded so re-apply stays possible.
+--
+-- DEPLOY PREFLIGHT (run BEFORE creating this index on an existing database). If it returns rows, the
+-- database already holds duplicate active applications that must be manually resolved first, or the
+-- index creation will fail:
+--
+--   SELECT user_id, job_id, COUNT(*)
+--   FROM public.applications
+--   WHERE status IN ('Applied', 'Screening', 'ManagerReview', 'Interview', 'Offer')
+--   GROUP BY user_id, job_id
+--   HAVING COUNT(*) > 1;
+--
+CREATE UNIQUE INDEX IF NOT EXISTS ux_applications_active_user_job
+    ON public.applications USING btree (user_id, job_id)
+    WHERE ((status)::text = ANY (ARRAY['Applied'::text, 'Screening'::text, 'ManagerReview'::text, 'Interview'::text, 'Offer'::text]));
+
+--
 -- Candidate profile / job skill redesign patch
 -- Keeps init.sql aligned with the newer structured profile model.
 --

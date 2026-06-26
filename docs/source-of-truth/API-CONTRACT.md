@@ -35,7 +35,7 @@ All responses use the `ApiResponse<T>` envelope ([ERROR-CONTRACT.md](ERROR-CONTR
 - **Errors:**
   - 409 — active application already exists (`Candidate already applied for this job.`).
   - 422 — job not open / deadline passed / missing profile / missing resume / prior `Hired` for the
-    same job (terminal, INV-015; target behavior per DL-007).
+    same job (terminal, INV-015; `errorCode: APPLICATION_ALREADY_HIRED`).
   - 404 — job not found.
   - 401 — unauthenticated / not candidate.
   - **No 500 for known business outcomes; side-effect failures do not fail the request.**

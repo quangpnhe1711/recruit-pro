@@ -1,8 +1,11 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using RecruitPro.Application.DTOs.Request.Candidate;
 using RecruitPro.Application.DTOs.Request.Jobs;
 using RecruitPro.Application.Exceptions;
 using RecruitPro.Application.Interfaces.IServices;
+using RecruitPro.Domain.Enums;
+using RecruitPro.Infrastructure.Data;
 using RecruitPro.Tests.Infrastructure;
 
 namespace RecruitPro.Tests;
@@ -190,6 +193,56 @@ public sealed class ServiceIntegrationTests : IClassFixture<PostgresTestFixture>
 
         duplicate.StatusCode.Should().Be(409);
         duplicate.Message.Should().Be("Candidate already applied for this job.");
+    }
+
+    // T-DUP-004 / INV-014: a TRULY concurrent double-apply for the same candidate/job must yield
+    // exactly one success and one conflict, and the database must end with exactly one active
+    // application. The service-level EXISTS check alone cannot guarantee this under a race (both
+    // requests can read "no active application" before either commits); the partial unique index
+    // ux_applications_active_user_job is what makes the loser fail and map to 409.
+    [Fact]
+    public async Task ConcurrentApply_AllowsOnlyOneActiveApplication()
+    {
+        // Free the job up: the seeded candidate starts with an active application on the approved job.
+        using (IServiceScope setupScope = _factory.Services.CreateScope())
+        {
+            IApplicationService setupService = setupScope.ServiceProvider.GetRequiredService<IApplicationService>();
+            var withdraw = await setupService.WithdrawApplicationAsync(
+                TestDataSeeder.CandidateUserId,
+                TestDataSeeder.ApplicationId.ToString());
+            withdraw.StatusCode.Should().Be(200);
+        }
+
+        string jobId = TestDataSeeder.ApprovedJobId.ToString();
+
+        // Two independent scopes => two independent DbContexts/connections, fired in parallel.
+        using IServiceScope scopeA = _factory.Services.CreateScope();
+        using IServiceScope scopeB = _factory.Services.CreateScope();
+        IApplicationService serviceA = scopeA.ServiceProvider.GetRequiredService<IApplicationService>();
+        IApplicationService serviceB = scopeB.ServiceProvider.GetRequiredService<IApplicationService>();
+
+        var applyA = Task.Run(() => serviceA.ApplyAsync(TestDataSeeder.CandidateUserId, jobId, new ApplyJobRequest { CoverLetter = "A" }));
+        var applyB = Task.Run(() => serviceB.ApplyAsync(TestDataSeeder.CandidateUserId, jobId, new ApplyJobRequest { CoverLetter = "B" }));
+
+        var results = await Task.WhenAll(applyA, applyB);
+
+        int created = results.Count(result => result.StatusCode == 201);
+        int conflict = results.Count(result => result.StatusCode == 409);
+        created.Should().Be(1, "exactly one concurrent apply may create an active application");
+        conflict.Should().Be(1, "the losing concurrent apply must be a clean 409, never 500");
+        results.Should().OnlyContain(result => result.StatusCode == 201 || result.StatusCode == 409);
+
+        // The database must hold exactly one ACTIVE application for this candidate/job.
+        using IServiceScope verifyScope = _factory.Services.CreateScope();
+        AppDbContext context = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        int activeCount = await context.Applications.CountAsync(application =>
+            application.UserId == TestDataSeeder.CandidateUserId
+            && application.JobId == TestDataSeeder.ApprovedJobId
+            && application.Status != ApplicationStatus.Hired
+            && application.Status != ApplicationStatus.Rejected
+            && application.Status != ApplicationStatus.OfferDeclined
+            && application.Status != ApplicationStatus.Withdrawn);
+        activeCount.Should().Be(1);
     }
 
     [Fact]

@@ -103,7 +103,7 @@ divergence, not yet fixed.
 predicate; in `BuildApplyEligibility`, add a blocker when a prior `Hired` exists for the same job
 (422). Cover with TEST-MATRIX T-RE-003.
 
-## DL-008 — `AlreadyApplied` must be `EXISTS active`, not an arbitrary/most-recent row (CODE GAP)
+## DL-008 — `AlreadyApplied` must be `EXISTS active`, not an arbitrary/most-recent row (IMPLEMENTED)
 
 **Decision:** Duplicate detection is set-based: `EXISTS application WHERE UserId=? AND JobId=? AND
 status ∈ ActiveApplicationStates` (INV-003). It must not depend on row ordering.
@@ -117,7 +117,7 @@ this can read the wrong row. Documented divergence; fix tracked here.
 query (or repository method), independent of ordering; pair with DL-005 follow-up (DB-level uniqueness
 on the active application, INV-014) as defense-in-depth. Cover with TEST-MATRIX T-DUP-003.
 
-## DL-009 — Pipeline exit must cascade to pending Interview/Offer (CODE GAP)
+## DL-009 — Pipeline exit must cascade to pending Interview/Offer (IMPLEMENTED)
 
 **Decision:** When an application leaves the active pipeline (`Withdrawn`/`Rejected`), any pending
 (`Scheduled`) interview must be `Canceled` or treated as stale, and no offer path may continue
@@ -141,15 +141,45 @@ referenced non-existent states; those references were corrected to reality:
 **Note:** If the product later needs job archival/soft-delete or offer cancellation, those become
 explicit enum additions + migrations, not implied behavior.
 
-## Remaining work (not done in this iteration)
+## DL-011 — DB schema source of truth is `init.sql`, not EF migrations
 
-- **DL-007** — implement `Hired` re-apply block (`ReapplyEligibleClosedStates` predicate + eligibility
-  blocker) and T-RE-003.
-- **DL-008** — replace `FirstOrDefault` duplicate detection with an `EXISTS active` query and T-DUP-003.
-- **DL-009** — cascade pending Interview/Offer invalidation on `Withdrawn`/`Rejected` and T-INT-001.
-- Extend source-of-truth depth (BRD/SRD/full traceability) to Jobs, Interviews, Offers, Copilot,
-  Notifications domains.
-- Consider a partial unique index on active applications as DB-level defense-in-depth for DL-005/INV-014.
+**Decision:** This repository provisions its PostgreSQL schema from **`init.sql`** (a pg_dump-style
+script) and runs nothing via `Database.Migrate()` at runtime — confirmed by the absence of any
+`Migrate()`/`MigrateAsync()` call in the codebase. Tests build the schema from the EF model via
+`EnsureCreated()` (Testcontainers). Therefore EF migration files are **not** the schema-change
+mechanism.
+
+**Consequence for INV-014:** the active-application partial unique index
+`ux_applications_active_user_job` is defined in:
+1. **`init.sql`** — for real/dev databases (placed in the index section, with a deploy preflight
+   query and warning, following the existing `ux_copilot_conversations_active_job_user` precedent);
+2. **`AppDbContext.OnModelCreating`** — so `EnsureCreated()`/Testcontainers enforce the identical
+   filtered unique index. The two must not drift.
+
+**Action taken:** the EF migration `20260626023451_AddActiveApplicationUniqueIndex` created in the
+prior pass was **removed**, and `AppDbContextModelSnapshot.cs` was reverted to its prior state. The
+index now lives only in `init.sql` + the model configuration.
+
+**Verification:** T-DUP-004 (`ConcurrentApply_AllowsOnlyOneActiveApplication`, truly concurrent) and
+the `ActiveApplicationUniqueIndex_*` repository tests, both against Testcontainers PostgreSQL.
+
+## Completed in the conformance pass
+
+- **DL-007** — `IsReapplyEligibleClosedStatus` + `Hired` re-apply blocker (422); T-RE-003, T-WF-004. ✅
+- **DL-008** — `HasActiveApplicationAsync` EXISTS-active query replaces `FirstOrDefault`; T-DUP-003. ✅
+- **DL-009** — pending `Scheduled` interviews cancelled on `Withdrawn`/`Rejected`; T-INT-002. Offer
+  invalidation on reject is moot in practice because reviewers can no longer reject from `Offer`
+  (INV-009 guard), so no offer exists at reject-eligible stages. ✅
+- **DL-005 / INV-014** — partial unique index on active applications added to `init.sql` +
+  `OnModelCreating` (DL-011); T-DUP-004 + `ActiveApplicationUniqueIndex_*`. ✅
+
+## Remaining work (not done in this phase)
+
+- **Frontend is deferred to a later phase** — UI/status presentation, common FE status constants,
+  cache invalidation, and FE error-code consumption are out of scope here. **Full frontend
+  conformance is not claimed.** FE has no automated test/typecheck gate (only eslint + vite build);
+  pre-existing lint/`tsc` errors exist in unrelated components.
+- `errorCode` rollout is incremental — populated for the application/apply/withdraw/offer/interview
+  domain and validation/auth paths; remaining endpoints tracked in [ERROR-CONTRACT.md](ERROR-CONTRACT.md).
+- Extend source-of-truth depth (BRD/SRD/full traceability) to Jobs, Copilot, Notifications domains.
 - Address pre-existing `AutoMapper 12.0.0` advisory (NU1903) — requires a vetted major upgrade.
-- Frontend has no automated test/typecheck gate (only eslint + vite build); pre-existing `tsc`
-  strictness errors exist in unrelated components.

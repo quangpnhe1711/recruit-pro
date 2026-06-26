@@ -171,11 +171,11 @@ AND application.Status ∈ ActiveApplicationStates
 data can be dirty or racy (two rows for one job), and "latest row" can pick a closed row while an
 active one exists, or vice versa.
 
-> Code reality: `ApplicationService.GetExistingApplicationAsync` uses
-> `existingApplications.FirstOrDefault(a => a.JobId == jobId)` — an **arbitrary** row, then checks
-> `HasActiveApplication` on it. This is "some row", not "EXISTS active", and is a latent correctness
-> gap under dirty/racy data. Tracked in [DECISION-LOG.md](DECISION-LOG.md) DL-008. The defense-in-depth
-> partner is a DB-level uniqueness guarantee on the active application (INV-014), also still open.
+> Code reality (implemented): the duplicate decision uses
+> `IApplicationRepository.HasActiveApplicationAsync(userId, jobId)` — a SQL `EXISTS` over the active
+> status set, independent of row ordering (DL-008). Its defense-in-depth partner is the DB-level
+> partial unique index `ux_applications_active_user_job` in `init.sql` + `OnModelCreating`
+> (INV-014 / DL-011). Verified by T-DUP-003 and T-DUP-004.
 
 ---
 
@@ -219,8 +219,9 @@ When an upstream state changes, dependent records must be created, cancelled, or
 | INV-014 | Duplicate-active-application must be enforced at the **database** level, not only the service. |
 | INV-015 | `Hired` is terminal for its `jobId`: closed-for-workflow, counted in analytics, **not** re-apply-eligible. |
 
-INV-014 and INV-015 are **not yet fully enforced in code** — see [DECISION-LOG.md](DECISION-LOG.md)
-DL-007/DL-008. They are documented here as the binding target so future code and tests align.
+INV-001…INV-015 are **enforced in code and verified by tests** as of the backend conformance pass —
+see [CONFORMANCE-AUDIT.md](CONFORMANCE-AUDIT.md) and [DECISION-LOG.md](DECISION-LOG.md)
+DL-007/008/009/011. INV-014's DB index lives in `init.sql` + `OnModelCreating` (not an EF migration).
 
 ---
 
