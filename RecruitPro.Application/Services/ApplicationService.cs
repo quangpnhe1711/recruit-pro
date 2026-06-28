@@ -216,11 +216,13 @@ public class ApplicationService : IApplicationService
             // SaveChanges again, and EF would re-traverse that detached graph and try to
             // INSERT already-existing skills. Pass a throwaway, untracked entity that simply
             // carries the navigation values the notification needs to read.
-            await _notificationEventService.PublishNewApplicationReceivedAsync(new Domain.Entities.Application
+            await _notificationEventService.PublishApplicationAppliedAsync(new Domain.Entities.Application
             {
                 Id = application.Id,
                 UserId = application.UserId,
                 JobId = application.JobId,
+                AssignedRecruiterId = application.AssignedRecruiterId,
+                AssignedDepartmentHeadId = application.AssignedDepartmentHeadId,
                 User = profile.User,
                 Job = job
             });
@@ -377,6 +379,7 @@ public class ApplicationService : IApplicationService
         // Withdrawal is candidate-initiated and non-punitive: it must be modelled as its own
         // closed state (Withdrawn), never as Rejected. Conflating it with Rejected mislabels the
         // candidate's history ("Không phù hợp") and is the reason re-apply used to be blocked.
+        ApplicationStatus statusBeforeWithdraw = application.Status;
         application.Status = ApplicationStatus.Withdrawn;
         // INV-008 / BR-008: leaving the pipeline invalidates any pending interview.
         CancelPendingInterviews(application);
@@ -385,6 +388,22 @@ public class ApplicationService : IApplicationService
         await _applicationRepository.UpdateAsync(application);
         await _unitOfWork.SaveChangesAsync();
         await _unitOfWork.CommitAsync();
+
+        // Best-effort, post-commit (BR-APPLICATION-005/010): notify the recruiter (and the department
+        // head only when the application had already reached their desk). A publish failure must not
+        // turn a committed withdrawal into a 500.
+        try
+        {
+            await _notificationEventService.PublishApplicationWithdrawnAsync(application, statusBeforeWithdraw);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "Application {ApplicationId} was withdrawn but the withdrawal notification failed to publish.",
+                application.Id);
+        }
+
         return ApiResponse<string>.Ok("Đã rút đơn ứng tuyển.", "Đã rút đơn ứng tuyển.");
     }
 
@@ -423,6 +442,20 @@ public class ApplicationService : IApplicationService
         await _unitOfWork.SaveChangesAsync();
         await _unitOfWork.CommitAsync();
 
+        // Best-effort, post-commit. Accepting the offer hires the candidate in the same action, so we
+        // emit offer_accepted only (candidate_hired folded in — Option A, NOTIFICATION-EVENT-MATRIX.md).
+        try
+        {
+            await _notificationEventService.PublishOfferAcceptedAsync(application, offer);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "Application {ApplicationId} offer was accepted but the offer-accepted notification failed to publish.",
+                application.Id);
+        }
+
         return ApiResponse<string>.Ok("Đã nhận offer.", "Đã nhận offer.");
     }
 
@@ -457,6 +490,19 @@ public class ApplicationService : IApplicationService
         await _applicationRepository.UpdateAsync(application);
         await _unitOfWork.SaveChangesAsync();
         await _unitOfWork.CommitAsync();
+
+        // Best-effort, post-commit: inform the recruiter and department head of the declined offer.
+        try
+        {
+            await _notificationEventService.PublishOfferDeclinedAsync(application, offer);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "Application {ApplicationId} offer was declined but the offer-declined notification failed to publish.",
+                application.Id);
+        }
 
         return ApiResponse<string>.Ok("Đã từ chối offer.", "Đã từ chối offer.");
     }
@@ -650,25 +696,42 @@ public class ApplicationService : IApplicationService
         await _unitOfWork.SaveChangesAsync();
         await _unitOfWork.CommitAsync();
 
+        Domain.Entities.Application? refreshedApplication = await _applicationRepository.GetByIdAsync(applicationGuid);
+        if (refreshedApplication == null)
+        {
+            return ApiResponse<ApplicationReviewDetailDto>.NotFound("Không tìm thấy hồ sơ ứng tuyển.");
+        }
+
         // INV-010: the status change is committed; notification is a best-effort side effect and must
-        // never turn a committed transition into a 500.
+        // never turn a committed transition into a 500. Route the ownership-aware event for the specific
+        // transition (NOTIFICATION-EVENT-MATRIX.md), falling back to the legacy candidate status-changed
+        // notification for any other transition.
         try
         {
-            await _notificationEventService.PublishApplicationStatusChangedAsync(application, previousStatus);
+            if (previousStatus == ApplicationStatus.Screening && targetStatus.Value == ApplicationStatus.ManagerReview)
+            {
+                await _notificationEventService.PublishDepartmentHeadReviewRequestedAsync(refreshedApplication, reviewerId);
+            }
+            else if (previousStatus == ApplicationStatus.ManagerReview && targetStatus.Value == ApplicationStatus.Interview)
+            {
+                await _notificationEventService.PublishInterviewRequestedAsync(refreshedApplication);
+            }
+            else if (previousStatus == ApplicationStatus.Applied && targetStatus.Value == ApplicationStatus.Screening)
+            {
+                await _notificationEventService.PublishScreeningStartedAsync(refreshedApplication);
+            }
+            else
+            {
+                await _notificationEventService.PublishApplicationStatusChangedAsync(refreshedApplication, previousStatus);
+            }
         }
         catch (Exception ex)
         {
             _logger.LogError(
                 ex,
-                "Application {ApplicationId} transitioned to {Status} but the status-changed notification failed to publish.",
+                "Application {ApplicationId} transitioned to {Status} but the status notification failed to publish.",
                 application.Id,
                 application.Status);
-        }
-
-        Domain.Entities.Application? refreshedApplication = await _applicationRepository.GetByIdAsync(applicationGuid);
-        if (refreshedApplication == null)
-        {
-            return ApiResponse<ApplicationReviewDetailDto>.NotFound("Không tìm thấy hồ sơ ứng tuyển.");
         }
 
         string message = $"Application moved to {targetStatus.Value}.";
@@ -776,23 +839,24 @@ public class ApplicationService : IApplicationService
         await _unitOfWork.SaveChangesAsync();
         await _unitOfWork.CommitAsync();
 
-        // INV-010: status committed; notification is best-effort and must never produce a 500.
+        Domain.Entities.Application? refreshedApplication = await _applicationRepository.GetByIdAsync(applicationGuid);
+        if (refreshedApplication == null)
+        {
+            return ApiResponse<ApplicationReviewDetailDto>.NotFound("Không tìm thấy hồ sơ ứng tuyển.");
+        }
+
+        // INV-010: status committed after the rejection email succeeded; the in-app notification is a
+        // best-effort side effect (it does not replace the email) and must never produce a 500.
         try
         {
-            await _notificationEventService.PublishApplicationStatusChangedAsync(application, previousStatus);
+            await _notificationEventService.PublishRejectionEmailSentAsync(refreshedApplication);
         }
         catch (Exception ex)
         {
             _logger.LogError(
                 ex,
-                "Application {ApplicationId} was rejected but the status-changed notification failed to publish.",
+                "Application {ApplicationId} was rejected but the rejection-email notification failed to publish.",
                 application.Id);
-        }
-
-        Domain.Entities.Application? refreshedApplication = await _applicationRepository.GetByIdAsync(applicationGuid);
-        if (refreshedApplication == null)
-        {
-            return ApiResponse<ApplicationReviewDetailDto>.NotFound("Không tìm thấy hồ sơ ứng tuyển.");
         }
 
         return ApiResponse<ApplicationReviewDetailDto>.Ok(

@@ -233,6 +233,7 @@ public sealed class ApplicationConformanceTests
             Mock.Of<IUserRepository>(),
             Mock.Of<IUnitOfWork>(),
             Mock.Of<INotificationEventService>(),
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<InterviewService>.Instance,
             CreateMapper());
 
         var response = await service.CreateInterviewAsync(new CreateInterviewRequest

@@ -88,3 +88,10 @@ The middleware (`ExceptionMiddleware`) maps `BaseException` (400/401/403/404/409
 errors (400) to the envelope; only truly unhandled exceptions become 500. Known application-domain
 business failures are returned as the 4xx codes above — verified by `TEST-E2E-APPLICATION-001` and the
 `ApiIntegrationTests` (`AssertNo500AndEnvelopeAsync`).
+
+## Notifications (Phase 6)
+
+Notification publishing introduces **no new error codes**. Publishing is best-effort and post-commit:
+a publishing failure is logged and swallowed at the call site, so it never changes a business endpoint's
+HTTP status (no 500, no rollback). Offer/Rejection email gating keeps its existing `EMAIL_SEND_FAILED`
+behavior — the in-app notification is only emitted after the email send succeeds.

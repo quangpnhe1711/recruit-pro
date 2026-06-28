@@ -158,7 +158,15 @@ fields render and persist.
 
 ---
 
-## Phase 6 — Notification implementation
+## Phase 6 — Notification implementation — ✅ DONE (backend)
+
+**Status:** Backend notification routing is **implemented** — ownership-based recipients, recipient
+deduplication, click-ready role-aware deep links (`url`/`targetType`/`targetId`), best-effort
+post-commit publishing, and 24 unit tests (`NotificationRoutingTests.cs`, T-NOTI-001…023). All events in
+the matrix are emitted from `JobService` / `ApplicationService` / `InterviewService` / `OfferService`.
+New constants/helpers: `NotificationEventCodes`, `NotificationTargetTypes`, `NotificationLinks`,
+`NotificationTemplates`. The apply event migrated `new_application_received` → `application_applied`
+(recruiter-only). The **frontend notification bell/dropdown remains deferred**; records are click-ready.
 
 **Goal:** implement the routing in [NOTIFICATION-EVENT-MATRIX.md](NOTIFICATION-EVENT-MATRIX.md) using
 the now-existing ownership fields.

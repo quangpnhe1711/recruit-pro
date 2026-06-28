@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using RecruitPro.Application.Common;
 using RecruitPro.Application.DTOs.Request.Offers;
 using RecruitPro.Application.DTOs.Response;
@@ -19,6 +20,8 @@ public class OfferService : IOfferService
     private readonly IUserRepository _userRepository;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IEmailService _emailService;
+    private readonly INotificationEventService _notificationEventService;
+    private readonly ILogger<OfferService> _logger;
 
     /// <summary>
     /// Initializes a new instance of the OfferService class.
@@ -33,13 +36,17 @@ public class OfferService : IOfferService
         IOfferRepository offerRepository,
         IUserRepository userRepository,
         IUnitOfWork unitOfWork,
-        IEmailService emailService)
+        IEmailService emailService,
+        INotificationEventService notificationEventService,
+        ILogger<OfferService> logger)
     {
         _applicationRepository = applicationRepository;
         _offerRepository = offerRepository;
         _userRepository = userRepository;
         _unitOfWork = unitOfWork;
         _emailService = emailService;
+        _notificationEventService = notificationEventService;
+        _logger = logger;
     }
 
     /// <summary>
@@ -256,6 +263,24 @@ public class OfferService : IOfferService
         if (refreshedApplication == null || refreshedOffer == null)
         {
             return ApiResponse<ApplicationOfferEditorDto>.NotFound("Không tải lại được dữ liệu offer.");
+        }
+
+        // offer_email_sent: only after the offer email succeeded AND the application transitioned to
+        // Offer. The notification does NOT replace the email — it is a best-effort post-commit side
+        // effect that must never fail the committed send.
+        if (targetStatus == OfferStatus.Sent)
+        {
+            try
+            {
+                await _notificationEventService.PublishOfferEmailSentAsync(refreshedApplication, refreshedOffer);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(
+                    ex,
+                    "Offer email for application {ApplicationId} was sent but the offer-email notification failed to publish.",
+                    refreshedApplication.Id);
+            }
         }
 
         return ApiResponse<ApplicationOfferEditorDto>.Ok(

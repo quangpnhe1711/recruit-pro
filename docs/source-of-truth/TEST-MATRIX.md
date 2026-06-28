@@ -210,3 +210,36 @@ Deterministic, backend-free Playwright specs in `recruit-pro-internal/e2e/` (ses
 | E2E-WF-005 | Marking the interview completed unlocks the Send Offer Email action. |
 | E2E-WF-006 | Send Offer calls the offer email endpoint (`…/offer/send`). |
 | E2E-WF-007 | Send Rejection Email calls `…/rejection-email` and the application shows `Rejected`. |
+
+## Notification routing + deep links (NOTIFICATION-EVENT-MATRIX.md)
+
+### Backend (unit) — `RecruitPro.Tests/NotificationRoutingTests.cs` — implemented & passing
+
+Ownership-based recipients, deduplication, role-aware candidate-safe/HR-safe/Head-safe deep links, and
+best-effort publishing. 24 tests covering the IDs below.
+
+| ID | Assertion |
+|---|---|
+| T-NOTI-001 | `application_applied` goes to the assigned recruiter only. |
+| T-NOTI-002 | `application_applied` does not notify the DepartmentHead (HR-first). |
+| T-NOTI-003 | `Screening → ManagerReview` notifies the assigned DepartmentHead (`application_department_head_review_requested`). |
+| T-NOTI-004 | `ManagerReview → Interview` notifies the recruiter to schedule (`application_interview_requested`, URL → `/hr/interviews/schedule`). |
+| T-NOTI-005 | `interview_scheduled` notifies candidate + recruiter + head + interviewer, deduplicated. |
+| T-NOTI-006 | `interview_completed` notifies recruiter + head (not candidate). |
+| T-NOTI-007 | Withdraw before Head Review notifies recruiter only. |
+| T-NOTI-008 | Withdraw after Head Review notifies recruiter + head. |
+| T-NOTI-009 | `job_submitted_for_approval` notifies the DepartmentHead (and publishes nothing when no head is configured). |
+| T-NOTI-010 | `job_approved` notifies the recruiter. |
+| T-NOTI-011 | `job_rejected` notifies the recruiter (reason included in the body when available). |
+| T-NOTI-012 | `offer_email_sent` notifies candidate + recruiter + head. |
+| T-NOTI-013 | `rejection_email_sent` notifies candidate + recruiter + head with role-safe URLs. |
+| T-NOTI-014 | `offer_accepted` notifies recruiter + head (not candidate). |
+| T-NOTI-015 | `offer_declined` notifies recruiter + head. |
+| T-NOTI-016 | A notification publishing failure does not fail the committed business action. |
+| T-NOTI-017 | Recipient deduplication: no duplicate rows for the same user + event. |
+| T-NOTI-018 | Payload includes `url` / `targetType` / `targetId` (and mirrors to `entity_type`/`entity_id`); `url` is not an API route. |
+| T-NOTI-019 | `job_submitted_for_approval` URL points to the approval detail (`/manager/jobs/{id}/approval`). |
+| T-NOTI-020 | `application_applied` URL points to the HR application detail (`/hr/applications/{id}`). |
+| T-NOTI-021 | Head-review-requested URL points to the DepartmentHead review detail (`/manager/applications/{id}`). |
+| T-NOTI-022 | `interview_scheduled` candidate URL is candidate-safe (does not point to an HR/Manager route). |
+| T-NOTI-023 | `offer_email_sent` candidate URL points to the candidate offer/application detail. |
