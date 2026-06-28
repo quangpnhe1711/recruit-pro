@@ -836,6 +836,15 @@ public partial class AppDbContext : DbContext
             entity.Property(e => e.IsRead)
                 .HasDefaultValue(false)
                 .HasColumnName("is_read");
+            entity.Property(e => e.ReadAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("read_at");
+            entity.Property(e => e.IsSeen)
+                .HasDefaultValue(false)
+                .HasColumnName("is_seen");
+            entity.Property(e => e.SeenAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("seen_at");
             entity.Property(e => e.Title)
                 .HasMaxLength(255)
                 .HasColumnName("title");

@@ -204,7 +204,10 @@ public class InterviewService : IInterviewService
         {
             Id = Guid.NewGuid(),
             ApplicationId = applicationGuid,
-            InterviewDate = request.Date.ToDateTime(TimeOnly.MinValue).AddMinutes(request.StartMinutes),
+            InterviewDate = DateTime.SpecifyKind(
+                new DateTime(request.Date.Year, request.Date.Month, request.Date.Day,
+                    request.StartMinutes / 60, request.StartMinutes % 60, 0),
+                DateTimeKind.Unspecified),
             MeetingType = request.Mode.Equals("video", StringComparison.OrdinalIgnoreCase) ? MeetingType.Online : MeetingType.Offline,
             MeetingLink = request.Mode.Equals("video", StringComparison.OrdinalIgnoreCase) ? request.LocationOrLink : null,
             Location = request.Mode.Equals("video", StringComparison.OrdinalIgnoreCase) ? null : request.LocationOrLink,

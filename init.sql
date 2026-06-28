@@ -313,6 +313,9 @@ CREATE TABLE public.notifications (
     entity_id uuid,
     type character varying(50),
     is_read boolean DEFAULT false,
+    read_at timestamp without time zone,
+    is_seen boolean DEFAULT false,
+    seen_at timestamp without time zone,
     created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP
 );
 

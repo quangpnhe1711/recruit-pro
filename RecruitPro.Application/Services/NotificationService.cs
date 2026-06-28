@@ -30,11 +30,14 @@ public class NotificationService : INotificationService
         });
     }
 
-    public async Task<ApiResponse<NotificationUnreadCountDto>> GetUnreadCountAsync(Guid userId)
+    public async Task<ApiResponse<NotificationCountsDto>> GetCountsAsync(Guid userId)
     {
-        return ApiResponse<NotificationUnreadCountDto>.Ok(new NotificationUnreadCountDto
+        int unseen = await _notificationRepository.CountUnseenByUserIdAsync(userId);
+        int unread = await _notificationRepository.CountUnreadByUserIdAsync(userId);
+        return ApiResponse<NotificationCountsDto>.Ok(new NotificationCountsDto
         {
-            UnreadCount = await _notificationRepository.CountUnreadByUserIdAsync(userId)
+            Unseen = unseen,
+            Unread = unread
         });
     }
 
@@ -53,20 +56,38 @@ public class NotificationService : INotificationService
 
         if (notification.IsRead != true)
         {
-            await _notificationRepository.MarkAsReadAsync(parsedNotificationId);
+            DateTime now = DbDateTime.Now;
+            await _notificationRepository.MarkAsReadAsync(parsedNotificationId, now);
             notification.IsRead = true;
+            notification.ReadAt = now;
+            notification.IsSeen = true;
+            notification.SeenAt ??= now;
         }
 
         return ApiResponse<NotificationDto>.Ok(MapNotification(notification), "Đã đánh dấu đã đọc.");
     }
 
-    public async Task<ApiResponse<NotificationUnreadCountDto>> MarkAllAsReadAsync(Guid userId)
+    public async Task<ApiResponse<NotificationCountsDto>> MarkAllAsSeenAsync(Guid userId)
+    {
+        DateTime now = DbDateTime.Now;
+        await _notificationRepository.MarkAllAsSeenAsync(userId, now);
+
+        int unread = await _notificationRepository.CountUnreadByUserIdAsync(userId);
+        return ApiResponse<NotificationCountsDto>.Ok(new NotificationCountsDto
+        {
+            Unseen = 0,
+            Unread = unread
+        }, "Đã đánh dấu tất cả là đã xem.");
+    }
+
+    public async Task<ApiResponse<NotificationCountsDto>> MarkAllAsReadAsync(Guid userId)
     {
         await _notificationRepository.MarkAllAsReadAsync(userId);
 
-        return ApiResponse<NotificationUnreadCountDto>.Ok(new NotificationUnreadCountDto
+        return ApiResponse<NotificationCountsDto>.Ok(new NotificationCountsDto
         {
-            UnreadCount = 0
+            Unseen = 0,
+            Unread = 0
         }, "Đã đánh dấu tất cả là đã đọc.");
     }
 
@@ -97,6 +118,7 @@ public class NotificationService : INotificationService
             EntityType = notification.EntityType,
             EntityId = notification.EntityId,
             IsRead = notification.IsRead == true,
+            IsSeen = notification.IsSeen == true,
             CreatedAt = notification.CreatedAt ?? DateTime.UtcNow
         };
     }
