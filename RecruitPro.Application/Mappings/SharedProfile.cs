@@ -1,4 +1,5 @@
 using AutoMapper;
+using RecruitPro.Application.DTOs.Request.Copilot;
 using RecruitPro.Application.DTOs.Response;
 using RecruitPro.Application.DTOs.Response.Copilot;
 using RecruitPro.Domain.Entities;
@@ -94,6 +95,11 @@ public class SharedProfile : Profile
             EndAt = src.InterviewDate.AddHours(1),
             Status = (src.Status ?? InterviewStatus.Scheduled).ToString()
         });
+
+        // Ranking with custom criteria maps the inbound request criteria onto the normalized rule DTO.
+        // Both DTOs share the same fields (Label/Field/Operator/Value/Weight/AutoReject), so the default
+        // by-name mapping is sufficient — its absence was the 500 ("Missing type map configuration").
+        CreateMap<CopilotRuleCriterionRequestDto, CopilotRuleCriterionDto>();
 
         CreateMap<CopilotConversation, CopilotConversationDto>().ConvertUsing(src => new CopilotConversationDto
         {

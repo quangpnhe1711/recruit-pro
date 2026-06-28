@@ -830,6 +830,65 @@ public sealed class SemanticDiscoveryServiceUnitTests
     }
 }
 
+public sealed class CopilotMappingTests
+{
+    [Fact] // Regression: the Copilot criterion map must be registered and valid (the missing map = 500).
+    public void SharedProfile_RegistersCopilotCriterionMap_AndItIsValid()
+    {
+        IMapper mapper = TestMapperFactory.Create();
+
+        // Mapping a criterion must not throw the missing-map exception (the original 500 root cause),
+        // and must produce a populated destination.
+        CopilotRuleCriterionDto? mapped = null;
+        mapper.Invoking(value => mapped = value.Map<CopilotRuleCriterionDto>(new CopilotRuleCriterionRequestDto { Value = "react" }))
+            .Should().NotThrow();
+        mapped.Should().NotBeNull();
+        mapped!.Value.Should().Be("react");
+    }
+
+    [Fact] // Ranking criteria map carries every field (Label/Field/Operator/Value/Weight/AutoReject).
+    public void CopilotRuleCriterionRequest_MapsToResponseDto_WithAllFields()
+    {
+        IMapper mapper = TestMapperFactory.Create();
+        var request = new CopilotRuleCriterionRequestDto
+        {
+            Label = "Must have React",
+            Field = "skill",
+            Operator = "contains",
+            Value = "react",
+            Weight = "high",
+            AutoReject = true
+        };
+
+        CopilotRuleCriterionDto dto = mapper.Map<CopilotRuleCriterionDto>(request);
+
+        dto.Label.Should().Be("Must have React");
+        dto.Field.Should().Be("skill");
+        dto.Operator.Should().Be("contains");
+        dto.Value.Should().Be("react");
+        dto.Weight.Should().Be("high");
+        dto.AutoReject.Should().BeTrue();
+    }
+
+    [Fact] // Ranking with multiple criteria maps the full list without throwing.
+    public void CopilotRuleCriterionRequest_ListMapping_PreservesAllItems()
+    {
+        IMapper mapper = TestMapperFactory.Create();
+        List<CopilotRuleCriterionRequestDto> requests =
+        [
+            new() { Label = "A", Field = "skill", Value = "react", Weight = "high" },
+            new() { Label = "B", Field = "title", Value = "senior", Weight = "medium" }
+        ];
+
+        List<CopilotRuleCriterionDto> mapped = requests
+            .Select(request => mapper.Map<CopilotRuleCriterionDto>(request))
+            .ToList();
+
+        mapped.Should().HaveCount(2);
+        mapped.Select(item => item.Value).Should().ContainInOrder("react", "senior");
+    }
+}
+
 internal static class TestMapperFactory
 {
     private static readonly Lazy<IMapper> Mapper = new(() =>
