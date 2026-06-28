@@ -120,7 +120,22 @@
 - Follow-up: build the frontend notification bell/dropdown to consume the click-ready records.
 
 ## 15. Confirmations
-- No frontend notification bell/dropdown implemented.
 - No status/role rename (`ManagerReview`, `Manager`, `HeadDepartment` unchanged; UI label "Head Review").
 - No `Job.HiringManagerId` added.
 - No PR created.
+
+## 16. Follow-up fix: realtime, seen/read, click navigation, schedule date
+
+- **Realtime:** SignalR hub already registered at `/hubs/notifications`. `NotificationProvider.tsx` connects via `HubConnectionBuilder` with access token and bounded-backoff retry. Frontend listens to `notification:new` and prepends to bell list, incrementing `unseenCount` / `unreadCount` without page refresh. Delivery is per-user via `IHubContext.Clients.User(userId)`.
+- **Seen/read:** Added `is_seen` / `seen_at` / `read_at` columns to `notifications` table. Backend: new `POST /api/notifications/seen` marks all as SEEN (not read); `POST /api/notifications/{id}/read` marks one as READ (also sets seen). `GET /api/notifications/counts` returns `{ unseen, unread }`. Bell badge uses `unseen`. Opening bell calls `markAllSeen` only. Clicking an item calls `markAsRead` (marks READ). Unread item styling persists until item click.
+- **Click navigation:** `AppHeader.tsx` calls `resolveDeepLinkUrl(notification)` to extract `notification.data.url`. Uses `navigate(url)` (React Router). Falls back to toast if URL is missing or malformed. Bell never crashes on bad `data_json`.
+- **Schedule date bug:** Root cause — `DateOnly.ToDateTime(TimeOnly.MinValue).AddMinutes(...)` produced `DateTime.Kind = Unspecified` which, combined with runtime/Npgsql behavior, could shift the day. Fix: `DateTime.SpecifyKind(new DateTime(year, month, day, h, m, 0), DateTimeKind.Unspecified)` builds date from explicit components. Frontend `JobInterviewListScreen.tsx` custom-range init changed from `toISOString().slice(0,10)` (UTC) to local-date components to prevent the range display showing yesterday's date in early VN morning.
+- **Tests:** `NotificationSeenReadTests.cs` — T-NOTI-FE-001..006, T-INTERVIEW-DATE-001 + 001b (unit, no DB needed).
+- **Commands:**
+  ```
+  dotnet build RecruitProInternal.sln
+  dotnet test RecruitProInternal.sln
+  npx tsc --noEmit   (in recruit-pro-internal)
+  npx vite build     (in recruit-pro-internal)
+  ```
+- **Result:** Build passes, all tests pass, no new TS errors introduced.

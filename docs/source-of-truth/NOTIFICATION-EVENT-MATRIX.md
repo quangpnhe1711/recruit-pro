@@ -1,11 +1,24 @@
 # Notification Event Matrix
 
-**Status:** **Backend notification routing is IMPLEMENTED (Phase 6).** Recipients are resolved from the
-ownership snapshot (`IApplicationOwnershipResolver` / `Job` ownership fields), deduplicated, and every
-notification carries a **role-aware, click-ready frontend deep link** (`url` / `targetType` /
-`targetId`). Publishing is **best-effort and post-commit**: a publishing failure never fails or rolls
-back the business action. The **frontend notification bell/dropdown remains deferred** — but the stored
-notification records are click-ready.
+**Status:** **Backend notification routing is IMPLEMENTED (Phase 6). Frontend realtime, seen/read semantics, and click navigation are IMPLEMENTED (Phase 7 follow-up fix).**
+
+Recipients are resolved from the ownership snapshot (`IApplicationOwnershipResolver` / `Job` ownership fields), deduplicated, and every notification carries a **role-aware, click-ready frontend deep link** (`url` / `targetType` / `targetId`). Publishing is **best-effort and post-commit**: a publishing failure never fails or rolls back the business action.
+
+### Seen vs Read semantics (MUST NOT confuse)
+
+| Term | Trigger | DB columns set | What it drives |
+|---|---|---|---|
+| **SEEN** | User opens the notification bell/dropdown | `is_seen = true`, `seen_at = now` | Bell badge count (unseen) |
+| **READ** | User clicks a specific notification item | `is_read = true`, `read_at = now`, `is_seen = true` | Unread item styling |
+
+- Bell badge displays **unseen** count (`GET /api/notifications/counts → data.unseen`).
+- Opening the bell calls `POST /api/notifications/seen` (marks all seen, NOT read).
+- Clicking a notification item calls `POST /api/notifications/{id}/read` then navigates to `notification.data.url`.
+- `data.url` is the role-aware deep link built by `NotificationLinks.cs`.
+
+### Realtime delivery
+
+SignalR hub at `/hubs/notifications`. Event name: `notification:new`. Delivery is per-user via `IHubContext.Clients.User(userId)`. Frontend `NotificationProvider` listens and prepends incoming notifications to the bell list and increments `unseenCount` / `unreadCount` without page refresh.
 
 `ManagerReview` remains the canonical application status (NOT renamed); the UI display label for that
 stage is **Head Review**. The `Manager` / `HeadDepartment` roles are NOT renamed. No `Job.HiringManagerId`

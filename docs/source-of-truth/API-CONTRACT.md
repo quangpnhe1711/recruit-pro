@@ -224,5 +224,16 @@ carry a structured `data_json` payload so each record is click-ready. Payload al
   `/candidate/my-applications?applicationId={id}`), never an API route.
 - URLs are **role-aware**: candidate-safe vs HR-safe vs DepartmentHead/Manager-safe.
 - Publishing is best-effort/post-commit and does not affect any business endpoint's status code.
-- No new request/response fields or error codes were added for this phase. The frontend bell/dropdown
-  remains deferred; records are click-ready for when it lands.
+
+### Notification API endpoints (Phase 7 follow-up — realtime + seen/read)
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/notifications` | Paginated list; items include `isSeen`, `isRead`, `data` (deep link). |
+| GET | `/api/notifications/counts` | `{ unseen, unread }` — bell badge uses `unseen`. |
+| GET | `/api/notifications/unread-count` | Legacy compat; returns `{ unreadCount }`. |
+| POST | `/api/notifications/seen` | Mark all as **seen** only (NOT read). Called when bell opens. |
+| POST/PATCH | `/api/notifications/{id}/read` | Mark one as **read** (also sets seen). Called on item click. |
+| POST/PATCH | `/api/notifications/read-all` | Mark all as read. |
+
+**Seen vs Read rule**: Opening the bell = mark seen. Clicking an item = mark read + navigate to `data.url`.

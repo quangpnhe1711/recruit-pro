@@ -8,6 +8,8 @@ public interface INotificationRepository
     Task<int> CountByUserIdAsync(Guid userId);
     Task<int> CountUnreadByUserIdAsync(Guid userId);
     Task<Domain.Entities.Notification?> GetByIdAsync(Guid notificationId);
-    Task MarkAsReadAsync(Guid notificationId);
+    Task MarkAsReadAsync(Guid notificationId, DateTime readAt);
     Task<int> MarkAllAsReadAsync(Guid userId);
+    Task<int> CountUnseenByUserIdAsync(Guid userId);
+    Task<int> MarkAllAsSeenAsync(Guid userId, DateTime seenAt);
 }

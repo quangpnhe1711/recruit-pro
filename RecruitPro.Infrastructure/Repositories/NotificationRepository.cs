@@ -54,12 +54,22 @@ public class NotificationRepository : INotificationRepository
             .FirstOrDefaultAsync(notification => notification.Id == notificationId);
     }
 
-    public async Task MarkAsReadAsync(Guid notificationId)
+    public Task<int> CountUnseenByUserIdAsync(Guid userId)
+    {
+        return _context.Notifications
+            .AsNoTracking()
+            .CountAsync(notification => notification.UserId == userId && notification.IsSeen != true);
+    }
+
+    public async Task MarkAsReadAsync(Guid notificationId, DateTime readAt)
     {
         await _context.Notifications
             .Where(notification => notification.Id == notificationId)
             .ExecuteUpdateAsync(setters => setters
-                .SetProperty(notification => notification.IsRead, true));
+                .SetProperty(notification => notification.IsRead, true)
+                .SetProperty(notification => notification.ReadAt, readAt)
+                .SetProperty(notification => notification.IsSeen, true)
+                .SetProperty(notification => notification.SeenAt, (DateTime?)readAt));
     }
 
     public async Task<int> MarkAllAsReadAsync(Guid userId)
@@ -68,5 +78,14 @@ public class NotificationRepository : INotificationRepository
             .Where(notification => notification.UserId == userId && notification.IsRead != true)
             .ExecuteUpdateAsync(setters => setters
                 .SetProperty(notification => notification.IsRead, true));
+    }
+
+    public async Task<int> MarkAllAsSeenAsync(Guid userId, DateTime seenAt)
+    {
+        return await _context.Notifications
+            .Where(notification => notification.UserId == userId && notification.IsSeen != true)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(notification => notification.IsSeen, true)
+                .SetProperty(notification => notification.SeenAt, (DateTime?)seenAt));
     }
 }

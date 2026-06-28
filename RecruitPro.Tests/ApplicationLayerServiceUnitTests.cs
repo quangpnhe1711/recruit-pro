@@ -680,7 +680,7 @@ public sealed class NotificationServiceUnitTests
 
         response.Success.Should().BeTrue();
         response.Data!.IsRead.Should().BeTrue();
-        repository.Verify(value => value.MarkAsReadAsync(notificationId), Times.Once);
+        repository.Verify(value => value.MarkAsReadAsync(notificationId, It.IsAny<DateTime>()), Times.Once);
     }
 
     [Fact]
@@ -696,7 +696,7 @@ public sealed class NotificationServiceUnitTests
 
         response.StatusCode.Should().Be(404);
         response.Message.Should().Be("Không tìm thấy thông báo.");
-        repository.Verify(value => value.MarkAsReadAsync(It.IsAny<Guid>()), Times.Never);
+        repository.Verify(value => value.MarkAsReadAsync(It.IsAny<Guid>(), It.IsAny<DateTime>()), Times.Never);
     }
 }
 

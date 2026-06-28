@@ -22,5 +22,7 @@ public class NotificationDto
 
     public bool IsRead { get; set; }
 
+    public bool IsSeen { get; set; }
+
     public DateTime CreatedAt { get; set; }
 }
