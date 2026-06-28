@@ -553,7 +553,11 @@ public class NotificationEventService : INotificationEventService
                     Data = data,
                     EntityType = notification.EntityType,
                     EntityId = notification.EntityId,
+                    // A freshly created notification is, by definition, neither read nor seen. Sending
+                    // both flags keeps the SSE payload identical to the GET /api/notifications shape so
+                    // the frontend treats a pushed item exactly like a refetched one.
                     IsRead = false,
+                    IsSeen = false,
                     CreatedAt = notification.CreatedAt ?? DateTime.UtcNow,
                 });
         }

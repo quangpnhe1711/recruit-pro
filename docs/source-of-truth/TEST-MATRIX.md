@@ -243,3 +243,32 @@ best-effort publishing. 24 tests covering the IDs below.
 | T-NOTI-021 | Head-review-requested URL points to the DepartmentHead review detail (`/manager/applications/{id}`). |
 | T-NOTI-022 | `interview_scheduled` candidate URL is candidate-safe (does not point to an HR/Manager route). |
 | T-NOTI-023 | `offer_email_sent` candidate URL points to the candidate offer/application detail. |
+
+### Realtime SSE + seen/read + schedule date (Phase 7 follow-up — SSE replaced SignalR)
+
+Backend unit — `RecruitPro.Tests/NotificationSseTests.cs`, `NotificationSeenReadTests.cs`; integration — `ApiIntegrationTests.cs`.
+
+| ID | Assertion |
+|---|---|
+| T-SSE-001 | `GET /api/notifications/stream` returns **401** without a token (integration). |
+| T-SSE-002 | Broker `PublishAsync` delivers only to the target user; other users' channels receive nothing. |
+| T-SSE-003 | Broker fans out to every active tab of the same user (multi-tab); a disposed tab stops receiving (003b). |
+| T-SSE-004 | Notification is persisted (`AddRangeAsync` + `SaveChangesAsync`) **before** it is pushed over SSE. |
+| T-SSE-005 | An SSE/notification publish failure does **not** fail `CreateInterviewAsync` (still 201). |
+| T-NOTI-FE-001 | `MarkAllSeen` sets seen but never calls mark-all-read. |
+| T-NOTI-FE-002 | `MarkAsRead` sets read (and seen) for exactly that notification. |
+| T-NOTI-FE-003 | `GET /counts` returns `unseen` and `unread` separately. |
+| T-NOTI-FE-004 | A user cannot mark another user's notification read (404). |
+| T-NOTI-FE-005 | Publisher routes to the recipient user only (no broadcast). |
+| T-NOTI-FE-006 | DTO includes `isSeen`/`isRead` and `data` for deep-link navigation. |
+| T-INTERVIEW-DATE-001 | Creating an interview preserves the selected local day (28 stays 28), Unspecified kind (+001b). |
+
+### Frontend E2E (Playwright) — `e2e/notification-sse-bell.e2e.ts`, `e2e/interview-schedule-date.e2e.ts` — implemented & passing
+
+| ID | Assertion |
+|---|---|
+| E2E-NOTI-001 | An SSE `notification.created` event surfaces in the UI without a page refresh. |
+| E2E-NOTI-002/003 | Opening the bell marks all notifications **seen only** — never read. |
+| E2E-NOTI-004/005 | Clicking a notification marks **only that item** read and navigates to `data.url`. |
+| E2E-NOTI-006 | A missing/malformed `data.url` shows a toast and does not crash or navigate. |
+| E2E-INTERVIEW-001 | Scheduling an interview for day 28 sends `date` with day 28 (no UTC off-by-one). |
