@@ -199,3 +199,15 @@ These ownership fields back the planned notification routing in
 
 > Email is recorded via `IEmailService` (`SendOfferEmailAsync` / `SendRejectionEmailAsync`); the local/dev
 > implementation logs, tests use a fake. Candidate-facing **notification** dispatch is **Planned (Phase 6)**.
+
+## AI Copilot candidate pool (known quirk)
+
+`GET /api/copilot/jobs/{id}/candidates` (`CopilotCandidatePoolDto`) returns each candidate's **`education`
+as a raw string** — the profile's `EducationRecordsJson` (a JSON array of objects), or the legacy plain
+`Education` string, or null (`CopilotRepository.GetCandidatePoolAsync`). It is **not** structured in the
+DTO. The frontend therefore **normalizes it before display and never renders raw JSON** (parses to
+`{ school, degree, fieldOfStudy, startYear, endYear }`, plain-text fallback for legacy values, `[]` on
+malformed JSON). `skills` is a `string[]`; the AI `score` comes from the ranking result's `totalScore` and
+is **absent until the candidate is ranked** (FE shows "Chưa chấm"). See the FE normalizers in
+`src/common/utils/aiRankingPresentation.ts` and `docs/testing/e2e-ai-ranking-checklist.md`. The backend
+contract was intentionally left unchanged in this UI pass (lower risk than a DTO/migration change).
