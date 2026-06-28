@@ -335,7 +335,8 @@ business stage); it is **not** renamed.
 > **Status (updated 2026-06-26, Phase 2/3):** the data foundation (Phase 1) **and** the backend API +
 > authorization are now **implemented** — DTO/API field exposure (Phase 2), job-approval routing by
 > `Department.HeadUserId` (Phase 3, BR-OWN-003), and DepartmentHead-scoped ManagerReview decisions
-> (BR-OWN-007). Still **not implemented**: frontend (Phase 4) and **notification routing (Phase 6)**.
+> (BR-OWN-007), **and the frontend (Phase 4)** — ownership/approval UI, canonical English status
+> display, and Playwright E2E (E2E-OWN-001/002/003). Still **not implemented**: **notification routing (Phase 6)**.
 > `Job.HiringManagerId` is deferred. Backend status enums and roles are **not** renamed; `ManagerReview`
 > (code) **=** the **DepartmentHeadReview** business stage. See
 > [01-system-overview.md](01-system-overview.md),
@@ -428,5 +429,6 @@ default owner or recipient of recruitment workflow items.
 
 **Tests:** Ownership tests T-OWN-001, T-OWN-007*, and the Phase 2/3 set T-OWN-010…027 are
 **implemented and passing** (department head exposure/assignment, assignable owners, job recruiter
-persistence, approval guard, ManagerReview guard). FE checks (FV-OWN-*) and Phase-6 notification tests
-remain planned — see [TEST-MATRIX.md](TEST-MATRIX.md).
+persistence, approval guard, ManagerReview guard). FE checks (FV-OWN-*/FV-STATUS-*) are now covered by
+the Playwright E2E suite (E2E-OWN-001/002/003); Phase-6 notification tests remain planned — see
+[TEST-MATRIX.md](TEST-MATRIX.md).
