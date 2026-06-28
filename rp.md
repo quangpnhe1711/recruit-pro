@@ -139,3 +139,77 @@
   npx vite build     (in recruit-pro-internal)
   ```
 - **Result:** Build passes, all tests pass, no new TS errors introduced.
+
+> **NOTE (superseded by §17):** The SignalR realtime described in §16 was replaced by SSE. The
+> seen/read, click-navigation and schedule-date work in §16 remains in force.
+
+## 17. Follow-up fix: SSE realtime, seen/read, click navigation, schedule date
+
+- **SignalR issue:** In production the SignalR hub negotiate failed —
+  `POST https://www.recruitpro.site/hubs/notifications/negotiate?negotiateVersion=1` → **405 Not Allowed**.
+  The reverse proxy did not forward the hub's negotiate/WebSocket upgrade path, so realtime delivery was
+  permanently dead. Notifications only need **one-way** server→client realtime, for which SignalR's
+  negotiate/WebSocket/transport-fallback machinery is unnecessary complexity.
+- **SSE endpoint:** `GET /api/notifications/stream` — authenticated, user-scoped, `text/event-stream`.
+  Emits `event: notification.created` frames (same DTO shape as `GET /api/notifications`) plus `: ping`
+  heartbeat comments every 25s. Sends `Cache-Control: no-cache`, `Connection: keep-alive`,
+  `X-Accel-Buffering: no`, disables response buffering, flushes after every write, and stops cleanly on
+  request cancellation (client disconnect).
+- **Broker:** `INotificationSseBroker` + `InMemoryNotificationSseBroker` (singleton). Per-user, per-tab
+  **bounded** channels (capacity 64, `DropOldest`); `PublishAsync(userId, dto)` fans out only to that
+  user's tabs — never a broadcast. Disposing a subscription removes the tab; the publisher never blocks
+  on delivery. The DB row remains the source of truth (best-effort realtime).
+- **Auth strategy:** **Option A — fetch-based SSE.** The app stores a JWT in `localStorage` and uses
+  `Authorization: Bearer`. Native `EventSource` cannot set headers, so the frontend opens the stream with
+  `fetch` (`Authorization: Bearer <token>`, `Accept: text/event-stream`) and parses the stream manually
+  (`src/services/notification/notificationStream.ts`). The token stays in a header — never in the URL/query,
+  never logged. The dead `/hubs/notifications` query-token branch was removed from `JwtExtension.cs`.
+- **Nginx/deploy note:** SSE requires proxy buffering disabled. Add a dedicated location (see
+  `docs/source-of-truth/API-CONTRACT.md`):
+  ```nginx
+  location /api/notifications/stream {
+      proxy_pass http://127.0.0.1:5000/api/notifications/stream;
+      proxy_http_version 1.1;
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto $scheme;
+      proxy_buffering off;
+      proxy_cache off;
+      proxy_read_timeout 3600s;
+      proxy_send_timeout 3600s;
+      add_header X-Accel-Buffering no;
+  }
+  ```
+  If a broad `/api/` location proxies the app, ensure SSE inherits `proxy_buffering off`,
+  `proxy_read_timeout 3600s`, and `X-Accel-Buffering no`. No SignalR `/hubs/` location is needed anymore.
+- **Seen/read:** Unchanged from §16. Bell badge = `unseen`. Opening the bell calls `POST /api/notifications/seen`
+  (mark all SEEN only, never READ). Clicking an item calls `POST/PATCH /api/notifications/{id}/read` (READ +
+  seen) and navigates. A pushed SSE event arrives `isSeen:false, isRead:false` and increments both counts.
+- **Click navigation:** Unchanged from §16. `AppHeader.resolveDeepLinkUrl` extracts `notification.data.url`
+  (parses string-JSON safely), `navigate(url)` via React Router; missing/malformed url → toast
+  "Không tìm thấy đường dẫn thông báo.", no crash, no navigation. Read still attempted before navigation;
+  navigation proceeds even if mark-read fails (when a url exists).
+- **Schedule date bug:** Confirmed fixed and hardened. `CreateInterviewRequest.Date` is a `DateOnly`, so the
+  JSON `"2026-06-28"` binds straight to day 28 with no timezone conversion possible; the backend builds the
+  timestamp with `DateTime.SpecifyKind(new DateTime(y,m,d,h,m,0), DateTimeKind.Unspecified)`. The frontend
+  schedule screen sends a **local** `YYYY-MM-DD` (built from `getFullYear/Month/Date`, never `toISOString()`).
+- **Tests:**
+  - Backend: `NotificationSseTests.cs` — T-SSE-002 (target-only), T-SSE-003 (multi-tab) + 003b (disposed),
+    T-SSE-004 (publish after DB save), T-SSE-005 (publish failure does not fail `CreateInterview`).
+    `ApiIntegrationTests.cs` — T-SSE-001 (`/api/notifications/stream` returns 401 without token).
+    Existing `NotificationSeenReadTests.cs` (T-NOTI-FE-001..006, T-INTERVIEW-DATE-001/001b) retained.
+  - Frontend E2E: `notification-sse-bell.e2e.ts` — E2E-NOTI-001 (SSE event appears w/o refresh),
+    002/003 (bell opens → seen only), 004/005 (item click → read + navigate), 006 (malformed url → toast).
+    `interview-schedule-date.e2e.ts` — E2E-INTERVIEW-001 (day 28 stays 28 in the create payload).
+- **Commands:**
+  ```
+  dotnet build RecruitProInternal.sln
+  dotnet test RecruitProInternal.sln
+  npx tsc --noEmit          # in recruit-pro-internal (pre-existing CommonSelect.tsx baseline error only)
+  npx vite build            # in recruit-pro-internal
+  npx eslint .              # in recruit-pro-internal
+  npx playwright test       # in recruit-pro-internal
+  ```
+- **Result:** Backend builds (0 errors); SSE/seen-read/date unit tests pass (16/16). Frontend `vite build`
+  succeeds, eslint clean, all 23 Playwright e2e tests pass. `@microsoft/signalr` dependency removed.

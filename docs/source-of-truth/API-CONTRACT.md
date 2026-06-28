@@ -235,5 +235,44 @@ carry a structured `data_json` payload so each record is click-ready. Payload al
 | POST | `/api/notifications/seen` | Mark all as **seen** only (NOT read). Called when bell opens. |
 | POST/PATCH | `/api/notifications/{id}/read` | Mark one as **read** (also sets seen). Called on item click. |
 | POST/PATCH | `/api/notifications/read-all` | Mark all as read. |
+| GET | `/api/notifications/stream` | **SSE** realtime stream (replaces SignalR). See below. |
 
 **Seen vs Read rule**: Opening the bell = mark seen. Clicking an item = mark read + navigate to `data.url`.
+
+#### `GET /api/notifications/stream` — SSE realtime (replaced SignalR)
+
+Authenticated, user-scoped Server-Sent Events stream of newly created notifications. **Replaced the
+former SignalR hub** (`/hubs/notifications`), whose production `negotiate` POST returned **405** behind the
+reverse proxy. Notifications need only one-way server→client delivery, so SSE is sufficient and simpler.
+
+- **Response headers:** `Content-Type: text/event-stream`, `Cache-Control: no-cache`,
+  `Connection: keep-alive`, `X-Accel-Buffering: no` (response buffering disabled; flushed per event).
+- **Frames:** `event: notification.created` with `data:` = a notification JSON object identical in shape to
+  an item from `GET /api/notifications` (`id, userId, eventCode, title, body, type, data, entityType,
+  entityId, isRead:false, isSeen:false, createdAt`). Heartbeat: `: ping` comment ~every 25s.
+- **Auth:** standard `Authorization: Bearer <jwt>` header. Native `EventSource` cannot set headers, so the
+  client opens the stream with `fetch` and parses the body (Option A). The token is never placed in the URL.
+- **Scope & semantics:** events are delivered ONLY to the authenticated user's open tabs (per-user, per-tab
+  bounded channels, drop-oldest). Best-effort — the DB row is the source of truth; the client re-syncs the
+  list/counts from REST on (re)connect, so anything missed while disconnected is recovered.
+
+**Nginx / production config** — SSE requires buffering disabled. Add a dedicated location (or ensure a broad
+`/api/` location inherits `proxy_buffering off`, `proxy_read_timeout 3600s`, `X-Accel-Buffering no`):
+
+```nginx
+location /api/notifications/stream {
+    proxy_pass http://127.0.0.1:5000/api/notifications/stream;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_buffering off;
+    proxy_cache off;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+    add_header X-Accel-Buffering no;
+}
+```
+
+The old `location /hubs/notifications { ... }` SignalR block is no longer required and can be removed.

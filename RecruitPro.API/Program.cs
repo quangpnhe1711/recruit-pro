@@ -8,7 +8,6 @@ using RecruitPro.API.Extensions;
 using RecruitPro.Infrastructure.Extensions;
 using RecruitPro.Application.Extensions;
 using RecruitPro.API.Filters;
-using RecruitPro.API.Hubs;
 using RecruitPro.API.Middlewares;
 using RecruitPro.API.Realtime;
 using System;
@@ -24,8 +23,11 @@ builder.Services.AddControllers(options =>
 {
     options.Filters.Add<ValidationActionFilter>();
 });
-builder.Services.AddSignalR();
-builder.Services.AddScoped<INotificationRealtimeSender, SignalRNotificationSender>();
+// Notification realtime is delivered over SSE (GET /api/notifications/stream), not SignalR. The
+// broker is a singleton (one process-wide fan-out table); the sender forwards persisted notifications
+// to it and is what the notification publisher depends on via INotificationRealtimeSender.
+builder.Services.AddSingleton<INotificationSseBroker, InMemoryNotificationSseBroker>();
+builder.Services.AddScoped<INotificationRealtimeSender, SseNotificationSender>();
 
 // Add FluentValidation
 builder.Services.AddApplicationValidators();
@@ -104,7 +106,6 @@ app.UseAuthorization();
 app.MapGet("/", () => Results.Ok("RecruitPro API Running"));
 
 app.MapControllers();
-app.MapHub<NotificationHub>("/hubs/notifications");
 
 app.Run();
 

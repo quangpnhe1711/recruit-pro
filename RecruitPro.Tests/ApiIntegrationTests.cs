@@ -126,6 +126,19 @@ public sealed class ApiIntegrationTests : IClassFixture<PostgresTestFixture>, IA
     }
 
     [Fact]
+    public async Task NotificationStream_Should_Return_401_Without_Token()
+    {
+        // T-SSE-001: the SSE notification stream is authenticated. Without a bearer token the
+        // [Authorize] filter rejects the request (401) before any streaming begins, so the response
+        // completes immediately rather than hanging on an open event-stream.
+        HttpResponseMessage response = await _client.GetAsync(
+            "/api/notifications/stream",
+            HttpCompletionOption.ResponseHeadersRead);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
     public async Task Public_Apis_Should_Return_Controlled_404_Not_500_For_Invalid_Ids()
     {
         HttpResponseMessage response = await _client.GetAsync("/api/jobs/not-a-guid");

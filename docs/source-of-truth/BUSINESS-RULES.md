@@ -495,5 +495,20 @@ interview state.
   route, never an API route.
 - **BR-NOTI-006:** Accepting an offer hires the candidate in the same action; only `offer_accepted` is
   emitted (`candidate_hired` is intentionally not published — Option A).
+- **BR-NOTI-007 (realtime via SSE):** Notification realtime is delivered over **Server-Sent Events**
+  (`GET /api/notifications/stream`), **not SignalR** (SignalR was removed — its production `negotiate`
+  POST 405'd behind the reverse proxy and notifications need only one-way delivery). The stream is
+  authenticated and **user-scoped**: events go ONLY to the authenticated user's open tabs, never a
+  broadcast. The persisted notification row is the **source of truth**; SSE is best-effort — the row is
+  saved before it is pushed, a push failure never fails the business action, and the frontend re-syncs
+  list/counts from REST on (re)connect so a missed event is recovered.
+- **BR-NOTI-008 (seen vs read — MUST NOT confuse):** **SEEN** = the user opened the bell/dropdown
+  (`POST /api/notifications/seen`, all marked seen, NOT read) — drives the bell badge (`unseen`). **READ**
+  = the user clicked a specific item (`POST/PATCH /api/notifications/{id}/read`, marks read + seen) — drives
+  unread item styling. Clicking an item then navigates to `notification.data.url` (a frontend route).
+- **BR-NOTI-009 (schedule date):** An interview's selected calendar day is preserved end to end with no
+  timezone off-by-one. The frontend sends a **local** `YYYY-MM-DD` (local date components, never
+  `toISOString()`); the backend (`CreateInterviewRequest.Date : DateOnly`) builds the timestamp as
+  `DateTimeKind.Unspecified` — day 28 stays 28.
 - `ManagerReview` stays the canonical status (UI label "Head Review"); roles are not renamed; no
   `Job.HiringManagerId` was added.

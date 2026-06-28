@@ -35,19 +35,9 @@ namespace RecruitPro.Infrastructure.Extensions
                     };
                     options.Events = new JwtBearerEvents
                     {
-                        OnMessageReceived = context =>
-                        {
-                            string? accessToken = context.Request.Query["access_token"];
-                            PathString path = context.HttpContext.Request.Path;
-
-                            if (!string.IsNullOrWhiteSpace(accessToken)
-                                && path.StartsWithSegments("/hubs/notifications"))
-                            {
-                                context.Token = accessToken;
-                            }
-
-                            return Task.CompletedTask;
-                        },
+                        // Notification realtime moved from SignalR to SSE (GET /api/notifications/stream).
+                        // The SSE client is fetch-based and sends a standard Authorization: Bearer header,
+                        // so no query-string token extraction is needed here anymore.
                         OnChallenge = async context =>
                         {
                             context.HandleResponse();

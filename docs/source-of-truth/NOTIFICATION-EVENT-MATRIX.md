@@ -16,9 +16,28 @@ Recipients are resolved from the ownership snapshot (`IApplicationOwnershipResol
 - Clicking a notification item calls `POST /api/notifications/{id}/read` then navigates to `notification.data.url`.
 - `data.url` is the role-aware deep link built by `NotificationLinks.cs`.
 
-### Realtime delivery
+### Realtime delivery (SSE — replaced SignalR)
 
-SignalR hub at `/hubs/notifications`. Event name: `notification:new`. Delivery is per-user via `IHubContext.Clients.User(userId)`. Frontend `NotificationProvider` listens and prepends incoming notifications to the bell list and increments `unseenCount` / `unreadCount` without page refresh.
+Notification realtime is delivered over **Server-Sent Events (SSE)**, not SignalR. SignalR was removed
+because its production negotiate failed (`POST /hubs/notifications/negotiate` → **405** behind the reverse
+proxy) and notifications only need one-way server→client delivery.
+
+- **Endpoint:** `GET /api/notifications/stream` — authenticated (`[Authorize]`), user-scoped,
+  `Content-Type: text/event-stream`, `Cache-Control: no-cache`, `Connection: keep-alive`,
+  `X-Accel-Buffering: no`. Emits `event: notification.created` frames (same DTO shape as
+  `GET /api/notifications`) plus `: ping` heartbeat comments (~25s). Stops cleanly on client disconnect.
+- **Broker:** `INotificationSseBroker` / `InMemoryNotificationSseBroker` (singleton). Per-user, per-tab
+  bounded channels (capacity 64, drop-oldest). `PublishAsync(userId, dto)` fans out only to that user's
+  tabs — never a broadcast. Delivery is **best-effort**; the persisted notification row is the source of
+  truth, so a missed event is recovered by the frontend's REST re-sync on (re)connect.
+- **Publish flow:** the notification row is persisted (`AddRangeAsync` + `SaveChangesAsync`) **before** it
+  is pushed over SSE (via `INotificationRealtimeSender` → `SseNotificationSender` → broker). A push failure
+  never fails the business action.
+- **Auth (Option A):** native `EventSource` cannot send headers; the frontend opens the stream with `fetch`
+  + `Authorization: Bearer <token>` (`src/services/notification/notificationStream.ts`) — token stays in a
+  header, never in the URL/query. The frontend `NotificationProvider` parses `notification.created` events,
+  dedupes by id, prepends to the bell list, and increments `unseenCount` / `unreadCount` without a page
+  refresh.
 
 `ManagerReview` remains the canonical application status (NOT renamed); the UI display label for that
 stage is **Head Review**. The `Manager` / `HeadDepartment` roles are NOT renamed. No `Job.HiringManagerId`

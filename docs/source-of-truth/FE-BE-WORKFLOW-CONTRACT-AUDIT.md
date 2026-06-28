@@ -389,7 +389,19 @@ Covered by `T-WF-001…015` (unit) and `E2E-WF-001…007` (Playwright) — all p
   `/hr/applications/{id}`, `/manager/applications/{id}`, `/manager/jobs/{id}/approval`,
   `/hr/interviews/schedule?applicationId={id}`, `/candidate/my-applications`, `/candidate/interviews`.
   Documented fallback: HR/recruiter job detail uses the public `/jobs/{id}` (no internal job-detail route).
-- **Frontend was inspected only (read-only); no frontend production files were modified** in this phase.
-  The frontend notification bell/dropdown remains **deferred** — when it lands, a click resolver can use
-  the stored `url` directly (or `routeHint`/`targetType` to re-resolve per current user role).
-- Notification publishing is best-effort/post-commit: no FE-visible status code or contract changed.
+- **Phase 7 follow-up — bell + realtime now implemented (frontend).** The bell/dropdown
+  (`NotificationProvider` + `AppHeader`) consumes the stored `url` on item click (`resolveDeepLinkUrl` →
+  `navigate(url)`), with seen/read semantics and a safe toast fallback for missing/malformed urls.
+- **Realtime is SSE, not SignalR.** SignalR was removed (production `negotiate` POST 405'd behind the
+  proxy). The frontend opens `GET /api/notifications/stream` with a fetch-based client
+  (`src/services/notification/notificationStream.ts`, `Authorization: Bearer`), parses `notification.created`
+  events, dedupes by id, and updates the bell without a page refresh; it reconnects with backoff and
+  re-syncs from REST on (re)connect. The `@microsoft/signalr` dependency was removed.
+
+  | step | BE contract | FE caller | trigger | sync | notes | status |
+  |---|---|---|---|---|---|---|
+  | open realtime stream | GET `/api/notifications/stream` (SSE, `[Authorize]`) | `openNotificationStream` (fetch) | login/mount | reconnect + REST resync | header Bearer; user-scoped | **PASS** |
+  | mark all seen (bell open) | POST `/api/notifications/seen` | `notificationService.markAllSeen` | bell open | local `isSeen=true`, unseen=0 | does NOT mark read | **PASS** |
+  | counts | GET `/api/notifications/counts` | `notificationService.getCounts` | mount/refresh | `{unseen,unread}` | badge = unseen | **PASS** |
+- Notification publishing is best-effort/post-commit: no FE-visible status code or contract changed. The
+  interview schedule date is preserved end to end (local `YYYY-MM-DD` → `DateOnly`, no UTC off-by-one).
