@@ -477,3 +477,23 @@ interview state.
 **Tests:** `T-WF-001…015` (unit, RecruitPro.Tests/WorkflowDecisionEmailTests.cs) and `E2E-WF-001…007`
 (Playwright, e2e/workflow-interview-offer-reject.e2e.ts) — implemented and passing. See
 [TEST-MATRIX.md](TEST-MATRIX.md).
+
+## BR-NOTI — Notification routing (Phase 6, implemented)
+
+- **BR-NOTI-001:** Notification publishing is a **best-effort, post-commit** side effect. Every publish
+  runs after the business transaction commits and is wrapped in `try/catch` at the call site; a failure
+  is logged and must never roll back the action or return 500.
+- **BR-NOTI-002:** Recipients are **ownership-based**, not broad `Manager`/`HeadDepartment` broadcast:
+  `Recruiter = AssignedRecruiterId ?? Job.RecruiterId ?? Job.CreatedBy`;
+  `DepartmentHead = AssignedDepartmentHeadId ?? Job.Department.HeadUserId ?? Job.ApprovedBy`;
+  `Candidate = Application.UserId`. Null users are never notified; recipients are deduplicated.
+- **BR-NOTI-003:** `application_applied` is HR-first — recruiter only, never the DepartmentHead.
+- **BR-NOTI-004:** Offer/Rejection notifications (`offer_email_sent`, `rejection_email_sent`) are emitted
+  only **after** the candidate email send succeeds; the notification does not replace the email.
+- **BR-NOTI-005:** Every notification carries a **role-aware frontend deep link** (`url`/`targetType`/
+  `targetId`); candidate links are candidate-safe, internal links are HR/Head-safe. `url` is a frontend
+  route, never an API route.
+- **BR-NOTI-006:** Accepting an offer hires the candidate in the same action; only `offer_accepted` is
+  emitted (`candidate_hired` is intentionally not published — Option A).
+- `ManagerReview` stays the canonical status (UI label "Head Review"); roles are not renamed; no
+  `Job.HiringManagerId` was added.

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using AutoMapper;
+using Microsoft.Extensions.Logging;
 using RecruitPro.Application.Common;
 using RecruitPro.Application.DTOs.Request;
 using RecruitPro.Application.DTOs.Request.Departments;
@@ -23,6 +24,8 @@ public class JobService : IJobService
     private readonly IUserRepository _userRepository;
     private readonly IUnitOfWork _unitOfWork;
     private readonly ISemanticDiscoveryService _semanticDiscoveryService;
+    private readonly INotificationEventService _notificationEventService;
+    private readonly ILogger<JobService> _logger;
     private readonly IMapper _mapper;
 
     /// <summary>
@@ -41,6 +44,8 @@ public class JobService : IJobService
         IUserRepository userRepository,
         IUnitOfWork unitOfWork,
         ISemanticDiscoveryService semanticDiscoveryService,
+        INotificationEventService notificationEventService,
+        ILogger<JobService> logger,
         IMapper mapper)
     {
         _jobRepository = jobRepository;
@@ -49,6 +54,8 @@ public class JobService : IJobService
         _userRepository = userRepository;
         _unitOfWork = unitOfWork;
         _semanticDiscoveryService = semanticDiscoveryService;
+        _notificationEventService = notificationEventService;
+        _logger = logger;
         _mapper = mapper;
     }
 
@@ -623,6 +630,25 @@ public class JobService : IJobService
         await _unitOfWork.SaveChangesAsync();
         await TryRefreshJobEmbeddingAsync(job.Id);
 
+        // Best-effort, post-commit: notify the department head that a job awaits their approval. Reload
+        // the job so its Department (HeadUserId) is available for routing. A publish failure must not
+        // turn a committed job creation into a 500.
+        try
+        {
+            Job? savedJob = await _jobRepository.GetByIdAsync(job.Id);
+            if (savedJob != null)
+            {
+                await _notificationEventService.PublishJobSubmittedForApprovalAsync(savedJob, currentUserId);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "Job {JobId} was created but the job-submitted-for-approval notification failed to publish.",
+                job.Id);
+        }
+
         return ApiResponse<HrCreateJobResponseDto>.Created(new HrCreateJobResponseDto
         {
             JobId = job.Id.ToString(),
@@ -666,6 +692,7 @@ public class JobService : IJobService
         }
 
         JobStatus? parsedStatus = ParseJobStatus(request.ApprovalStatus);
+        JobStatus? approvalDecision = null;
         if (parsedStatus.HasValue)
         {
             // BR-OWN-003 / JOB-APPROVAL-FLOW.md: approval and rejection are scoped to the job's
@@ -681,6 +708,7 @@ public class JobService : IJobService
 
                 // ApprovedBy records the decision actor (audit), per the current model.
                 job.ApprovedBy = currentUserId;
+                approvalDecision = parsedStatus.Value;
             }
 
             job.Status = parsedStatus.Value;
@@ -755,6 +783,33 @@ public class JobService : IJobService
         await _jobRepository.UpdateAsync(job);
         await _unitOfWork.SaveChangesAsync();
         await TryRefreshJobEmbeddingAsync(job.Id);
+
+        // Best-effort, post-commit: notify the recruiter of the department head's approve/reject
+        // decision. A publish failure must not turn a committed decision into a 500.
+        if (approvalDecision.HasValue)
+        {
+            try
+            {
+                if (approvalDecision.Value == JobStatus.Approved)
+                {
+                    await _notificationEventService.PublishJobApprovedAsync(job);
+                }
+                else
+                {
+                    // No rejection-reason field is currently stored on the job/patch request, so none is
+                    // included (no new reason storage is invented for this phase).
+                    await _notificationEventService.PublishJobRejectedAsync(job, reason: null);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(
+                    ex,
+                    "Job {JobId} decision ({Decision}) was saved but the job-decision notification failed to publish.",
+                    job.Id,
+                    approvalDecision.Value);
+            }
+        }
 
         return ApiResponse<HrJobStatusResponseDto>.Ok(new HrJobStatusResponseDto
         {

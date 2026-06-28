@@ -186,3 +186,24 @@ application's `AssignedDepartmentHeadId` or a SystemAdmin (Manager-role fallback
 snapshotted) — `UpdateApplicationDecisionAsync` returns 403 otherwise. The earlier HR stages and the
 `Interview → Offer/Rejected` stage keep their existing HR/Manager behavior. **No status enum or
 transition changes** — only the actor authorization tightened.
+
+## Notification events per transition (Phase 6, implemented)
+
+Best-effort, post-commit. See NOTIFICATION-EVENT-MATRIX.md for recipients and deep links.
+
+| Transition / trigger | Event |
+|---|---|
+| Job create → PendingApproval | `job_submitted_for_approval` (→ DepartmentHead) |
+| Job → Approved | `job_approved` (→ Recruiter) |
+| Job → Rejected | `job_rejected` (→ Recruiter) |
+| Candidate applies | `application_applied` (→ Recruiter only) |
+| Applied → Screening | `application_screening_started` (→ Candidate) |
+| Screening → ManagerReview | `application_department_head_review_requested` (→ DepartmentHead) |
+| ManagerReview → Interview | `application_interview_requested` (→ Recruiter) |
+| Interview created | `interview_scheduled` (→ Candidate + Recruiter + Head + Interviewer) |
+| Interview → Completed | `interview_completed` (→ Recruiter + Head) |
+| Offer email sent → Offer | `offer_email_sent` (→ Candidate + Recruiter + Head) |
+| Rejection email sent → Rejected | `rejection_email_sent` (→ Candidate + Recruiter + Head) |
+| Candidate accepts offer → Hired | `offer_accepted` (→ Recruiter + Head; `candidate_hired` folded in) |
+| Candidate declines offer → OfferDeclined | `offer_declined` (→ Recruiter + Head) |
+| Candidate withdraws | `application_withdrawn` (→ Recruiter; + Head if past ManagerReview) |

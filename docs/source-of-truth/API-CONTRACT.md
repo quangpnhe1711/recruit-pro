@@ -211,3 +211,18 @@ malformed JSON). `skills` is a `string[]`; the AI `score` comes from the ranking
 is **absent until the candidate is ranked** (FE shows "Chưa chấm"). See the FE normalizers in
 `src/common/utils/aiRankingPresentation.ts` and `docs/testing/e2e-ai-ranking-checklist.md`. The backend
 contract was intentionally left unchanged in this UI pass (lower risk than a DTO/migration change).
+
+## Notifications (Phase 6, implemented)
+
+Notification records (`notifications` table, surfaced via `NotificationService` / `NotificationDto.Data`)
+carry a structured `data_json` payload so each record is click-ready. Payload always includes
+`eventCode`, `url`, `targetType`, `targetId` (and, when relevant, `secondaryTargetId`, `applicationId`,
+`jobId`, `interviewId`, `offerId`, `actorUserId`, `oldStatus`/`newStatus`, `recruiterId`,
+`departmentHeadId`). `targetType`/`targetId` are also mirrored onto `entity_type`/`entity_id`.
+
+- `url` is a **frontend deep link** (e.g. `/hr/applications/{id}`, `/manager/jobs/{id}/approval`,
+  `/candidate/my-applications?applicationId={id}`), never an API route.
+- URLs are **role-aware**: candidate-safe vs HR-safe vs DepartmentHead/Manager-safe.
+- Publishing is best-effort/post-commit and does not affect any business endpoint's status code.
+- No new request/response fields or error codes were added for this phase. The frontend bell/dropdown
+  remains deferred; records are click-ready for when it lands.

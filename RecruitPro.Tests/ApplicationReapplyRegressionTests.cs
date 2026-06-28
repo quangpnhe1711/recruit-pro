@@ -214,7 +214,7 @@ public sealed class ApplicationReapplyRegressionTests
 
         var notificationEventService = new Mock<INotificationEventService>();
         notificationEventService
-            .Setup(service => service.PublishNewApplicationReceivedAsync(It.IsAny<Domain.Entities.Application>()))
+            .Setup(service => service.PublishApplicationAppliedAsync(It.IsAny<Domain.Entities.Application>()))
             .ThrowsAsync(new InvalidOperationException("notification backend unavailable"));
 
         ApplicationService service = CreateService(

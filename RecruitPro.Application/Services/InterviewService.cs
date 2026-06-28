@@ -2,6 +2,7 @@ using RecruitPro.Application.DTOs.Request.Interviews;
 using RecruitPro.Application.DTOs.Response;
 using RecruitPro.Application.Common;
 using AutoMapper;
+using Microsoft.Extensions.Logging;
 using RecruitPro.Application.Interfaces;
 using RecruitPro.Application.Interfaces.IRepositories;
 using RecruitPro.Application.Interfaces.IServices;
@@ -18,6 +19,7 @@ public class InterviewService : IInterviewService
     private readonly IUserRepository _userRepository;
     private readonly IUnitOfWork _unitOfWork;
     private readonly INotificationEventService _notificationEventService;
+    private readonly ILogger<InterviewService> _logger;
     private readonly IMapper _mapper;
 
     /// <summary>
@@ -33,6 +35,7 @@ public class InterviewService : IInterviewService
         IUserRepository userRepository,
         IUnitOfWork unitOfWork,
         INotificationEventService notificationEventService,
+        ILogger<InterviewService> logger,
         IMapper mapper)
     {
         _interviewRepository = interviewRepository;
@@ -40,6 +43,7 @@ public class InterviewService : IInterviewService
         _userRepository = userRepository;
         _unitOfWork = unitOfWork;
         _notificationEventService = notificationEventService;
+        _logger = logger;
         _mapper = mapper;
     }
 
@@ -218,7 +222,20 @@ public class InterviewService : IInterviewService
         await _interviewRepository.AddAsync(interview);
         await _unitOfWork.SaveChangesAsync();
         await _unitOfWork.CommitAsync();
-        await _notificationEventService.PublishInterviewScheduledAsync(application, interview, interviewerGuid);
+
+        // Best-effort, post-commit: notify candidate + recruiter + department head + interviewer.
+        // A publish failure must not turn a committed schedule into a 500.
+        try
+        {
+            await _notificationEventService.PublishInterviewScheduledAsync(application, interview, interviewerGuid);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "Interview {InterviewId} was scheduled but the interview-scheduled notification failed to publish.",
+                interview.Id);
+        }
 
         return ApiResponse<InterviewCreatedResponseDto>.Created(
             new InterviewCreatedResponseDto
@@ -290,8 +307,33 @@ public class InterviewService : IInterviewService
             return ApiResponse<string>.BadRequest("Trạng thái phỏng vấn không hợp lệ.");
         }
 
+        bool becameCompleted = parsedStatus.Value == InterviewStatus.Completed
+            && interview.Status != InterviewStatus.Completed;
         interview.Status = parsedStatus.Value;
         await _unitOfWork.SaveChangesAsync();
+
+        // interview_completed: internal owners now know a post-interview decision is available. The
+        // tracked interview is loaded without its Application, so resolve the application for routing.
+        // Best-effort, post-commit — a publish failure must not fail the status update.
+        if (becameCompleted)
+        {
+            try
+            {
+                Domain.Entities.Application? application = await _applicationRepository.GetByIdAsync(interview.ApplicationId);
+                if (application != null)
+                {
+                    await _notificationEventService.PublishInterviewCompletedAsync(application, interview);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(
+                    ex,
+                    "Interview {InterviewId} was completed but the interview-completed notification failed to publish.",
+                    interview.Id);
+            }
+        }
+
         return ApiResponse<string>.Ok("Cập nhật trạng thái phỏng vấn thành công");
     }
 

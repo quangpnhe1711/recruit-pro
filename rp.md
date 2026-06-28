@@ -1,0 +1,126 @@
+# Notification Routing Final Report
+
+## 1. Branch
+- Current branch: `feat/notification-routing-deeplinks` (created from `develop`; not a direct commit to develop)
+- No PR created (the user will create the PR manually).
+
+## 2. Scope completed
+- Backend notification routing: ownership-based recipients, recipient deduplication, all workflow events.
+- Deep link URL support: every notification carries a role-aware frontend `url` + `targetType` + `targetId`
+  (and `secondaryTargetId`/`routeHint` where relevant), stored in `notifications.data_json` and mirrored
+  onto `notifications.entity_type`/`entity_id`.
+- Tests: 24 new backend unit tests (`RecruitPro.Tests/NotificationRoutingTests.cs`, T-NOTI-001…023);
+  existing notification/test constructions updated for the new constructors and renamed method.
+- Docs: source-of-truth docs updated (see §11).
+
+## 3. Events implemented
+- `job_submitted_for_approval`
+- `job_approved`
+- `job_rejected`
+- `application_applied` (migrated from legacy `new_application_received`)
+- `application_screening_started`
+- `application_department_head_review_requested`
+- `application_interview_requested`
+- `application_withdrawn`
+- `interview_scheduled`
+- `interview_completed`
+- `offer_email_sent`
+- `rejection_email_sent`
+- `offer_accepted`
+- `offer_declined`
+- `candidate_hired` — **defined but intentionally not emitted** (folded into `offer_accepted`, Option A)
+
+## 4. Events deferred
+- **`candidate_hired`** — Reason: accepting an offer hires the candidate in the same action
+  (`AcceptOfferAsync` sets `Hired` + `OfferStatus.Accepted` together). To avoid duplicate noise we emit
+  `offer_accepted` only (Option A). The event code exists for future use.
+- **`application_screening_started`** is implemented (candidate-facing) and emitted on `Applied → Screening`.
+- **Candidate in-app delivery surfacing** (the bell/dropdown UI) — deferred to a frontend phase. Candidate
+  notification *records* are created and click-ready.
+
+## 5. Recipient routing
+- Candidate: `Application.UserId`.
+- Recruiter: `Application.AssignedRecruiterId ?? Job.RecruiterId ?? Job.CreatedBy`.
+- DepartmentHead: `Application.AssignedDepartmentHeadId ?? Job.Department.HeadUserId ?? Job.ApprovedBy`.
+- SystemAdmin: not a default recruitment recipient (BR-OWN-009); not routed to.
+- Deduplication behavior: recipients are deduplicated by user id (first role-appropriate link wins);
+  null/`Guid.Empty` users and unresolved users are skipped. A user filling multiple roles gets one row.
+
+## 6. Deep link routing
+- url: frontend route (never an API route). Examples: `/hr/applications/{id}`,
+  `/manager/applications/{id}`, `/manager/jobs/{id}/approval`, `/hr/interviews/schedule?applicationId={id}`,
+  `/candidate/my-applications?applicationId={id}`, `/candidate/interviews?interviewId={id}`, `/jobs/{id}`.
+- targetType: `job | job_approval | application | application_review | interview | interview_request | offer`.
+- targetId: the primary entity id for the target (job/application/interview/offer); `secondaryTargetId`
+  carries the related id (e.g. applicationId alongside an interviewId).
+- Role-aware routing: links differ per recipient role for the same event.
+- Candidate-safe URLs: `/candidate/...` only (asserted not to contain `/hr/` or `/manager/`).
+- HR-safe URLs: `/hr/...`.
+- DepartmentHead-safe URLs: `/manager/...`.
+- Documented fallback: HR/recruiter job detail → public `/jobs/{id}` (no internal HR job-detail route);
+  candidate application/offer/interview detail → the candidate list routes (no detail-by-id routes yet).
+
+## 7. Best-effort behavior
+- Business actions do not fail if notification publishing fails: each publish runs **after** the DB commit
+  and is wrapped in `try/catch` at the call site (ApplyAsync, WithdrawApplicationAsync,
+  UpdateApplicationDecisionAsync, SendRejectionEmailAsync, AcceptOfferAsync, DeclineOfferAsync,
+  CreateInterviewAsync, UpdateInterviewStatusAsync, CreateJobAsync, PatchJobAsync, SendOffer).
+- Logging behavior: failures are logged via `ILogger<T>.LogError` with the entity id and the failed event;
+  no rollback, no 500. Verified by T-NOTI-016 and the existing apply 500-eradication regression test.
+
+## 8. Payload fields
+- eventCode, url, targetType, targetId, secondaryTargetId, routeHint?
+- applicationId, jobId, jobTitle, candidateUserId, candidateName, actorUserId
+- oldStatus/newStatus, departmentId, recruiterId, departmentHeadId
+- interviewId, offerId, scheduledAt, departmentHeadReviewRequestedAt, reason?
+
+## 9. Legacy compatibility
+- Existing event compatibility: `application_status_changed` and `candidate_score_ready` preserved;
+  `interview_scheduled` keeps its code (now ownership-routed); apply event migrated
+  `new_application_received` → `application_applied` (publisher method renamed
+  `PublishNewApplicationReceivedAsync` → `PublishApplicationAppliedAsync`).
+- Old records preserved: no notification rows or seed data were deleted; no DB migration was required
+  (the existing `data_json` jsonb column stores the deep-link metadata).
+
+## 10. Tests added/updated
+- New file: `RecruitPro.Tests/NotificationRoutingTests.cs` — 24 tests (T-NOTI-001…023, plus a no-head
+  guard case).
+- Updated constructors / mocks: `ApplicationLayerServiceUnitTests.cs` (JobService/OfferService/
+  InterviewService now take `INotificationEventService` + `ILogger<T>`; removed two now-obsolete
+  role-broadcast tests), `OwnershipGuardUnitTests.cs`, `ApplicationConformanceTests.cs`,
+  `WorkflowDecisionEmailTests.cs`, `ApplicationReapplyRegressionTests.cs` (renamed publisher mock).
+- Result: **235 passed / 0 failed** (full suite incl. Testcontainers integration tests).
+
+## 11. Docs updated
+- `docs/source-of-truth/NOTIFICATION-EVENT-MATRIX.md` (rewritten to implemented state)
+- `docs/source-of-truth/BUSINESS-RULES.md` (BR-NOTI-001…006)
+- `docs/source-of-truth/STATE-MACHINE.md` (events per transition)
+- `docs/source-of-truth/API-CONTRACT.md` (notification payload/deep-link contract)
+- `docs/source-of-truth/ERROR-CONTRACT.md` (no new error codes; best-effort)
+- `docs/source-of-truth/TEST-MATRIX.md` (T-NOTI-001…023)
+- `docs/source-of-truth/FE-BE-WORKFLOW-CONTRACT-AUDIT.md` (FE inspected only; bell deferred)
+- `docs/source-of-truth/IMPLEMENTATION-PLAN-OWNERSHIP.md` (Phase 6 marked done)
+
+## 12. Commands run
+- `dotnet build RecruitProInternal.sln`
+- `dotnet test RecruitProInternal.sln` (full suite, includes Testcontainers integration tests)
+- Frontend checks: none run — no frontend production files were touched (routes inspected read-only).
+
+## 13. Build/test result
+- Backend: build succeeded (0 errors); tests **235 passed, 0 failed, 0 skipped**.
+- Frontend: not touched (no build required).
+
+## 14. Remaining risks
+- Risk: HR/recruiter job notifications deep-link to the public `/jobs/{id}` page (no internal HR job-detail
+  route exists yet). Follow-up: add an internal HR job-detail route and repoint `NotificationLinks.HrJob`.
+- Risk: candidate links target list routes (no detail-by-id route). They include `?applicationId=`/
+  `?interviewId=` query hints the list can honor later. Follow-up: add candidate detail routes.
+- Risk: `job_rejected` carries no rejection reason (no reason field is stored on the job/patch request;
+  none was invented). Follow-up: add reason storage if product wants it surfaced.
+- Follow-up: build the frontend notification bell/dropdown to consume the click-ready records.
+
+## 15. Confirmations
+- No frontend notification bell/dropdown implemented.
+- No status/role rename (`ManagerReview`, `Manager`, `HeadDepartment` unchanged; UI label "Head Review").
+- No `Job.HiringManagerId` added.
+- No PR created.

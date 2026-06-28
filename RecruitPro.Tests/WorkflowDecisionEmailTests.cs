@@ -256,6 +256,7 @@ public sealed class WorkflowDecisionEmailTests
             Mock.Of<IUserRepository>(),
             Mock.Of<IUnitOfWork>(),
             Mock.Of<INotificationEventService>(),
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<InterviewService>.Instance,
             Mock.Of<AutoMapper.IMapper>());
 
         var response = await service.CreateInterviewAsync(new CreateInterviewRequest
@@ -388,6 +389,8 @@ public sealed class WorkflowDecisionEmailTests
             offerRepository.Object,
             userRepository.Object,
             Mock.Of<IUnitOfWork>(),
-            emailService.Object);
+            emailService.Object,
+            Mock.Of<INotificationEventService>(),
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<OfferService>.Instance);
     }
 }

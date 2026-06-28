@@ -379,3 +379,17 @@ This later pass DID change behaviour on both sides, kept FE/BE in contract:
   unknown status still renders `Unknown`. Notification dispatch remains **Phase 6 (not implemented)**.
 
 Covered by `T-WF-001…015` (unit) and `E2E-WF-001…007` (Playwright) — all passing.
+
+## Notification routing (Phase 6, backend implemented)
+
+- Backend notification routing is **implemented**: ownership-based recipients, deduplication, and
+  click-ready **role-aware deep links** (`url`/`targetType`/`targetId`) stored in
+  `notifications.data_json`. See NOTIFICATION-EVENT-MATRIX.md.
+- Deep-link URLs were derived from the **frontend router** (`recruit-pro-internal/src/routes`):
+  `/hr/applications/{id}`, `/manager/applications/{id}`, `/manager/jobs/{id}/approval`,
+  `/hr/interviews/schedule?applicationId={id}`, `/candidate/my-applications`, `/candidate/interviews`.
+  Documented fallback: HR/recruiter job detail uses the public `/jobs/{id}` (no internal job-detail route).
+- **Frontend was inspected only (read-only); no frontend production files were modified** in this phase.
+  The frontend notification bell/dropdown remains **deferred** — when it lands, a click resolver can use
+  the stored `url` directly (or `routeHint`/`targetType` to re-resolve per current user role).
+- Notification publishing is best-effort/post-commit: no FE-visible status code or contract changed.

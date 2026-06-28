@@ -221,6 +221,8 @@ public sealed class OwnershipGuardUnitTests
             Mock.Of<IUserRepository>(),
             Mock.Of<IUnitOfWork>(),
             Mock.Of<ISemanticDiscoveryService>(),
+            Mock.Of<INotificationEventService>(),
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<JobService>.Instance,
             Mock.Of<IMapper>());
 
         return (service, job);

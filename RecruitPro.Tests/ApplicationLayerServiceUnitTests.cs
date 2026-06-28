@@ -489,6 +489,7 @@ public sealed class InterviewServiceUnitTests
             Mock.Of<IUserRepository>(),
             Mock.Of<IUnitOfWork>(),
             Mock.Of<INotificationEventService>(),
+            Mock.Of<ILogger<InterviewService>>(),
             TestMapperFactory.Create());
 
         var response = await service.GetScheduleDataAsync("not-a-guid");
@@ -510,6 +511,7 @@ public sealed class InterviewServiceUnitTests
             Mock.Of<IUserRepository>(),
             Mock.Of<IUnitOfWork>(),
             Mock.Of<INotificationEventService>(),
+            Mock.Of<ILogger<InterviewService>>(),
             TestMapperFactory.Create());
 
         var response = await service.UpdateInterviewStatusAsync(interviewId.ToString(), new UpdateInterviewStatusRequest { Status = "weird" });
@@ -534,6 +536,8 @@ public sealed class JobServiceUnitTests
             Mock.Of<IUserRepository>(),
             Mock.Of<IUnitOfWork>(),
             Mock.Of<ISemanticDiscoveryService>(),
+            Mock.Of<INotificationEventService>(),
+            Mock.Of<ILogger<JobService>>(),
             TestMapperFactory.Create());
 
         var response = await service.GetFiltersAsync();
@@ -553,6 +557,8 @@ public sealed class JobServiceUnitTests
             Mock.Of<IUserRepository>(),
             Mock.Of<IUnitOfWork>(),
             Mock.Of<ISemanticDiscoveryService>(),
+            Mock.Of<INotificationEventService>(),
+            Mock.Of<ILogger<JobService>>(),
             TestMapperFactory.Create());
 
         var response = await service.DeleteJobAsync("bad-id");
@@ -697,65 +703,6 @@ public sealed class NotificationServiceUnitTests
 public sealed class NotificationEventServiceUnitTests
 {
     [Fact]
-    public async Task PublishNewApplicationReceivedAsync_FansOutToHrAndDeduplicatesRecipients()
-    {
-        Guid recruiterId = Guid.NewGuid();
-        Guid hrUserId = Guid.NewGuid();
-        var application = new Domain.Entities.Application
-        {
-            Id = Guid.NewGuid(),
-            UserId = Guid.NewGuid(),
-            User = new User { Id = Guid.NewGuid(), FullName = "Nguyen Van A" },
-            Job = new Job
-            {
-                Id = Guid.NewGuid(),
-                Title = "Backend Engineer",
-                CreatedBy = recruiterId
-            }
-        };
-
-        List<Notification> persistedNotifications = [];
-        var notificationRepository = new Mock<INotificationRepository>();
-        notificationRepository.Setup(value => value.AddRangeAsync(It.IsAny<IEnumerable<Notification>>()))
-            .Callback<IEnumerable<Notification>>(notifications => persistedNotifications.AddRange(notifications))
-            .Returns(Task.CompletedTask);
-
-        var userRepository = new Mock<IUserRepository>();
-        userRepository.Setup(value => value.GetUsersInRolesAsync("HR"))
-            .ReturnsAsync(
-            [
-                new User { Id = recruiterId, FullName = "Recruiter Owner" },
-                new User { Id = hrUserId, FullName = "HR Member" }
-            ]);
-        userRepository.Setup(value => value.GetByIdAsync(recruiterId))
-            .ReturnsAsync(new User { Id = recruiterId, FullName = "Recruiter Owner" });
-        userRepository.Setup(value => value.GetByIdAsync(hrUserId))
-            .ReturnsAsync(new User { Id = hrUserId, FullName = "HR Member" });
-
-        var realtimeSender = new Mock<INotificationRealtimeSender>();
-        var unitOfWork = new Mock<IUnitOfWork>();
-        var service = new NotificationEventService(
-            notificationRepository.Object,
-            userRepository.Object,
-            realtimeSender.Object,
-            unitOfWork.Object);
-
-        await service.PublishNewApplicationReceivedAsync(application);
-
-        persistedNotifications.Should().HaveCount(2);
-        persistedNotifications.Select(value => value.UserId)
-            .Should().BeEquivalentTo([recruiterId, hrUserId]);
-        persistedNotifications.Should().OnlyContain(value => value.EventCode == "new_application_received");
-        realtimeSender.Verify(value => value.SendToUserAsync(
-            It.IsAny<Guid>(),
-            It.Is<NotificationDto>(notification =>
-                notification.EventCode == "new_application_received" &&
-                notification.EntityId == application.Id &&
-                notification.Type == "APPLICATION"),
-            It.IsAny<CancellationToken>()), Times.Exactly(2));
-    }
-
-    [Fact]
     public async Task PublishApplicationStatusChangedAsync_WhenStatusUnchanged_DoesNotPersistOrSend()
     {
         var notificationRepository = new Mock<INotificationRepository>();
@@ -784,56 +731,6 @@ public sealed class NotificationEventServiceUnitTests
             It.IsAny<CancellationToken>()), Times.Never);
     }
 
-    [Fact]
-    public async Task PublishInterviewScheduledAsync_DeduplicatesRecipientsPersistsAndSendsRealtime()
-    {
-        Guid candidateId = Guid.NewGuid();
-        Guid headDepartmentId = Guid.NewGuid();
-        var interview = new Interview
-        {
-            Id = Guid.NewGuid(),
-            InterviewDate = new DateTime(2026, 2, 3, 9, 30, 0, DateTimeKind.Utc)
-        };
-        var application = new Domain.Entities.Application
-        {
-            Id = Guid.NewGuid(),
-            UserId = candidateId,
-            Job = new Job { Title = "Backend Engineer" }
-        };
-        List<Notification> persistedNotifications = [];
-        var notificationRepository = new Mock<INotificationRepository>();
-        notificationRepository.Setup(value => value.AddRangeAsync(It.IsAny<IEnumerable<Notification>>()))
-            .Callback<IEnumerable<Notification>>(notifications => persistedNotifications.AddRange(notifications))
-            .Returns(Task.CompletedTask);
-        var userRepository = new Mock<IUserRepository>();
-        userRepository.Setup(value => value.GetUsersInRolesAsync("HeadDepartment"))
-            .ReturnsAsync([new User { Id = headDepartmentId, FullName = "Head Department" }]);
-        userRepository.Setup(value => value.GetByIdAsync(candidateId))
-            .ReturnsAsync(new User { Id = candidateId, FullName = "Candidate" });
-        userRepository.Setup(value => value.GetByIdAsync(headDepartmentId))
-            .ReturnsAsync(new User { Id = headDepartmentId, FullName = "Head Department" });
-        var realtimeSender = new Mock<INotificationRealtimeSender>();
-        var unitOfWork = new Mock<IUnitOfWork>();
-        var service = new NotificationEventService(
-            notificationRepository.Object,
-            userRepository.Object,
-            realtimeSender.Object,
-            unitOfWork.Object);
-
-        await service.PublishInterviewScheduledAsync(application, interview, candidateId);
-
-        persistedNotifications.Should().HaveCount(2);
-        persistedNotifications.Select(value => value.UserId).Should().BeEquivalentTo([candidateId, headDepartmentId]);
-        persistedNotifications.Should().OnlyContain(value => value.EventCode == "interview_scheduled");
-        unitOfWork.Verify(value => value.SaveChangesAsync(), Times.Once);
-        realtimeSender.Verify(value => value.SendToUserAsync(
-            It.IsAny<Guid>(),
-            It.Is<NotificationDto>(notification =>
-                notification.EventCode == "interview_scheduled" &&
-                notification.EntityId == interview.Id &&
-                notification.Type == "INTERVIEW"),
-            It.IsAny<CancellationToken>()), Times.Exactly(2));
-    }
 }
 
 public sealed class OfferServiceUnitTests
@@ -846,7 +743,9 @@ public sealed class OfferServiceUnitTests
             Mock.Of<IOfferRepository>(),
             Mock.Of<IUserRepository>(),
             Mock.Of<IUnitOfWork>(),
-            Mock.Of<IEmailService>());
+            Mock.Of<IEmailService>(),
+            Mock.Of<INotificationEventService>(),
+            Mock.Of<ILogger<OfferService>>());
 
         var response = await service.GetOfferEditorAsync("not-a-guid");
 
@@ -876,7 +775,9 @@ public sealed class OfferServiceUnitTests
             offerRepository.Object,
             Mock.Of<IUserRepository>(),
             Mock.Of<IUnitOfWork>(),
-            Mock.Of<IEmailService>());
+            Mock.Of<IEmailService>(),
+            Mock.Of<INotificationEventService>(),
+            Mock.Of<ILogger<OfferService>>());
 
         var response = await service.SaveDraftAsync(applicationId.ToString(), Guid.NewGuid(), new UpsertApplicationOfferRequest
         {
