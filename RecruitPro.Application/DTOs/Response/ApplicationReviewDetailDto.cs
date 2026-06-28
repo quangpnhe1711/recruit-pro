@@ -51,6 +51,11 @@ public class ApplicationReviewDetailDto
     public string Status { get; set; } = string.Empty;
     public string? OfferStatus { get; set; }
     public DateTime? AppliedAt { get; set; }
+
+    // The date HR sent this application to Head Review (Screening -> ManagerReview). Used by the
+    // DepartmentHead/Manager review detail to show "received for review" instead of the applied date.
+    public DateTime? DepartmentHeadReviewRequestedAt { get; set; }
+
     public string NextStep { get; set; } = string.Empty;
     public ApplicationReviewCandidateDto Candidate { get; set; } = new();
     public ApplicationReviewJobDto Job { get; set; } = new();

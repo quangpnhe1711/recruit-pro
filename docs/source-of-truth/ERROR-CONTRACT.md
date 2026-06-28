@@ -34,6 +34,11 @@ Every API response uses `ApiResponse<T>` (RecruitPro.Application.DTOs.Response):
 > **Ownership / job-approval (Phase 2/3):** `DEPARTMENT_HEAD_REQUIRED`, `INVALID_DEPARTMENT_HEAD`,
 > `JOB_RECRUITER_REQUIRED`, `INVALID_JOB_RECRUITER`, `INVALID_JOB_TRANSITION`, `DEPARTMENT_NOT_FOUND`.
 > (`JOB_RECRUITER_REQUIRED`/`INVALID_JOB_TRANSITION` are reserved constants; not all are emitted yet.)
+>
+> **Workflow correctness (Interview → Offer/Reject):** `INTERVIEW_REQUIRED`, `INTERVIEW_NOT_COMPLETED`,
+> `EMAIL_REQUIRED_FOR_OFFER`, `EMAIL_REQUIRED_FOR_REJECTION`, `EMAIL_SEND_FAILED`. The Offer and Rejected
+> transitions are email-gated and (from the Interview stage) require a scheduled + completed interview —
+> see the rows below and BUSINESS-RULES.md (BR-WF-001..005).
 
 ## HTTP status semantics (binding)
 
@@ -62,7 +67,13 @@ Every API response uses `ApiResponse<T>` (RecruitPro.Application.DTOs.Response):
 | Withdraw, not in withdrawable state | 422 | `This application can no longer be withdrawn.` | `WithdrawApplicationAsync` |
 | Withdraw/any, application not found or not owned | 404 | `Không tìm thấy hồ sơ ứng tuyển.` | `GetTrackedApplicationForCandidateAsync` |
 | Apply/withdraw, job id not a GUID or missing | 404 | `Job with ID {id} not found.` | `GetJobAsync` |
-| Invalid reviewer transition | 400 | `Invalid transition from {a} to {b}.` | `UpdateApplicationDecisionAsync` |
+| Invalid reviewer transition | 422 | `Invalid transition from {a} to {b}.` (`INVALID_APPLICATION_TRANSITION`) | `UpdateApplicationDecisionAsync` / `SendRejectionEmailAsync` |
+| Direct decision to Offer (status dropdown) | 422 | `Sending an offer requires the offer email flow…` (`EMAIL_REQUIRED_FOR_OFFER`) | `UpdateApplicationDecisionAsync` |
+| Direct decision to Rejected (status dropdown) | 422 | `Rejecting an application requires the rejection email flow…` (`EMAIL_REQUIRED_FOR_REJECTION`) | `UpdateApplicationDecisionAsync` |
+| Offer/Reject from Interview, no interview scheduled | 422 | `Schedule an interview before deciding the outcome.` (`INTERVIEW_REQUIRED`) | `OfferService.SendOfferAsync` / `SendRejectionEmailAsync` |
+| Offer/Reject from Interview, interview not completed | 422 | `Complete the interview before sending an offer or rejection.` (`INTERVIEW_NOT_COMPLETED`) | `OfferService.SendOfferAsync` / `SendRejectionEmailAsync` |
+| Rejection email missing subject/body | 422 | `A rejection email requires both a subject and a body.` (`EMAIL_REQUIRED_FOR_REJECTION`) | `SendRejectionEmailAsync` |
+| Email send failed (Offer/Reject) | 422 | `…could not be sent; the application was not …` (`EMAIL_SEND_FAILED`) — status NOT changed | `OfferService.SendOfferAsync` / `SendRejectionEmailAsync` |
 | Approve/reject a job, department has no head | 422 | `This job's department has no head assigned…` (`DEPARTMENT_HEAD_REQUIRED`) | `JobService.PatchJobAsync` guard (BR-OWN-003) |
 | Approve/reject a job, actor is not the dept head/SystemAdmin | 403 | `Only the department head or a system administrator can approve or reject this job.` (`FORBIDDEN`) | `JobService.PatchJobAsync` guard |
 | Advance ManagerReview, actor is not the assigned head/SystemAdmin | 403 | `Only the assigned department head or a system administrator can advance this application from manager review.` (`FORBIDDEN`) | `ApplicationService.UpdateApplicationDecisionAsync` guard (BR-OWN-007) |

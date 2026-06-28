@@ -32,6 +32,7 @@ public class ApplicationService : IApplicationService
     private readonly IFileStorageService _fileStorage;
     private readonly IApplicationSemanticProcessingQueue _semanticProcessingQueue;
     private readonly INotificationEventService _notificationEventService;
+    private readonly IEmailService _emailService;
     private readonly ILogger<ApplicationService> _logger;
 
     /// <summary>
@@ -54,6 +55,7 @@ public class ApplicationService : IApplicationService
         IFileStorageService fileStorage,
         IApplicationSemanticProcessingQueue semanticProcessingQueue,
         INotificationEventService notificationEventService,
+        IEmailService emailService,
         ILogger<ApplicationService> logger)
     {
         _applicationRepository = applicationRepository;
@@ -65,6 +67,7 @@ public class ApplicationService : IApplicationService
         _fileStorage = fileStorage;
         _semanticProcessingQueue = semanticProcessingQueue;
         _notificationEventService = notificationEventService;
+        _emailService = emailService;
         _logger = logger;
     }
 
@@ -585,6 +588,24 @@ public class ApplicationService : IApplicationService
                 errorCode: ErrorCodes.InvalidApplicationTransition);
         }
 
+        // BR-WF-001/002: Offer and Rejected are email-gated outcomes. The decision endpoint (the status
+        // dropdown/buttons) must NEVER move an application to Offer or Rejected directly — those go through
+        // the offer-email flow (POST …/offer/send) and the rejection-email flow (POST …/rejection-email),
+        // which validate interview completion and send the candidate email before any transition.
+        if (targetStatus.Value == ApplicationStatus.Offer)
+        {
+            return ApiResponse<ApplicationReviewDetailDto>.UnprocessableEntity(
+                "Sending an offer requires the offer email flow; the status cannot be set to Offer directly.",
+                errorCode: ErrorCodes.EmailRequiredForOffer);
+        }
+
+        if (targetStatus.Value == ApplicationStatus.Rejected)
+        {
+            return ApiResponse<ApplicationReviewDetailDto>.UnprocessableEntity(
+                "Rejecting an application requires the rejection email flow; the status cannot be set to Rejected directly.",
+                errorCode: ErrorCodes.EmailRequiredForRejection);
+        }
+
         if (!ApplicationStatusWorkflow.CanTransition(application.Status, targetStatus.Value))
         {
             return ApiResponse<ApplicationReviewDetailDto>.UnprocessableEntity(
@@ -614,11 +635,14 @@ public class ApplicationService : IApplicationService
             application.ReviewedBy = reviewerId.Value;
         }
 
-        // INV-008 / BR-008: a reviewer rejection takes the application out of the pipeline; any pending
-        // interview must be cancelled.
-        if (targetStatus.Value == ApplicationStatus.Rejected)
+        // BR-WF-003: record the date HR handed the application to the DepartmentHeadReview stage. The
+        // Manager/DepartmentHead review queue shows this (not AppliedAt) as the "received for review"
+        // date. Set only on entry to ManagerReview, and never overwritten afterwards.
+        if (previousStatus == ApplicationStatus.Screening
+            && targetStatus.Value == ApplicationStatus.ManagerReview
+            && application.DepartmentHeadReviewRequestedAt == null)
         {
-            CancelPendingInterviews(application);
+            application.DepartmentHeadReviewRequestedAt = DbDateTime.Now;
         }
 
         await _unitOfWork.BeginTransactionAsync();
@@ -650,6 +674,149 @@ public class ApplicationService : IApplicationService
         string message = $"Application moved to {targetStatus.Value}.";
 
         return ApiResponse<ApplicationReviewDetailDto>.Ok(MapApplicationToReviewDetailDto(refreshedApplication), message);
+    }
+
+    /// <summary>
+    /// Rejection email flow (BR-WF-002): the only path that moves an application to <c>Rejected</c>.
+    /// Validates the transition + actor, requires a completed interview when the application is already in
+    /// the Interview stage (BR-WF-005), requires a non-empty subject/body, and sends the rejection email
+    /// FIRST — the status only flips to <c>Rejected</c> after the email send succeeds. A send failure
+    /// leaves the application untouched.
+    /// </summary>
+    public async Task<ApiResponse<ApplicationReviewDetailDto>> SendRejectionEmailAsync(
+        string applicationId,
+        Guid? reviewerId,
+        SendRejectionEmailRequest request)
+    {
+        if (!Guid.TryParse(applicationId, out Guid applicationGuid))
+        {
+            return ApiResponse<ApplicationReviewDetailDto>.NotFound("Không tìm thấy hồ sơ ứng tuyển.");
+        }
+
+        Domain.Entities.Application? application = await _applicationRepository.GetTrackedByIdAsync(applicationGuid);
+        if (application == null)
+        {
+            return ApiResponse<ApplicationReviewDetailDto>.NotFound("Không tìm thấy hồ sơ ứng tuyển.");
+        }
+
+        // INV-009: an application in Offer is candidate-owned (accept/decline); a reviewer must not reject
+        // out of Offer. Any other non-allowed transition to Rejected is also an invalid business state.
+        if (application.Status == ApplicationStatus.Offer
+            || !ApplicationStatusWorkflow.CanTransition(application.Status, ApplicationStatus.Rejected))
+        {
+            return ApiResponse<ApplicationReviewDetailDto>.UnprocessableEntity(
+                $"Invalid transition from {application.Status} to Rejected.",
+                errorCode: ErrorCodes.InvalidApplicationTransition);
+        }
+
+        // BR-OWN-007: rejecting from the ManagerReview (DepartmentHeadReview) stage is reserved for the
+        // assigned department head or a SystemAdmin — same guard as the decision endpoint.
+        if (application.Status == ApplicationStatus.ManagerReview)
+        {
+            ApiResponse<ApplicationReviewDetailDto>? guardFailure = await GuardManagerReviewDecisionAsync(application, reviewerId);
+            if (guardFailure != null)
+            {
+                return guardFailure;
+            }
+        }
+
+        // BR-WF-005: a post-interview rejection (from the Interview stage) requires a scheduled AND
+        // completed interview. Earlier-stage rejections (Screening) have no interview requirement.
+        if (application.Status == ApplicationStatus.Interview)
+        {
+            ApiResponse<ApplicationReviewDetailDto>? interviewGate = GuardInterviewCompleted<ApplicationReviewDetailDto>(application);
+            if (interviewGate != null)
+            {
+                return interviewGate;
+            }
+        }
+
+        // The transition is email-gated: a real message must be composed.
+        if (string.IsNullOrWhiteSpace(request.Subject) || string.IsNullOrWhiteSpace(request.Body))
+        {
+            return ApiResponse<ApplicationReviewDetailDto>.UnprocessableEntity(
+                "A rejection email requires both a subject and a body.",
+                errorCode: ErrorCodes.EmailRequiredForRejection);
+        }
+
+        // Send the email BEFORE any DB change. If the send fails the application must NOT transition.
+        try
+        {
+            await _emailService.SendRejectionEmailAsync(
+                application.User.Email,
+                application.User.FullName,
+                application.Job.Title,
+                request.Subject.Trim(),
+                request.Body.Trim());
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "Rejection email failed for application {ApplicationId}; status left unchanged at {Status}.",
+                application.Id,
+                application.Status);
+            return ApiResponse<ApplicationReviewDetailDto>.UnprocessableEntity(
+                "The rejection email could not be sent; the application was not rejected.",
+                errorCode: ErrorCodes.EmailSendFailed);
+        }
+
+        ApplicationStatus previousStatus = application.Status;
+        application.Status = ApplicationStatus.Rejected;
+        if (reviewerId.HasValue)
+        {
+            application.ReviewedBy = reviewerId.Value;
+        }
+
+        // INV-008 / BR-008: leaving the pipeline invalidates any pending (Scheduled) interview.
+        CancelPendingInterviews(application);
+
+        await _unitOfWork.BeginTransactionAsync();
+        await _applicationRepository.UpdateAsync(application);
+        await _unitOfWork.SaveChangesAsync();
+        await _unitOfWork.CommitAsync();
+
+        // INV-010: status committed; notification is best-effort and must never produce a 500.
+        try
+        {
+            await _notificationEventService.PublishApplicationStatusChangedAsync(application, previousStatus);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "Application {ApplicationId} was rejected but the status-changed notification failed to publish.",
+                application.Id);
+        }
+
+        Domain.Entities.Application? refreshedApplication = await _applicationRepository.GetByIdAsync(applicationGuid);
+        if (refreshedApplication == null)
+        {
+            return ApiResponse<ApplicationReviewDetailDto>.NotFound("Không tìm thấy hồ sơ ứng tuyển.");
+        }
+
+        return ApiResponse<ApplicationReviewDetailDto>.Ok(
+            MapApplicationToReviewDetailDto(refreshedApplication),
+            "Đã gửi email từ chối và cập nhật trạng thái hồ sơ.");
+    }
+
+    /// <summary>
+    /// Shared interview-completion gate for post-interview decisions (Offer/Rejected from the Interview
+    /// stage). Returns a non-null 422 failure when no interview is scheduled (INTERVIEW_REQUIRED) or none
+    /// is completed yet (INTERVIEW_NOT_COMPLETED); null when a completed interview exists.
+    /// </summary>
+    private static ApiResponse<T>? GuardInterviewCompleted<T>(Domain.Entities.Application application)
+    {
+        return InterviewWorkflow.EvaluateCompletion(application.Interviews) switch
+        {
+            InterviewCompletionState.Required => ApiResponse<T>.UnprocessableEntity(
+                "Schedule an interview before deciding the outcome.",
+                errorCode: ErrorCodes.InterviewRequired),
+            InterviewCompletionState.NotCompleted => ApiResponse<T>.UnprocessableEntity(
+                "Complete the interview before sending an offer or rejection.",
+                errorCode: ErrorCodes.InterviewNotCompleted),
+            _ => null
+        };
     }
 
     /// <summary>
@@ -1178,6 +1345,7 @@ public class ApplicationService : IApplicationService
             Status = application.Status.ToString(),
             OfferStatus = application.Offer?.Status.ToString(),
             AppliedAt = application.AppliedAt,
+            DepartmentHeadReviewRequestedAt = application.DepartmentHeadReviewRequestedAt,
             NextStep = application.Status switch
             {
                 ApplicationStatus.Applied => "Đã nhận hồ sơ",
@@ -1272,6 +1440,7 @@ public class ApplicationService : IApplicationService
             Recommendation = recommendation,
             Status = application.Status.ToString(),
             AppliedAt = application.AppliedAt,
+            DepartmentHeadReviewRequestedAt = application.DepartmentHeadReviewRequestedAt,
             CompletedInterviews = application.Interviews.Count(interview => interview.Status == InterviewStatus.Completed),
             TotalInterviews = application.Interviews.Count,
             AssignedRecruiterId = application.AssignedRecruiterId?.ToString(),

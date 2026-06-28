@@ -19,6 +19,7 @@ public interface IApplicationService
     Task<ApiResponse<ManagerReviewQueueResponseDto>> GetManagerReviewQueueAsync(int page, int pageSize, string? keyword);
     Task<ApiResponse<ApplicationReviewDetailDto>> GetApplicationReviewDetailAsync(string applicationId);
     Task<ApiResponse<ApplicationReviewDetailDto>> UpdateApplicationDecisionAsync(string applicationId, Guid? reviewerId, UpdateApplicationDecisionRequest request);
+    Task<ApiResponse<ApplicationReviewDetailDto>> SendRejectionEmailAsync(string applicationId, Guid? reviewerId, SendRejectionEmailRequest request);
     Task<ApiResponse<ResumeFileResponseDto>> GetApplicationCvAsync(string applicationId);
     Task<ApiResponse<string>> SendApplicationEmailAsync(string applicationId, SendApplicationEmailRequest request);
 }

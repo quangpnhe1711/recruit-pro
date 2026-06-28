@@ -12,6 +12,12 @@ public class ManagerReviewQueueItemDto
     public string Recommendation { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
     public DateTime? AppliedAt { get; set; }
+
+    // The date HR sent this application to Head Review (Screening -> ManagerReview). The
+    // DepartmentHead/Manager review queue must show THIS as the "received for review" work date, not
+    // AppliedAt. Null for legacy rows that predate the field (FE falls back to AppliedAt for display).
+    public DateTime? DepartmentHeadReviewRequestedAt { get; set; }
+
     public int CompletedInterviews { get; set; }
     public int TotalInterviews { get; set; }
 

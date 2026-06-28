@@ -134,6 +134,7 @@ public sealed class ApplicationServiceUnitTests
             Mock.Of<IFileStorageService>(),
             Mock.Of<IApplicationSemanticProcessingQueue>(),
             Mock.Of<INotificationEventService>(),
+            Mock.Of<IEmailService>(),
             Mock.Of<ILogger<ApplicationService>>());
 
         var response = await service.ApplyAsync(userId, jobId.ToString(), new ApplyJobRequest());
@@ -844,7 +845,8 @@ public sealed class OfferServiceUnitTests
             Mock.Of<IApplicationRepository>(),
             Mock.Of<IOfferRepository>(),
             Mock.Of<IUserRepository>(),
-            Mock.Of<IUnitOfWork>());
+            Mock.Of<IUnitOfWork>(),
+            Mock.Of<IEmailService>());
 
         var response = await service.GetOfferEditorAsync("not-a-guid");
 
@@ -873,7 +875,8 @@ public sealed class OfferServiceUnitTests
             applicationRepository.Object,
             offerRepository.Object,
             Mock.Of<IUserRepository>(),
-            Mock.Of<IUnitOfWork>());
+            Mock.Of<IUnitOfWork>(),
+            Mock.Of<IEmailService>());
 
         var response = await service.SaveDraftAsync(applicationId.ToString(), Guid.NewGuid(), new UpsertApplicationOfferRequest
         {

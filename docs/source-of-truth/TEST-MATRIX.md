@@ -176,3 +176,37 @@ Deterministic, backend-free Playwright specs in `recruit-pro-internal/e2e/` (ses
 | FV-STATUS-003 | `ManagerReview` displays as "Head Review". | E2E-OWN-001 |
 | FV-STATUS-004 | An unknown status displays neutral `Unknown`, never `Rejected`. | E2E-OWN-001 |
 | FV-STATUS-005 | No Vietnamese label drives status logic (filter/actions key off canonical status). | E2E-OWN-001 |
+
+## Workflow correctness — Interview → Offer/Reject (BR-WF-001…005)
+
+### Backend (unit) — `RecruitPro.Tests/WorkflowDecisionEmailTests.cs` — implemented & passing
+
+| ID | Assertion |
+|---|---|
+| T-WF-001 | `Screening → ManagerReview` sets `DepartmentHeadReviewRequestedAt`. |
+| T-WF-002 | Manager review queue DTO carries `departmentHeadReviewRequestedAt`. |
+| T-WF-003 | `ManagerReview → Interview` does not create an offer. |
+| T-WF-004 | `Interview → Offer` blocked when no interview scheduled (`INTERVIEW_REQUIRED`). |
+| T-WF-005 | `Interview → Reject` blocked when no interview scheduled (`INTERVIEW_REQUIRED`). |
+| T-WF-006 | `Interview → Offer` blocked when interview not completed (`INTERVIEW_NOT_COMPLETED`). |
+| T-WF-007 | `Interview → Reject` blocked when interview not completed (`INTERVIEW_NOT_COMPLETED`). |
+| T-WF-008 | Direct decision to `Offer` → 422 `EMAIL_REQUIRED_FOR_OFFER`. |
+| T-WF-009 | Direct decision to `Rejected` → 422 `EMAIL_REQUIRED_FOR_REJECTION`. |
+| T-WF-010 | Offer email after completed interview transitions to `Offer` and sends the email. |
+| T-WF-011 | Rejection email after completed interview transitions to `Rejected` and sends the email. |
+| T-WF-012 | Email send failure does not transition status (`EMAIL_SEND_FAILED`). |
+| T-WF-013 | Direct status update to `Offer` or `Rejected` returns 422 (both targets). |
+| T-WF-014 | Scheduling an interview is allowed while the application is in `Interview`. |
+| T-WF-015 | Review detail DTO exposes status + interview data the FE schedule button needs. |
+
+### Frontend (Playwright) — `e2e/workflow-interview-offer-reject.e2e.ts` — implemented & passing
+
+| ID | Assertion |
+|---|---|
+| E2E-WF-001 | Manager/DepartmentHead review list shows the "received for review" date (not applied date). |
+| E2E-WF-002 | Interview stage with no interview prompts scheduling; Offer/Reject gated with a visible reason. |
+| E2E-WF-003 | Schedule-interview confirm button is **enabled** when the form is valid (the disabled-button fix). |
+| E2E-WF-004 | Offer/Reject disabled before the interview is completed. |
+| E2E-WF-005 | Marking the interview completed unlocks the Send Offer Email action. |
+| E2E-WF-006 | Send Offer calls the offer email endpoint (`…/offer/send`). |
+| E2E-WF-007 | Send Rejection Email calls `…/rejection-email` and the application shows `Rejected`. |

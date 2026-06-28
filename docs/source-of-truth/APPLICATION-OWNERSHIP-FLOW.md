@@ -110,5 +110,25 @@ The **snapshot mechanism (Phase 1)** and **DepartmentHead-scoped review authoriz
 Phùng Nhật Quang applies         -> Application.Applied, AssignedRecruiterId = Nguyễn Thục Uyên (HR)
 Nguyễn Thục Uyên screens         -> Screening (HR owns)
 Nguyễn Thục Uyên passes to head  -> ManagerReview, owner = Trần Trọng Tiến Đạt (DepartmentHead)
-Trần Trọng Tiến Đạt reviews      -> Interview / Offer follow
+                                    + stamps DepartmentHeadReviewRequestedAt (the "received for review" date)
+Trần Trọng Tiến Đạt reviews      -> Interview
+Nguyễn Thục Uyên schedules + interview happens + marks Completed
+Nguyễn Thục Uyên sends offer/rejection email -> Offer / Rejected (email-gated, BR-WF-001/002)
 ```
+
+---
+
+## 6. Head Review hand-off date + post-Head-Review gates (BR-WF-001…005)
+
+`Screening → ManagerReview` records `Application.DepartmentHeadReviewRequestedAt` (set once, never
+overwritten). The Manager/DepartmentHead review queue and detail show this as the **"received for
+review"** work date — not `AppliedAt` — so the DepartmentHead sees how long the application has waited on
+**them**. Legacy rows with a null value fall back to `AppliedAt` for display. Exposed as
+`departmentHeadReviewRequestedAt` on the manager review queue item and the application review detail DTOs.
+
+Once in `Interview`, HR must schedule an interview (INV-008) and the interview must be **completed**
+before the application can be offered or rejected. Both `Offer` and `Rejected` are **email-gated**
+(offer-send / rejection-email flows) and transition only after the email send succeeds;
+`ManagerReview → Rejected` keeps the BR-OWN-007 head/SystemAdmin guard. See
+[STATE-MACHINE.md](STATE-MACHINE.md) and [BUSINESS-RULES.md](BUSINESS-RULES.md) (BR-WF-001…005).
+**Notification dispatch remains Phase 6 (not implemented).**

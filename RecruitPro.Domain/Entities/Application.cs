@@ -26,6 +26,12 @@ public partial class Application
 
     public DateTime? AppliedAt { get; set; }
 
+    // Workflow timestamp: set when HR hands the application to the DepartmentHeadReview stage
+    // (Screening -> ManagerReview). This is the date the DepartmentHead/Manager review queue must show
+    // as the "received for review" work date, NOT AppliedAt (which is when the candidate first applied).
+    // Set only on the Screening -> ManagerReview transition; never overwritten by unrelated updates.
+    public DateTime? DepartmentHeadReviewRequestedAt { get; set; }
+
     public string? CoverLetter { get; set; }
 
     public decimal? RuleScore { get; set; }

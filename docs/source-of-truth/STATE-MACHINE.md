@@ -55,11 +55,29 @@ They must not be treated as independent workflow truth.
 
 | State | Allowed next | Actor | Endpoint |
 |---|---|---|---|
-| Applied | Screening, Rejected | HR | PATCH /api/hr/applications/{id}/decision |
-| Screening | ManagerReview, Rejected | HR | PATCH /api/hr/applications/{id}/decision |
-| ManagerReview | Interview, Rejected | **Assigned DepartmentHead** or SystemAdmin (Manager fallback only when no head snapshotted) | PATCH /api/hr/applications/{id}/decision |
-| Interview | Offer, Rejected | HR/Manager | PATCH /api/hr/applications/{id}/decision |
+| Applied | Screening | HR | PATCH /api/hr/applications/{id}/decision |
+| Screening | ManagerReview | HR | PATCH /api/hr/applications/{id}/decision (records `DepartmentHeadReviewRequestedAt`) |
+| ManagerReview | Interview | **Assigned DepartmentHead** or SystemAdmin (Manager fallback only when no head snapshotted) | PATCH /api/hr/applications/{id}/decision |
+| Interview | Offer | HR (via the offer **email** flow; requires a **completed** interview) | POST /api/hr/applications/{id}/offer/send |
+| Interview | Rejected | HR (via the rejection **email** flow; requires a **completed** interview) | POST /api/hr/applications/{id}/rejection-email |
+| Applied / Screening / ManagerReview | Rejected | HR (ManagerReview: assigned head/SystemAdmin) via the rejection **email** flow | POST /api/hr/applications/{id}/rejection-email |
 | Offer | Hired, OfferDeclined | Candidate (accept/decline) | POST /api/candidate/applications/{id}/accept-offer · /decline-offer |
+
+> **Email-gated Offer/Reject (BR-WF-001/002).** `Offer` and `Rejected` can **no longer** be reached
+> through the status-decision endpoint (the dropdown/buttons) — that endpoint returns 422
+> `EMAIL_REQUIRED_FOR_OFFER` / `EMAIL_REQUIRED_FOR_REJECTION`. They are reached only through their email
+> flows, which send the candidate email first and transition the status only on a successful send (a
+> send failure leaves the status unchanged: 422 `EMAIL_SEND_FAILED`).
+>
+> **Interview gate (BR-WF-005).** From the `Interview` stage, Offer and Reject require a scheduled AND
+> completed interview: no interview → 422 `INTERVIEW_REQUIRED`; scheduled-but-not-completed → 422
+> `INTERVIEW_NOT_COMPLETED`. Interview completion is derived from `Interview.Status == Completed`; no new
+> `ApplicationStatus.Interviewed` was added — the presentation ("Interview Pending Schedule" /
+> "Interview Scheduled" / "Interviewed") is derived on the client from the latest interview state.
+>
+> **Head Review hand-off date (BR-WF-003).** Moving `Screening → ManagerReview` stamps
+> `Application.DepartmentHeadReviewRequestedAt`. The Manager/DepartmentHead review queue and detail expose
+> this as the "received for review" work date (FE falls back to `AppliedAt` only for legacy rows).
 | Hired | — (terminal) | — | — |
 | Rejected | — (terminal) | — | — |
 | OfferDeclined | — (terminal) | — | — |

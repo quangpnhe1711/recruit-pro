@@ -328,6 +328,7 @@ public sealed class ApplicationConformanceTests
             Mock.Of<IFileStorageService>(),
             Mock.Of<IApplicationSemanticProcessingQueue>(),
             Mock.Of<INotificationEventService>(),
+            Mock.Of<IEmailService>(),
             Mock.Of<ILogger<ApplicationService>>());
     }
 }

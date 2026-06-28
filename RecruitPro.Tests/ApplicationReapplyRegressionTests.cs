@@ -344,6 +344,7 @@ public sealed class ApplicationReapplyRegressionTests
             Mock.Of<IFileStorageService>(),
             semanticProcessingQueue ?? Mock.Of<IApplicationSemanticProcessingQueue>(),
             notificationEventService ?? Mock.Of<INotificationEventService>(),
+            Mock.Of<IEmailService>(),
             Mock.Of<ILogger<ApplicationService>>());
     }
 }

@@ -18,6 +18,7 @@ public class OfferService : IOfferService
     private readonly IOfferRepository _offerRepository;
     private readonly IUserRepository _userRepository;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IEmailService _emailService;
 
     /// <summary>
     /// Initializes a new instance of the OfferService class.
@@ -26,16 +27,19 @@ public class OfferService : IOfferService
     /// <param name="offerRepository">The <paramref name="offerRepository"/> value.</param>
     /// <param name="userRepository">The <paramref name="userRepository"/> value.</param>
     /// <param name="unitOfWork">The <paramref name="unitOfWork"/> value.</param>
+    /// <param name="emailService">The <paramref name="emailService"/> value.</param>
     public OfferService(
         IApplicationRepository applicationRepository,
         IOfferRepository offerRepository,
         IUserRepository userRepository,
-        IUnitOfWork unitOfWork)
+        IUnitOfWork unitOfWork,
+        IEmailService emailService)
     {
         _applicationRepository = applicationRepository;
         _offerRepository = offerRepository;
         _userRepository = userRepository;
         _unitOfWork = unitOfWork;
+        _emailService = emailService;
     }
 
     /// <summary>
@@ -104,9 +108,33 @@ public class OfferService : IOfferService
             return ApiResponse<ApplicationOfferEditorDto>.NotFound("Không tìm thấy hồ sơ ứng tuyển.");
         }
 
-        if (!ApplicationStatusWorkflow.CanPrepareOffer(application.Status))
+        // BR-WF-004: an offer can be prepared while the application is already at the Offer stage
+        // (edit / re-send) or while it is in the Interview stage (the first send). It must NOT be
+        // prepared from any earlier stage.
+        bool isOfferStage = ApplicationStatusWorkflow.CanPrepareOffer(application.Status); // Offer/Hired/OfferDeclined
+        bool isInterviewStage = application.Status == ApplicationStatus.Interview;
+        if (!isOfferStage && !isInterviewStage)
         {
-            return ApiResponse<ApplicationOfferEditorDto>.BadRequest("Chỉ hồ sơ ở bước offer mới có thể soạn offer.");
+            return ApiResponse<ApplicationOfferEditorDto>.UnprocessableEntity(
+                "Chỉ hồ sơ ở bước phỏng vấn đã hoàn tất hoặc bước offer mới có thể soạn offer.",
+                errorCode: ErrorCodes.OfferNotActionable);
+        }
+
+        // BR-WF-005: preparing/sending an offer from the Interview stage requires a scheduled AND
+        // completed interview. (When the application is already in Offer this gate does not apply.)
+        if (isInterviewStage)
+        {
+            switch (InterviewWorkflow.EvaluateCompletion(application.Interviews))
+            {
+                case InterviewCompletionState.Required:
+                    return ApiResponse<ApplicationOfferEditorDto>.UnprocessableEntity(
+                        "Hãy lên lịch phỏng vấn trước khi gửi offer.",
+                        errorCode: ErrorCodes.InterviewRequired);
+                case InterviewCompletionState.NotCompleted:
+                    return ApiResponse<ApplicationOfferEditorDto>.UnprocessableEntity(
+                        "Hãy hoàn tất phỏng vấn trước khi gửi offer.",
+                        errorCode: ErrorCodes.InterviewNotCompleted);
+            }
         }
 
         ApplicationOffer? offer = await _offerRepository.GetTrackedByApplicationIdAsync(application.Id);
@@ -176,8 +204,32 @@ public class OfferService : IOfferService
         offer.SentAt = targetStatus == OfferStatus.Sent ? DbDateTime.Now : offer.SentAt;
         offer.UpdatedAt = DbDateTime.Now;
 
-        if (application.Status != ApplicationStatus.Offer)
+        // BR-WF-001: only the Send path (the offer email) moves the application into Offer. Saving a
+        // draft leaves the application in its current stage (e.g. Interview). The transition happens only
+        // after the offer email is sent successfully — a send failure leaves the application untouched.
+        if (targetStatus == OfferStatus.Sent)
         {
+            string subject = $"Thư mời nhận việc - {application.Job.Title}";
+            string body = string.IsNullOrWhiteSpace(offer.PersonalMessage)
+                ? $"Chúc mừng! Chúng tôi trân trọng gửi tới bạn thư mời nhận việc cho vị trí {application.Job.Title}."
+                : offer.PersonalMessage!;
+
+            try
+            {
+                await _emailService.SendOfferEmailAsync(
+                    application.User.Email,
+                    application.User.FullName,
+                    application.Job.Title,
+                    subject,
+                    body);
+            }
+            catch (Exception)
+            {
+                return ApiResponse<ApplicationOfferEditorDto>.UnprocessableEntity(
+                    "Không gửi được email offer; trạng thái hồ sơ chưa thay đổi.",
+                    errorCode: ErrorCodes.EmailSendFailed);
+            }
+
             application.Status = ApplicationStatus.Offer;
         }
 

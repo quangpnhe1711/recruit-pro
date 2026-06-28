@@ -278,6 +278,7 @@ public sealed class OwnershipGuardUnitTests
             Mock.Of<IFileStorageService>(),
             Mock.Of<IApplicationSemanticProcessingQueue>(),
             Mock.Of<INotificationEventService>(),
+            Mock.Of<IEmailService>(),
             Mock.Of<ILogger<ApplicationService>>());
     }
 

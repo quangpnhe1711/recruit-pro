@@ -20,6 +20,17 @@ public static class ErrorCodes
     public const string InterviewNotActionable = "INTERVIEW_NOT_ACTIONABLE";
     public const string OfferNotActionable = "OFFER_NOT_ACTIONABLE";
 
+    // Post-interview decision gates: an application in the Interview stage must have a scheduled and
+    // completed interview before it can be offered or rejected.
+    public const string InterviewRequired = "INTERVIEW_REQUIRED";
+    public const string InterviewNotCompleted = "INTERVIEW_NOT_COMPLETED";
+
+    // Email-gated transitions: Offer and Rejected can only be reached through their email-sending flow,
+    // never via a direct status update.
+    public const string EmailRequiredForOffer = "EMAIL_REQUIRED_FOR_OFFER";
+    public const string EmailRequiredForRejection = "EMAIL_REQUIRED_FOR_REJECTION";
+    public const string EmailSendFailed = "EMAIL_SEND_FAILED";
+
     // Ownership / job-approval domain (Phase 2/3)
     public const string DepartmentHeadRequired = "DEPARTMENT_HEAD_REQUIRED";
     public const string InvalidDepartmentHead = "INVALID_DEPARTMENT_HEAD";

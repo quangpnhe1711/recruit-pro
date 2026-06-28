@@ -98,6 +98,9 @@ public partial class AppDbContext : DbContext
                 .HasDefaultValueSql("CURRENT_TIMESTAMP")
                 .HasColumnType("timestamp without time zone")
                 .HasColumnName("applied_at");
+            entity.Property(e => e.DepartmentHeadReviewRequestedAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("department_head_review_requested_at");
             entity.Property(e => e.CoverLetter)
                 .HasColumnType("text")
                 .HasColumnName("cover_letter");

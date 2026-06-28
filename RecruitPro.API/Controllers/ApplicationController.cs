@@ -118,6 +118,14 @@ public class ApplicationController : ControllerBase
         return StatusCode(result.StatusCode, result);
     }
 
+    [HttpPost("api/hr/applications/{applicationId}/rejection-email")]
+    [Authorize(Roles = "HR,Manager")]
+    public async Task<IActionResult> SendRejectionEmail(string applicationId, [FromBody] SendRejectionEmailRequest request)
+    {
+        var result = await _applicationService.SendRejectionEmailAsync(applicationId, User.TryGetCurrentUserId(), request);
+        return StatusCode(result.StatusCode, result);
+    }
+
     [HttpGet("api/hr/applications/{applicationId}/cv")]
     [Authorize(Roles = "HR,Manager")]
     public async Task<IActionResult> GetApplicationCv(string applicationId)

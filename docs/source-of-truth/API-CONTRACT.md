@@ -179,3 +179,23 @@ for compatibility.
 These ownership fields back the planned notification routing in
 [NOTIFICATION-EVENT-MATRIX.md](NOTIFICATION-EVENT-MATRIX.md) and the snapshot logic in
 [APPLICATION-OWNERSHIP-FLOW.md](APPLICATION-OWNERSHIP-FLOW.md).
+
+## Application decision & email-gated Offer/Reject (BR-WF-001…005)
+
+| Method & path | Auth | Notes |
+|---|---|---|
+| PATCH /api/hr/applications/{id}/decision | HR, Manager | Forward stage moves only: `Applied→Screening`, `Screening→ManagerReview` (stamps `departmentHeadReviewRequestedAt`), `ManagerReview→Interview` (head/SystemAdmin guard). A target of `Offer`→422 `EMAIL_REQUIRED_FOR_OFFER`; `Rejected`→422 `EMAIL_REQUIRED_FOR_REJECTION`. |
+| POST /api/hr/applications/{id}/offer/send | HR, Manager | Offer **email** flow. From `Interview` requires a completed interview (422 `INTERVIEW_REQUIRED`/`INTERVIEW_NOT_COMPLETED`); sends the offer email then transitions `Interview→Offer` (offer `Sent`). Send failure → 422 `EMAIL_SEND_FAILED`, no transition. |
+| PUT /api/hr/applications/{id}/offer | HR, Manager | Save offer **draft** — does **not** transition the application (stays `Interview`). |
+| POST /api/hr/applications/{id}/rejection-email | HR, Manager | Rejection **email** flow. Requires non-empty `{ subject, body }` (422 `EMAIL_REQUIRED_FOR_REJECTION`); from `Interview` requires a completed interview; `ManagerReview→Rejected` keeps the head guard. Sends the email then transitions to `Rejected` and cancels pending interviews. Returns the refreshed `ApplicationReviewDetailDto`. |
+
+**Manager review queue / review detail DTOs** now expose `departmentHeadReviewRequestedAt`
+(`DateTime?`, nullable for legacy rows). The Manager/DepartmentHead UI shows this as the
+"received for review" date, falling back to `appliedDate` only when null. Example:
+
+```json
+{ "appliedDate": "2026-06-01T09:55:00", "departmentHeadReviewRequestedAt": "2026-06-03T10:15:00" }
+```
+
+> Email is recorded via `IEmailService` (`SendOfferEmailAsync` / `SendRejectionEmailAsync`); the local/dev
+> implementation logs, tests use a fake. Candidate-facing **notification** dispatch is **Planned (Phase 6)**.

@@ -37,6 +37,10 @@ namespace RecruitPro.Infrastructure.Migrations
                         .HasColumnName("applied_at")
                         .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
+                    b.Property<DateTime?>("DepartmentHeadReviewRequestedAt")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("department_head_review_requested_at");
+
                     b.Property<string>("CoverLetter")
                         .HasColumnType("text")
                         .HasColumnName("cover_letter");

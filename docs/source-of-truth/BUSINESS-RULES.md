@@ -432,3 +432,48 @@ default owner or recipient of recruitment workflow items.
 persistence, approval guard, ManagerReview guard). FE checks (FV-OWN-*/FV-STATUS-*) are now covered by
 the Playwright E2E suite (E2E-OWN-001/002/003); Phase-6 notification tests remain planned — see
 [TEST-MATRIX.md](TEST-MATRIX.md).
+
+---
+
+## Workflow correctness — Interview → Offer/Reject (BR-WF-001…005)
+
+> Implemented. **No status enum or role was renamed**; `ManagerReview` stays the canonical code value
+> for the DepartmentHeadReview business stage (UI label "Head Review"). Notification dispatch remains
+> **Planned (Phase 6)** — see [NOTIFICATION-EVENT-MATRIX.md](NOTIFICATION-EVENT-MATRIX.md).
+
+### BR-WF-001 — Offer is email-gated
+An application reaches `Offer` **only** through the offer email flow (`POST /api/hr/applications/{id}/offer/send`),
+which sends the offer email and transitions `Interview → Offer` **only after** the send succeeds. The
+status-decision endpoint refuses a direct move to `Offer` (422 `EMAIL_REQUIRED_FOR_OFFER`). Saving an
+offer **draft** does not transition the application (it stays in `Interview`). A send failure leaves the
+status unchanged (422 `EMAIL_SEND_FAILED`).
+
+### BR-WF-002 — Rejection is email-gated
+An application reaches `Rejected` **only** through the rejection email flow
+(`POST /api/hr/applications/{id}/rejection-email`), which requires a non-empty subject + body
+(422 `EMAIL_REQUIRED_FOR_REJECTION` otherwise), sends the email, and transitions to `Rejected` **only after**
+the send succeeds. The status-decision endpoint refuses a direct move to `Rejected`
+(422 `EMAIL_REQUIRED_FOR_REJECTION`). `ManagerReview → Rejected` keeps the BR-OWN-007 head/SystemAdmin
+guard; a rejection cancels any pending (`Scheduled`) interview. Email send failure → 422 `EMAIL_SEND_FAILED`,
+no transition.
+
+### BR-WF-003 — Head Review hand-off date
+`Screening → ManagerReview` stamps `Application.DepartmentHeadReviewRequestedAt` (set once on entry,
+never overwritten). The Manager/DepartmentHead review queue and detail expose this as the
+"received for review" date — **not** `AppliedAt`. Legacy rows with a null value fall back to `AppliedAt`
+for display only.
+
+### BR-WF-004 — Interview scheduling is mandatory
+Offer/Reject from the `Interview` stage requires at least one scheduled (non-cancelled) interview;
+otherwise 422 `INTERVIEW_REQUIRED`. Interviews may be scheduled while the application is in
+`ManagerReview` (hand-off) or `Interview` (INV-008, unchanged).
+
+### BR-WF-005 — Interview completion is mandatory before Offer/Reject
+Offer/Reject from the `Interview` stage requires the interview to be **completed** (`Interview.Status ==
+Completed`); a scheduled-but-not-completed interview yields 422 `INTERVIEW_NOT_COMPLETED`. No
+`ApplicationStatus.Interviewed` was added — "Interviewed" is a derived presentation from the latest
+interview state.
+
+**Tests:** `T-WF-001…015` (unit, RecruitPro.Tests/WorkflowDecisionEmailTests.cs) and `E2E-WF-001…007`
+(Playwright, e2e/workflow-interview-offer-reject.e2e.ts) — implemented and passing. See
+[TEST-MATRIX.md](TEST-MATRIX.md).

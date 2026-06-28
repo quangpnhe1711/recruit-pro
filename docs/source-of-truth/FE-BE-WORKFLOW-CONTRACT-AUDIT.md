@@ -356,3 +356,26 @@ contract. **No HIGH finding remains.**
 
 **Backend business logic was not modified in this pass.** Backend conformance (CONFORMANCE-AUDIT "all 13
 invariants PASS in code and tests") stands unchanged.
+
+---
+
+## Update — Workflow correctness pass (Interview → Offer/Reject; BR-WF-001…005)
+
+This later pass DID change behaviour on both sides, kept FE/BE in contract:
+
+- **Email-gated Offer/Reject.** The status-decision endpoint (`PATCH …/decision`) no longer accepts
+  `Offer`/`Rejected` (422 `EMAIL_REQUIRED_FOR_OFFER` / `EMAIL_REQUIRED_FOR_REJECTION`). FE: the review
+  detail no longer renders direct "Offer"/"Reject" decision buttons; it routes Offer to the offer-send
+  screen and Reject to a rejection-email modal (`POST …/rejection-email`).
+- **Interview gate.** Offer/Reject from `Interview` require a completed interview (422
+  `INTERVIEW_REQUIRED` / `INTERVIEW_NOT_COMPLETED`). FE disables the Offer/Reject actions with a visible
+  reason until the interview is marked completed (HR uses "Đánh dấu đã phỏng vấn").
+- **Schedule-interview button fix.** The confirm button required the Manager-only `INTERVIEW_APPROVE`
+  permission, leaving it permanently disabled for HR; it is now gated by `INTERVIEW_CREATE` only and shows
+  a visible disabled reason. No silent disabled button remains.
+- **Head Review date.** `departmentHeadReviewRequestedAt` is stamped on `Screening → ManagerReview` and
+  shown as the manager queue's "received for review" date (fallback `appliedDate`).
+- Canonical status contract preserved (English `status`; localized text only in helper copy/buttons);
+  unknown status still renders `Unknown`. Notification dispatch remains **Phase 6 (not implemented)**.
+
+Covered by `T-WF-001…015` (unit) and `E2E-WF-001…007` (Playwright) — all passing.

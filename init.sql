@@ -2256,3 +2256,20 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_applications_active_user_job
 ON public.applications (user_id, job_id)
 WHERE status IN ('Applied', 'Screening', 'ManagerReview', 'Interview', 'Offer');
 
+-- ============================================================================
+-- Workflow correctness — DepartmentHead review hand-off timestamp.
+-- Set when HR sends an application from Screening to ManagerReview (Head Review).
+-- The DepartmentHead/Manager review queue shows THIS date as "received for review",
+-- not applied_at. Mirrors AppDbContext (department_head_review_requested_at) and
+-- migration 20260628000000_AddDepartmentHeadReviewRequestedAt. Idempotent.
+-- ============================================================================
+ALTER TABLE public.applications
+    ADD COLUMN IF NOT EXISTS department_head_review_requested_at timestamp without time zone NULL;
+
+-- Backfill — legacy rows already in ManagerReview have no recorded hand-off date; fall back to
+-- applied_at so the review queue shows a sensible date instead of "no date" for existing demo data.
+UPDATE public.applications
+SET department_head_review_requested_at = applied_at
+WHERE status = 'ManagerReview'
+  AND department_head_review_requested_at IS NULL;
+
