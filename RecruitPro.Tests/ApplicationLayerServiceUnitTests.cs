@@ -358,6 +358,62 @@ public sealed class CandidateServiceUnitTests
         response.Data.Profile.Email.Should().Be("john@example.com");
     }
 
+    // Phase 2.3 — upload hardening regression tests. Validation runs before any profile/storage access,
+    // so a bad file is rejected with a stable errorCode and never reaches AI/extraction.
+    [Fact]
+    public async Task ParseResumeAsync_EmptyFile_ReturnsBadRequestWithErrorCode()
+    {
+        var service = CreateCandidateService();
+        await using MemoryStream stream = new(Array.Empty<byte>());
+
+        var response = await service.ParseResumeAsync(Guid.NewGuid(), stream, "resume.pdf", "application/pdf");
+
+        response.Success.Should().BeFalse();
+        response.StatusCode.Should().Be(400);
+        response.ErrorCode.Should().Be(RecruitPro.Application.Common.ErrorCodes.ResumeFileEmpty);
+    }
+
+    [Fact]
+    public async Task ParseResumeAsync_UnsupportedExtension_ReturnsBadRequestWithErrorCode()
+    {
+        var service = CreateCandidateService();
+        await using MemoryStream stream = new("MZ malware"u8.ToArray());
+
+        var response = await service.ParseResumeAsync(Guid.NewGuid(), stream, "malware.exe", "application/octet-stream");
+
+        response.Success.Should().BeFalse();
+        response.StatusCode.Should().Be(400);
+        response.ErrorCode.Should().Be(RecruitPro.Application.Common.ErrorCodes.ResumeFileUnsupportedType);
+    }
+
+    [Fact]
+    public async Task ParseResumeAsync_UnsupportedMimeForExtension_ReturnsBadRequestWithErrorCode()
+    {
+        var service = CreateCandidateService();
+        await using MemoryStream stream = new("dummy pdf content"u8.ToArray());
+
+        // A .pdf extension paired with an image content type is rejected as a mismatched MIME type.
+        var response = await service.ParseResumeAsync(Guid.NewGuid(), stream, "resume.pdf", "image/png");
+
+        response.Success.Should().BeFalse();
+        response.StatusCode.Should().Be(400);
+        response.ErrorCode.Should().Be(RecruitPro.Application.Common.ErrorCodes.ResumeFileUnsupportedType);
+    }
+
+    [Fact]
+    public async Task ParseResumeAsync_OversizedFile_ReturnsBadRequestWithErrorCode()
+    {
+        var service = CreateCandidateService();
+        // 6 MB > the 5 MB CV cap — rejected mid-stream before being fully buffered.
+        await using MemoryStream stream = new(new byte[6 * 1024 * 1024]);
+
+        var response = await service.ParseResumeAsync(Guid.NewGuid(), stream, "resume.pdf", "application/pdf");
+
+        response.Success.Should().BeFalse();
+        response.StatusCode.Should().Be(400);
+        response.ErrorCode.Should().Be(RecruitPro.Application.Common.ErrorCodes.ResumeFileTooLarge);
+    }
+
     private static CandidateService CreateCandidateService(
         ICandidateProfileRepository? candidateRepository = null,
         IUserRepository? userRepository = null,
@@ -394,6 +450,7 @@ public sealed class CopilotServiceUnitTests
 
         var service = new CopilotService(
             repository.Object,
+            Mock.Of<IJobRepository>(),
             Mock.Of<IFileStorageService>(),
             Mock.Of<IResumeTextExtractor>(),
             Mock.Of<IAiCopilotProvider>(),
@@ -419,6 +476,7 @@ public sealed class CopilotServiceUnitTests
 
         var service = new CopilotService(
             repository.Object,
+            Mock.Of<IJobRepository>(),
             Mock.Of<IFileStorageService>(),
             Mock.Of<IResumeTextExtractor>(),
             Mock.Of<IAiCopilotProvider>(),
@@ -747,7 +805,7 @@ public sealed class OfferServiceUnitTests
             Mock.Of<INotificationEventService>(),
             Mock.Of<ILogger<OfferService>>());
 
-        var response = await service.GetOfferEditorAsync("not-a-guid");
+        var response = await service.GetOfferEditorAsync("not-a-guid", null, Array.Empty<string>());
 
         response.StatusCode.Should().Be(404);
         response.Message.Should().Be("Không tìm thấy hồ sơ ứng tuyển.");
@@ -757,12 +815,14 @@ public sealed class OfferServiceUnitTests
     public async Task SaveDraftAsync_WhenCurrencyUnavailable_ReturnsBadRequest()
     {
         Guid applicationId = Guid.NewGuid();
+        Guid actorId = Guid.NewGuid();
         var applicationRepository = new Mock<IApplicationRepository>();
         var offerRepository = new Mock<IOfferRepository>();
         var application = new Domain.Entities.Application
         {
             Id = applicationId,
             Status = ApplicationStatus.Offer,
+            AssignedRecruiterId = actorId,
             User = new User { Username = "candidate.user", FullName = "Candidate", Email = "candidate@test.com" },
             Job = new Job { Title = "Backend", Department = new Department { Name = "Engineering" }, EmploymentType = EmploymentType.FullTime }
         };
@@ -779,7 +839,7 @@ public sealed class OfferServiceUnitTests
             Mock.Of<INotificationEventService>(),
             Mock.Of<ILogger<OfferService>>());
 
-        var response = await service.SaveDraftAsync(applicationId.ToString(), Guid.NewGuid(), new UpsertApplicationOfferRequest
+        var response = await service.SaveDraftAsync(applicationId.ToString(), actorId, new[] { "HR" }, new UpsertApplicationOfferRequest
         {
             CurrencyCode = "USD",
             EmploymentType = "Full-time"

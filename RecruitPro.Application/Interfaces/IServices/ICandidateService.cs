@@ -17,8 +17,8 @@ public interface ICandidateService
     Task<ApiResponse<ResumeUploadResponseDto>> UploadResumeAsync(Guid userId, Stream resumeStream, string fileName, string contentType);
     Task<ApiResponse<ResumeFileResponseDto>> GetResumeDownloadUrlAsync(string resumeId);
     Task<ResumeStreamResponseDto?> GetResumeStreamAsync(string resumeId, Guid requesterId, bool canViewAll);
-    Task<ApiResponse<HrCandidatesResponseDto>> GetCandidatesAsync(int page, int pageSize, string? keyword, string? status, string? source);
-    Task<ApiResponse<HrCandidateDetailDto>> GetCandidateDetailAsync(string candidateId);
+    Task<ApiResponse<HrCandidatesResponseDto>> GetCandidatesAsync(int page, int pageSize, string? keyword, string? status, string? source, Guid? currentUserId = null, IReadOnlyCollection<string>? currentUserRoles = null);
+    Task<ApiResponse<HrCandidateDetailDto>> GetCandidateDetailAsync(string candidateId, Guid? currentUserId = null, IReadOnlyCollection<string>? currentUserRoles = null);
     Task<CandidateImportTemplateDto> GenerateImportTemplateAsync();
     Task<ApiResponse<CandidateImportPreviewResponseDto>> PreviewImportAsync(Stream fileStream, string fileName);
     Task<ApiResponse<CandidateImportResultDto>> ImportCandidatesAsync(CandidateImportRequest request);

@@ -57,9 +57,12 @@ public sealed class OwnershipGuardUnitTests
         job.Status.Should().Be(JobStatus.PendingApproval);
     }
 
-    // T-OWN-020: a SystemAdmin can approve any department's job.
+    // T-OWN-020 (Phase 2.2c updated): SystemAdmin-only CANNOT approve a job.
+    // The approval workflow belongs exclusively to the job's DepartmentHead.
+    // SystemAdmin is blocked at [Authorize] on the controller; the service guard still returns 403
+    // as defense-in-depth if a SystemAdmin-only caller somehow reaches PatchJobAsync.
     [Fact]
-    public async Task SystemAdmin_CanApproveAnyDepartmentJob()
+    public async Task SystemAdmin_CannotApproveJobWithoutDepartmentHeadRole()
     {
         Guid headId = Guid.NewGuid();
         (JobService service, Job job) = CreateJobServiceWithJob(headId);
@@ -67,11 +70,11 @@ public sealed class OwnershipGuardUnitTests
         var response = await service.PatchJobAsync(
             job.Id.ToString(),
             new PatchJobRequest { ApprovalStatus = "Approved" },
-            Guid.NewGuid(),
+            Guid.NewGuid(),   // different userId — not the department head
             new[] { "SystemAdmin" });
 
-        response.StatusCode.Should().Be(200);
-        response.Data!.ApprovalStatus.Should().Be("Approved");
+        response.StatusCode.Should().Be(403,
+            "SystemAdmin-only callers cannot approve jobs; only the job's DepartmentHead may (Phase 2.2c)");
     }
 
     // T-OWN-021: approving a job whose department has no head is a 422 business state.

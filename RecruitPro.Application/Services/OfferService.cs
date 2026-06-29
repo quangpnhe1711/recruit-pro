@@ -54,12 +54,18 @@ public class OfferService : IOfferService
     /// </summary>
     /// <param name="applicationId">The <paramref name="applicationId"/> value.</param>
     /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
-    public async Task<ApiResponse<ApplicationOfferEditorDto>> GetOfferEditorAsync(string applicationId)
+    public async Task<ApiResponse<ApplicationOfferEditorDto>> GetOfferEditorAsync(string applicationId, Guid? callerUserId, IReadOnlyCollection<string> callerRoles)
     {
         Domain.Entities.Application? application = await GetApplicationAsync(applicationId);
         if (application == null)
         {
             return ApiResponse<ApplicationOfferEditorDto>.NotFound("Không tìm thấy hồ sơ ứng tuyển.");
+        }
+
+        // Phase 2.2b: ownership check — caller must own the application via recruiter or dept-head path.
+        if (!OwnershipScope.CanAccessApplication(application, callerUserId, callerRoles))
+        {
+            return ApiResponse<ApplicationOfferEditorDto>.Forbidden("Bạn không có quyền xem offer này.");
         }
 
         ApplicationOffer? offer = await _offerRepository.GetByApplicationIdAsync(application.Id);
@@ -73,10 +79,9 @@ public class OfferService : IOfferService
     /// <param name="actorId">The <paramref name="actorId"/> value.</param>
     /// <param name="request">The <paramref name="request"/> value.</param>
     /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
-    public async Task<ApiResponse<ApplicationOfferEditorDto>> SaveDraftAsync(string applicationId, Guid? actorId, UpsertApplicationOfferRequest request)
+    public async Task<ApiResponse<ApplicationOfferEditorDto>> SaveDraftAsync(string applicationId, Guid? actorId, IReadOnlyCollection<string> callerRoles, UpsertApplicationOfferRequest request)
     {
-        _ = actorId;
-        return await UpsertOfferAsync(applicationId, actorId, request, OfferStatus.Draft, "Đã lưu nháp offer.");
+        return await UpsertOfferAsync(applicationId, actorId, callerRoles, request, OfferStatus.Draft, "Đã lưu nháp offer.");
     }
 
     /// <summary>
@@ -84,12 +89,12 @@ public class OfferService : IOfferService
     /// </summary>
     /// <param name="applicationId">The <paramref name="applicationId"/> value.</param>
     /// <param name="actorId">The <paramref name="actorId"/> value.</param>
+    /// <param name="callerRoles">The <paramref name="callerRoles"/> value.</param>
     /// <param name="request">The <paramref name="request"/> value.</param>
     /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
-    public async Task<ApiResponse<ApplicationOfferEditorDto>> SendOfferAsync(string applicationId, Guid? actorId, UpsertApplicationOfferRequest request)
+    public async Task<ApiResponse<ApplicationOfferEditorDto>> SendOfferAsync(string applicationId, Guid? actorId, IReadOnlyCollection<string> callerRoles, UpsertApplicationOfferRequest request)
     {
-        _ = actorId;
-        return await UpsertOfferAsync(applicationId, actorId, request, OfferStatus.Sent, "Gửi offer thành công.");
+        return await UpsertOfferAsync(applicationId, actorId, callerRoles, request, OfferStatus.Sent, "Gửi offer thành công.");
     }
 
     /// <summary>
@@ -104,15 +109,21 @@ public class OfferService : IOfferService
     private async Task<ApiResponse<ApplicationOfferEditorDto>> UpsertOfferAsync(
         string applicationId,
         Guid? actorId,
+        IReadOnlyCollection<string> callerRoles,
         UpsertApplicationOfferRequest request,
         OfferStatus targetStatus,
         string successMessage)
     {
-        _ = actorId;
         Domain.Entities.Application? application = await GetApplicationAsync(applicationId, tracked: true);
         if (application == null)
         {
             return ApiResponse<ApplicationOfferEditorDto>.NotFound("Không tìm thấy hồ sơ ứng tuyển.");
+        }
+
+        // Phase 2.2b: ownership check — caller must own the application via recruiter or dept-head path.
+        if (!OwnershipScope.CanAccessApplication(application, actorId, callerRoles))
+        {
+            return ApiResponse<ApplicationOfferEditorDto>.Forbidden("Bạn không có quyền thực hiện thao tác offer này.");
         }
 
         // BR-WF-004: an offer can be prepared while the application is already at the Offer stage

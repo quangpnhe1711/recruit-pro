@@ -6,7 +6,7 @@ namespace RecruitPro.Application.Interfaces.IRepositories
     {
         Task<(IReadOnlyList<Job> Jobs, int Total)> GetApprovedPagedAsync(int currentPage, int pageSize);
         Task<(IReadOnlyList<Job> Jobs, int Total)> SearchApprovedAsync(string? keyword, IReadOnlyCollection<string> employmentTypes, IReadOnlyCollection<string> skills, string? sortBy, int currentPage, int pageSize);
-        Task<(IReadOnlyList<Job> Jobs, int Total)> GetPagedAsync(string? department, string? approvalStatus, int currentPage, int pageSize, Guid? createdByUserId = null);
+        Task<(IReadOnlyList<Job> Jobs, int Total)> GetPagedAsync(string? department, string? approvalStatus, int currentPage, int pageSize, Guid? createdByUserId = null, Guid? ownerScopeUserId = null);
         // BR-OWN-003: when departmentHeadUserId is supplied the result is scoped to jobs whose
         // Department.HeadUserId matches (the approval queue for a single DepartmentHead). When null the
         // result spans all departments (SystemAdmin view / dashboards).

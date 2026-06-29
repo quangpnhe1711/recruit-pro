@@ -7,7 +7,7 @@ public interface IApplicationRepository
 {
     Task<int> CountAsync();
     Task<IReadOnlyList<JobApplication>> GetRecentAsync(int take);
-    Task<(IReadOnlyList<JobApplication> Applications, int Total)> GetPagedAsync(int page, int pageSize, string? keyword, string? department, ApplicationStatus? status, Guid? jobId = null);
+    Task<(IReadOnlyList<JobApplication> Applications, int Total)> GetPagedAsync(int page, int pageSize, string? keyword, string? department, ApplicationStatus? status, Guid? jobId = null, Guid? ownerScopeUserId = null);
     Task<(IReadOnlyList<JobApplication> Applications, int Total)> GetByJobIdAsync(Guid jobId, int currentPage, int pageSize);
     Task<IReadOnlyList<JobApplication>> GetAllByJobIdAsync(Guid jobId);
     Task<IReadOnlyList<JobApplication>> GetRecentByJobIdAsync(Guid jobId, int take);

@@ -39,6 +39,12 @@ public static class ErrorCodes
     public const string InvalidJobTransition = "INVALID_JOB_TRANSITION";
     public const string DepartmentNotFound = "DEPARTMENT_NOT_FOUND";
 
+    // Resume / CV upload domain (upload hardening)
+    public const string ResumeFileRequired = "RESUME_FILE_REQUIRED";
+    public const string ResumeFileEmpty = "RESUME_FILE_EMPTY";
+    public const string ResumeFileTooLarge = "RESUME_FILE_TOO_LARGE";
+    public const string ResumeFileUnsupportedType = "RESUME_FILE_UNSUPPORTED_TYPE";
+
     // Cross-cutting
     public const string Unauthenticated = "UNAUTHENTICATED";
     public const string Forbidden = "FORBIDDEN";

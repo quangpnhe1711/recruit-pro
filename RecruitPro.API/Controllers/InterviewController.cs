@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using RecruitPro.API.Extensions;
 using RecruitPro.Application.DTOs.Request.Interviews;
 using RecruitPro.Application.Interfaces.IServices;
@@ -15,14 +16,20 @@ public class InterviewController : ControllerBase
         _interviewService = interviewService;
     }
 
+    // Phase 2.2b: SystemAdmin removed from all business interview endpoints.
+    // HeadDepartment added to read-only endpoints (they hold Interview_VIEW permission in the DB and
+    // INTERVIEW_VIEW_ALL in the frontend permission map). Write endpoints remain HR/Manager only.
+    // Ownership scope (Interview -> Application -> Job) is enforced inside the service layer.
     [HttpGet("api/hr/interviews")]
+    [Authorize(Roles = "HR,Manager,HeadDepartment")]
     public async Task<IActionResult> GetInterviews([FromQuery] int page = 1, [FromQuery] int pageSize = 10, [FromQuery] string? keyword = null, [FromQuery] string? status = null, [FromQuery] DateTime? startDate = null, [FromQuery] DateTime? endDate = null)
     {
-        var result = await _interviewService.GetInterviewsAsync(page, pageSize, keyword, status, startDate, endDate);
+        var result = await _interviewService.GetInterviewsAsync(page, pageSize, keyword, status, startDate, endDate, User.TryGetCurrentUserId(), User.GetRoles());
         return StatusCode(result.StatusCode, result);
     }
 
     [HttpGet("api/candidate/interviews")]
+    [Authorize(Roles = "Candidate")]
     public async Task<IActionResult> GetCandidateInterviews()
     {
         var result = await _interviewService.GetCandidateInterviewsAsync(User.GetCurrentUserId());
@@ -30,6 +37,7 @@ public class InterviewController : ControllerBase
     }
 
     [HttpGet("api/hr/interviews/schedule-data")]
+    [Authorize(Roles = "HR,Manager,HeadDepartment")]
     public async Task<IActionResult> GetScheduleData([FromQuery] string? applicationId = null)
     {
         var result = await _interviewService.GetScheduleDataAsync(applicationId);
@@ -37,6 +45,7 @@ public class InterviewController : ControllerBase
     }
 
     [HttpPost("api/hr/interviews")]
+    [Authorize(Roles = "HR,Manager")]
     public async Task<IActionResult> CreateInterview([FromBody] CreateInterviewRequest request)
     {
         var result = await _interviewService.CreateInterviewAsync(request);
@@ -44,6 +53,7 @@ public class InterviewController : ControllerBase
     }
 
     [HttpPatch("api/hr/interviews/{interviewId}/status")]
+    [Authorize(Roles = "HR,Manager")]
     public async Task<IActionResult> UpdateInterviewStatus(string interviewId, [FromBody] UpdateInterviewStatusRequest request)
     {
         var result = await _interviewService.UpdateInterviewStatusAsync(interviewId, request);
@@ -51,6 +61,7 @@ public class InterviewController : ControllerBase
     }
 
     [HttpDelete("api/hr/interviews/{interviewId}")]
+    [Authorize(Roles = "HR,Manager")]
     public async Task<IActionResult> DeleteInterview(string interviewId)
     {
         var result = await _interviewService.DeleteInterviewAsync(interviewId);

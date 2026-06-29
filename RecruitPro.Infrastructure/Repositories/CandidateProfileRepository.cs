@@ -114,6 +114,8 @@ namespace RecruitPro.Infrastructure.Repositories
                 .AsNoTracking()
                 .Include(profile => profile.User)
                     .ThenInclude(user => user.Applications)
+                        .ThenInclude(application => application.Job)
+                            .ThenInclude(job => job.Department)
                 .Include(profile => profile.Resumes)
                 .Include(profile => profile.CandidateSkills)
                     .ThenInclude(candidateSkill => candidateSkill.Skill)

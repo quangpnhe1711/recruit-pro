@@ -26,17 +26,23 @@ public class ApplicationController : ControllerBase
         return StatusCode(result.StatusCode, result);
     }
 
+    // These two endpoints return candidate PII (full name, avatar, candidate/application ids, status,
+    // score). They were previously anonymous, leaking every applicant of any job to the public. They are
+    // only consumed by the authenticated internal portal (HR/Manager job-detail screen), so they are now
+    // role-restricted. Public/landing pages must use the aggregate-only GET /api/jobs/{jobId}/statistics.
     [HttpGet("api/jobs/{jobId}/applications")]
+    [Authorize(Roles = "HR,Manager")]
     public async Task<IActionResult> GetJobApplications(string jobId, [FromQuery] int page = 1, [FromQuery] int pageSize = 10)
     {
-        var result = await _applicationService.GetJobApplicationsAsync(jobId, page, pageSize);
+        var result = await _applicationService.GetJobApplicationsAsync(jobId, page, pageSize, User.TryGetCurrentUserId(), User.GetRoles());
         return StatusCode(result.StatusCode, result);
     }
 
     [HttpGet("api/jobs/{jobId}/applications/recent")]
+    [Authorize(Roles = "HR,Manager")]
     public async Task<IActionResult> GetRecentApplications(string jobId)
     {
-        var result = await _applicationService.GetRecentApplicationsAsync(jobId);
+        var result = await _applicationService.GetRecentApplicationsAsync(jobId, User.TryGetCurrentUserId(), User.GetRoles());
         return StatusCode(result.StatusCode, result);
     }
 
@@ -90,7 +96,9 @@ public class ApplicationController : ControllerBase
             request.Keyword,
             request.Department,
             request.Status,
-            request.JobId);
+            request.JobId,
+            User.TryGetCurrentUserId(),
+            User.GetRoles());
         return StatusCode(result.StatusCode, result);
     }
 
@@ -106,7 +114,7 @@ public class ApplicationController : ControllerBase
     [Authorize(Roles = "HR,Manager")]
     public async Task<IActionResult> GetApplicationReviewDetail(string applicationId)
     {
-        var result = await _applicationService.GetApplicationReviewDetailAsync(applicationId);
+        var result = await _applicationService.GetApplicationReviewDetailAsync(applicationId, User.TryGetCurrentUserId(), User.GetRoles());
         return StatusCode(result.StatusCode, result);
     }
 
@@ -130,7 +138,7 @@ public class ApplicationController : ControllerBase
     [Authorize(Roles = "HR,Manager")]
     public async Task<IActionResult> GetApplicationCv(string applicationId)
     {
-        var result = await _applicationService.GetApplicationCvAsync(applicationId);
+        var result = await _applicationService.GetApplicationCvAsync(applicationId, User.TryGetCurrentUserId(), User.GetRoles());
         return StatusCode(result.StatusCode, result);
     }
 

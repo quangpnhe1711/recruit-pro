@@ -80,13 +80,25 @@ namespace RecruitPro.Infrastructure.Repositories
             return (jobs, total);
         }
 
-        public async Task<(IReadOnlyList<Job> Jobs, int Total)> GetPagedAsync(string? department, string? approvalStatus, int currentPage, int pageSize, Guid? createdByUserId = null)
+        public async Task<(IReadOnlyList<Job> Jobs, int Total)> GetPagedAsync(string? department, string? approvalStatus, int currentPage, int pageSize, Guid? createdByUserId = null, Guid? ownerScopeUserId = null)
         {
             IQueryable<Job> query = BuildJobQuery();
 
             if (createdByUserId.HasValue)
             {
                 query = query.Where(job => job.CreatedBy == createdByUserId.Value);
+            }
+
+            if (ownerScopeUserId.HasValue)
+            {
+                // Ownership scope (Phase 2.2): an HR/Manager may only see jobs they own — created, assigned
+                // as recruiter, or head the department of. SystemAdmin passes null and skips this. Applied
+                // DB-side so pagination totals stay correct.
+                Guid scope = ownerScopeUserId.Value;
+                query = query.Where(job =>
+                    job.CreatedBy == scope
+                    || job.RecruiterId == scope
+                    || (job.Department != null && job.Department.HeadUserId == scope));
             }
 
             if (!string.IsNullOrWhiteSpace(department))

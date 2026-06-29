@@ -17,6 +17,7 @@ namespace RecruitPro.Application.Services;
 public class CopilotService : ICopilotService
 {
     private readonly ICopilotRepository _copilotRepository;
+    private readonly IJobRepository _jobRepository;
     private readonly IFileStorageService _fileStorageService;
     private readonly IResumeTextExtractor _resumeTextExtractor;
     private readonly IAiCopilotProvider _aiCopilotProvider;
@@ -28,6 +29,7 @@ public class CopilotService : ICopilotService
     /// Initializes a new instance of the CopilotService class.
     /// </summary>
     /// <param name="copilotRepository">The <paramref name="copilotRepository"/> value.</param>
+    /// <param name="jobRepository">The <paramref name="jobRepository"/> value.</param>
     /// <param name="fileStorageService">The <paramref name="fileStorageService"/> value.</param>
     /// <param name="resumeTextExtractor">The <paramref name="resumeTextExtractor"/> value.</param>
     /// <param name="aiCopilotProvider">The <paramref name="aiCopilotProvider"/> value.</param>
@@ -35,6 +37,7 @@ public class CopilotService : ICopilotService
     /// <param name="aiProviderOptions">The <paramref name="aiProviderOptions"/> value.</param>
     public CopilotService(
         ICopilotRepository copilotRepository,
+        IJobRepository jobRepository,
         IFileStorageService fileStorageService,
         IResumeTextExtractor resumeTextExtractor,
         IAiCopilotProvider aiCopilotProvider,
@@ -43,6 +46,7 @@ public class CopilotService : ICopilotService
         IMapper mapper)
     {
         _copilotRepository = copilotRepository;
+        _jobRepository = jobRepository;
         _fileStorageService = fileStorageService;
         _resumeTextExtractor = resumeTextExtractor;
         _aiCopilotProvider = aiCopilotProvider;
@@ -111,8 +115,15 @@ public class CopilotService : ICopilotService
     /// </summary>
     /// <param name="jobId">The <paramref name="jobId"/> value.</param>
     /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
-    public async Task<ApiResponse<CopilotCandidatePoolDto>> GetCandidatePoolAsync(Guid jobId)
+    public async Task<ApiResponse<CopilotCandidatePoolDto>> GetCandidatePoolAsync(Guid jobId, Guid? callerUserId, IReadOnlyCollection<string> callerRoles)
     {
+        Job? job = await _jobRepository.GetByIdAsync(jobId);
+        if (job is null)
+            return ApiResponse<CopilotCandidatePoolDto>.NotFound("Job not found");
+
+        if (!OwnershipScope.CanAccessJob(job, callerUserId, callerRoles))
+            return ApiResponse<CopilotCandidatePoolDto>.Forbidden("Bạn không có quyền xem candidate pool của job này.");
+
         CopilotCandidatePoolDto? pool = await _copilotRepository.GetCandidatePoolAsync(jobId);
         return pool is null
             ? ApiResponse<CopilotCandidatePoolDto>.NotFound("Job not found")

@@ -68,9 +68,24 @@ public class InterviewRepository : IInterviewRepository
             .ToList();
     }
 
-    public async Task<(IReadOnlyList<Interview> Interviews, int Total)> GetPagedAsync(int page, int pageSize, string? keyword, InterviewStatus? status, DateTime? startDate, DateTime? endDate)
+    public async Task<(IReadOnlyList<Interview> Interviews, int Total)> GetPagedAsync(int page, int pageSize, string? keyword, InterviewStatus? status, DateTime? startDate, DateTime? endDate, Guid scopeUserId)
     {
         IQueryable<Interview> query = BuildInterviewQuery();
+
+        // Phase 2.2b: ownership scope via Interview -> Application -> Job. Mirrors
+        // OwnershipScope.CanAccessApplication: recruiter side AND department-head side.
+        // Guid.Empty is the sentinel for "no user scope" — used internally by BuildBusySlotsByDateAsync
+        // to get all scheduled interviews for the shared calendar view. All other callers must supply a
+        // real userId so the result is scoped to interviews they own.
+        if (scopeUserId != Guid.Empty)
+        {
+            query = query.Where(interview =>
+                interview.Application.AssignedRecruiterId == scopeUserId
+                || interview.Application.AssignedDepartmentHeadId == scopeUserId
+                || interview.Application.Job.CreatedBy == scopeUserId
+                || interview.Application.Job.RecruiterId == scopeUserId
+                || (interview.Application.Job.Department != null && interview.Application.Job.Department.HeadUserId == scopeUserId));
+        }
 
         if (!string.IsNullOrWhiteSpace(keyword))
         {
