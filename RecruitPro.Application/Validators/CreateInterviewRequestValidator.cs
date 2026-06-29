@@ -19,8 +19,11 @@ public class CreateInterviewRequestValidator : AbstractValidator<CreateInterview
         RuleFor(request => request.Date).NotEmpty();
         RuleFor(request => request.StartMinutes).InclusiveBetween(0, 1439);
         RuleFor(request => request.DurationMinutes).InclusiveBetween(15, 240);
-        RuleFor(request => request.Mode).NotEmpty();
-        RuleFor(request => request.LocationOrLink).NotEmpty();
+        RuleFor(request => request.Mode)
+            .NotEmpty()
+            .Must(value => value.Equals("video", StringComparison.OrdinalIgnoreCase)
+                || value.Equals("inPerson", StringComparison.OrdinalIgnoreCase));
+        RuleFor(request => request.LocationOrLink).NotEmpty().MaximumLength(500);
         RuleFor(request => request.InterviewerId)
             .Must(value => string.IsNullOrWhiteSpace(value) || Guid.TryParse(value, out _));
     }

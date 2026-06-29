@@ -10,6 +10,15 @@ public class PatchJobRequestValidator : AbstractValidator<PatchJobRequest>
         RuleFor(request => request.Title).MaximumLength(255).When(request => !string.IsNullOrWhiteSpace(request.Title));
         RuleFor(request => request.Department).MaximumLength(100).When(request => !string.IsNullOrWhiteSpace(request.Department));
         RuleFor(request => request.DepartmentId).Must(value => string.IsNullOrWhiteSpace(value) || Guid.TryParse(value, out _));
+        RuleFor(request => request.Location).MaximumLength(255).When(request => !string.IsNullOrWhiteSpace(request.Location));
+        RuleFor(request => request.Description).NotEmpty().When(request => request.Description != null);
+        RuleFor(request => request.Requirements).NotEmpty().When(request => request.Requirements != null);
+        RuleFor(request => request.VacancyCount).GreaterThan(0).When(request => request.VacancyCount.HasValue);
+        RuleFor(request => request.MinExperienceYears).GreaterThanOrEqualTo(0).When(request => request.MinExperienceYears.HasValue);
+        RuleFor(request => request.SalaryMax)
+            .GreaterThanOrEqualTo(request => request.SalaryMin ?? 0)
+            .When(request => request.SalaryMin.HasValue && request.SalaryMax.HasValue);
+        RuleForEach(request => request.SkillRequirements).SetValidator(new JobSkillRequirementRequestValidator());
         RuleFor(request => request).Must(request =>
                 !string.IsNullOrWhiteSpace(request.Title) ||
                 !string.IsNullOrWhiteSpace(request.DepartmentId) ||
