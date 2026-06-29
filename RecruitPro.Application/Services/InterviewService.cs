@@ -57,10 +57,13 @@ public class InterviewService : IInterviewService
     /// <param name="startDate">The <paramref name="startDate"/> value.</param>
     /// <param name="endDate">The <paramref name="endDate"/> value.</param>
     /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
-    public async Task<ApiResponse<InterviewListResponseDto>> GetInterviewsAsync(int page, int pageSize, string? keyword, string? status, DateTime? startDate, DateTime? endDate)
+    public async Task<ApiResponse<InterviewListResponseDto>> GetInterviewsAsync(int page, int pageSize, string? keyword, string? status, DateTime? startDate, DateTime? endDate, Guid? callerUserId, IReadOnlyCollection<string> callerRoles)
     {
         InterviewStatus? parsedStatus = ParseInterviewStatus(status);
-        (IReadOnlyList<Interview> interviews, int total) = await _interviewRepository.GetPagedAsync(page, pageSize, keyword, parsedStatus, startDate, endDate);
+        // Phase 2.2b: filter interviews DB-side to only those the caller owns via the
+        // Interview -> Application -> Job ownership chain. Never unscoped (Guid.Empty means no records).
+        Guid scopeUserId = OwnershipScope.ResolveInterviewListScopeUserId(callerUserId);
+        (IReadOnlyList<Interview> interviews, int total) = await _interviewRepository.GetPagedAsync(page, pageSize, keyword, parsedStatus, startDate, endDate, scopeUserId);
 
         return ApiResponse<InterviewListResponseDto>.Ok(new InterviewListResponseDto
         {
@@ -260,7 +263,8 @@ public class InterviewService : IInterviewService
             null,
             InterviewStatus.Scheduled,
             DbDateTime.Today,
-            DbDateTime.Today.AddMonths(2));
+            DbDateTime.Today.AddMonths(2),
+            Guid.Empty);
 
         return interviews
             .GroupBy(interview => interview.InterviewDate.Date)

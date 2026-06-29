@@ -76,8 +76,13 @@ namespace RecruitPro.API.Middlewares
             else
             {
                 statusCode = 500;
+                // In Production the raw exception message can leak internals (SQL, connection details,
+                // file paths). Return a generic message + traceId for correlation; the full exception is
+                // already written to the server log above. Detailed diagnostics are Development-only.
                 response = ApiResponse<object>.Error(
-                    exception.Message,
+                    isDevelopment
+                        ? exception.Message
+                        : "Đã xảy ra lỗi không mong muốn. Vui lòng thử lại sau.",
                     isDevelopment
                         ? new
                         {

@@ -165,9 +165,15 @@ public class SemanticDiscoveryService : ISemanticDiscoveryService
         return ApiResponse<SemanticJobsResponseDto>.Ok(BuildJobsPage(ranked, page, pageSize));
     }
 
-    public async Task<ApiResponse<SemanticCandidatesResponseDto>> GetRecommendedCandidatesAsync(string jobId, int page, int pageSize)
+    public async Task<ApiResponse<SemanticCandidatesResponseDto>> GetRecommendedCandidatesAsync(string jobId, Guid? callerUserId, IReadOnlyCollection<string> callerRoles, int page, int pageSize)
     {
         Job job = await GetJobAsync(jobId);
+        // Phase 2.2b: job-level ownership check — caller must own the job to access its candidate ranking.
+        if (!OwnershipScope.CanAccessJob(job, callerUserId, callerRoles))
+        {
+            return ApiResponse<SemanticCandidatesResponseDto>.Forbidden("Bạn không có quyền xem danh sách ứng viên gợi ý của job này.");
+        }
+
         IReadOnlyList<double>? jobVector = await EnsureJobVectorAsync(job.Id);
         if (jobVector == null)
         {

@@ -28,9 +28,22 @@ public class ApplicationRepository : IApplicationRepository
             .ToListAsync();
     }
 
-    public async Task<(IReadOnlyList<JobApplication> Applications, int Total)> GetPagedAsync(int page, int pageSize, string? keyword, string? department, ApplicationStatus? status, Guid? jobId = null)
+    public async Task<(IReadOnlyList<JobApplication> Applications, int Total)> GetPagedAsync(int page, int pageSize, string? keyword, string? department, ApplicationStatus? status, Guid? jobId = null, Guid? ownerScopeUserId = null)
     {
         IQueryable<JobApplication> query = BuildApplicationQuery();
+
+        if (ownerScopeUserId.HasValue)
+        {
+            // Ownership scope (Phase 2.2): mirrors OwnershipScope.CanAccessApplication. Applied DB-side so
+            // pagination totals stay correct. SystemAdmin callers pass null and skip this filter.
+            Guid scope = ownerScopeUserId.Value;
+            query = query.Where(application =>
+                application.AssignedRecruiterId == scope
+                || application.AssignedDepartmentHeadId == scope
+                || application.Job.CreatedBy == scope
+                || application.Job.RecruiterId == scope
+                || (application.Job.Department != null && application.Job.Department.HeadUserId == scope));
+        }
 
         if (!string.IsNullOrWhiteSpace(keyword))
         {

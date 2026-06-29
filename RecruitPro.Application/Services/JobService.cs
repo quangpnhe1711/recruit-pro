@@ -307,7 +307,7 @@ public class JobService : IJobService
 
     // NOTE: the former unguarded `UpdateJobStatusAsync` was removed during Phase 2/3 hardening. The
     // `PATCH /api/jobs/{id}/status` endpoint now routes through `PatchJobAsync`, which enforces the
-    // DepartmentHead/SystemAdmin approval guard (BR-OWN-003).
+    // DepartmentHead-only approval guard (BR-OWN-003, Phase 2.2c: SystemAdmin removed).
 
     /// <summary>
     /// Retrieves hr jobs.
@@ -315,25 +315,30 @@ public class JobService : IJobService
     /// <param name="request">The <paramref name="request"/> value.</param>
     /// <param name="currentUserId">The <paramref name="currentUserId"/> value.</param>
     /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
-    public async Task<ApiResponse<HrJobsResponseDto>> GetHrJobsAsync(HrJobQueryRequest request, Guid currentUserId)
+    public async Task<ApiResponse<HrJobsResponseDto>> GetHrJobsAsync(HrJobQueryRequest request, Guid currentUserId, IReadOnlyCollection<string>? currentUserRoles = null)
     {
         string? normalizedDepartment = string.IsNullOrWhiteSpace(request.Department) ? null : request.Department;
         string? normalizedStatus = string.IsNullOrWhiteSpace(request.ApprovalStatus) ? null : request.ApprovalStatus;
         Guid? createdByUserId = Guid.TryParse(request.CreatedByUserId, out Guid parsedCreatedByUserId)
             ? parsedCreatedByUserId
             : null;
+        // Phase 2.2c: scope the HR job list to jobs the caller owns (created, assigned recruiter, or
+        // department head). SystemAdmin is blocked at [Authorize] and cannot reach this method.
+        Guid? ownerScopeUserId = OwnershipScope.ResolveListScopeUserId(currentUserId, currentUserRoles);
         (IReadOnlyList<Job> jobs, int total) = await _jobRepository.GetPagedAsync(
             normalizedDepartment,
             normalizedStatus,
             request.Page,
             request.PageSize,
-            createdByUserId);
+            createdByUserId,
+            ownerScopeUserId);
         (IReadOnlyList<Job> allMatchingJobs, _) = await _jobRepository.GetPagedAsync(
             normalizedDepartment,
             normalizedStatus,
             1,
             int.MaxValue,
-            createdByUserId);
+            createdByUserId,
+            ownerScopeUserId);
 
         return ApiResponse<HrJobsResponseDto>.Ok(new HrJobsResponseDto
         {
@@ -380,9 +385,9 @@ public class JobService : IJobService
         string? normalizedKeyword = string.IsNullOrWhiteSpace(request.Keyword) ? null : request.Keyword.Trim();
         string? normalizedDepartment = string.IsNullOrWhiteSpace(request.Department) ? null : request.Department.Trim();
 
-        // BR-OWN-003: a DepartmentHead (or legacy Manager) only sees the queue for departments they head;
-        // a SystemAdmin sees every department's pending jobs. A non-head Manager therefore sees an empty
-        // queue — generic Manager role no longer grants cross-department approval visibility.
+        // BR-OWN-003: a DepartmentHead (or legacy Manager) only sees the queue for departments they head.
+        // A non-head Manager therefore sees an empty queue — generic Manager role no longer grants
+        // cross-department approval visibility. Phase 2.2c: SystemAdmin bypass removed.
         Guid? departmentHeadFilter = ResolveApprovalQueueHeadFilter(currentUserId, currentUserRoles);
 
         (IReadOnlyList<Job> jobs, int total) = await _jobRepository.GetPendingApprovalPagedAsync(
@@ -437,8 +442,8 @@ public class JobService : IJobService
         Job job = await GetJobAsync(jobId);
 
         // BR-OWN-003: viewing the approval detail uses the SAME authorization as approving — only the
-        // job's DepartmentHead or a SystemAdmin. Mirrors GuardDepartmentHeadApprovalAsync precedence
-        // (422 when the department has no head, then 403 when the actor is not the head/admin).
+        // job's DepartmentHead. Mirrors GuardDepartmentHeadApprovalAsync precedence
+        // (422 when the department has no head, then 403 when the actor is not the head).
         ApprovalAccess access = EvaluateApprovalAccess(job.Department?.HeadUserId, currentUserId, currentUserRoles);
         if (access == ApprovalAccess.NoHead)
         {
@@ -696,7 +701,7 @@ public class JobService : IJobService
         if (parsedStatus.HasValue)
         {
             // BR-OWN-003 / JOB-APPROVAL-FLOW.md: approval and rejection are scoped to the job's
-            // DepartmentHead (Department.HeadUserId) or a SystemAdmin. Other status moves (Draft,
+            // DepartmentHead (Department.HeadUserId). Other status moves (Draft,
             // PendingApproval, Closed) keep the existing HR/Manager behavior.
             if (parsedStatus.Value is JobStatus.Approved or JobStatus.Rejected)
             {
@@ -1021,8 +1026,8 @@ public class JobService : IJobService
     /// <param name="departmentName">The <paramref name="departmentName"/> value.</param>
     /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     /// <summary>
-    /// Authorizes a job approve/reject against the job's DepartmentHead (Department.HeadUserId) or a
-    /// SystemAdmin. Returns a non-null failure response to short-circuit; null when allowed.
+    /// Authorizes a job approve/reject against the job's DepartmentHead (Department.HeadUserId).
+    /// Returns a non-null failure response to short-circuit; null when allowed.
     /// </summary>
     private async Task<ApiResponse<HrJobStatusResponseDto>?> GuardDepartmentHeadApprovalAsync(
         Job job,
@@ -1059,8 +1064,9 @@ public class JobService : IJobService
     /// <summary>
     /// The outcome of evaluating whether a user may act on a job's approval. Shared by the approval
     /// submit guard, the approval detail guard, and (indirectly) the queue scope so all three honor the
-    /// same BR-OWN-003 rule: only the job's DepartmentHead or a SystemAdmin, and a department with no
-    /// head cannot be approved/reviewed at all.
+    /// same BR-OWN-003 rule: only the job's DepartmentHead, and a department with no head cannot be
+    /// approved/reviewed at all. Phase 2.2c: SystemAdmin bypass removed — SystemAdmin is blocked at
+    /// [Authorize] and cannot reach approval endpoints.
     /// </summary>
     private enum ApprovalAccess
     {
@@ -1080,28 +1086,21 @@ public class JobService : IJobService
         }
 
         bool isHead = currentUserId.HasValue && currentUserId.Value == headUserId.Value;
-        bool isSystemAdmin = currentUserRoles != null && currentUserRoles.Contains(RoleNames.SystemAdmin);
-        return isHead || isSystemAdmin ? ApprovalAccess.Allowed : ApprovalAccess.Forbidden;
+        return isHead ? ApprovalAccess.Allowed : ApprovalAccess.Forbidden;
     }
 
     /// <summary>
-    /// Resolves the department-head filter for the approval queue. A SystemAdmin sees every department's
-    /// pending jobs (null filter); everyone else (DepartmentHead, legacy Manager) is scoped to the
-    /// departments they head. A non-head therefore gets an empty queue — generic Manager role no longer
-    /// grants cross-department approval visibility (BR-OWN-003).
+    /// Resolves the department-head filter for the approval queue. The caller (DepartmentHead, legacy
+    /// Manager) is scoped to the departments they head. A non-head gets an empty queue — generic Manager
+    /// role no longer grants cross-department approval visibility (BR-OWN-003).
+    /// Phase 2.2c: SystemAdmin null-bypass removed.
     /// </summary>
     private static Guid? ResolveApprovalQueueHeadFilter(
         Guid? currentUserId,
         IReadOnlyCollection<string>? currentUserRoles)
     {
-        bool isSystemAdmin = currentUserRoles != null && currentUserRoles.Contains(RoleNames.SystemAdmin);
-        if (isSystemAdmin)
-        {
-            return null;
-        }
-
-        // Non-admin with no identity must never fall through to the unscoped (all-departments) query;
-        // Guid.Empty never matches a real Department.HeadUserId, so the queue comes back empty.
+        // Guid.Empty never matches a real Department.HeadUserId, so the queue comes back empty for
+        // callers without a resolved userId (defense-in-depth).
         return currentUserId ?? Guid.Empty;
     }
 

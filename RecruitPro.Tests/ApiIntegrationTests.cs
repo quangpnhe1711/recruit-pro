@@ -149,4 +149,145 @@ public sealed class ApiIntegrationTests : IClassFixture<PostgresTestFixture>, IA
         json.RootElement.GetProperty("success").GetBoolean().Should().BeFalse();
         json.RootElement.GetProperty("message").GetString()!.ToLowerInvariant().Should().Contain("not found");
     }
+
+    // ----------------------------------------------------------------------------------------------
+    // Phase 2 security regression tests
+    // ----------------------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task RecentApplications_PII_Endpoint_Anonymous401_Candidate403_HrOwner200()
+    {
+        string recentUrl = $"/api/jobs/{TestDataSeeder.ApprovedJobId}/applications/recent";
+
+        HttpResponseMessage anonymous = await _client.GetAsync(recentUrl);
+        anonymous.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+
+        PostgresTestFixture.SetBearerToken(_client, _factory.Fixture.CreateJwt(TestDataSeeder.CandidateUserId.ToString(), "Candidate"));
+        HttpResponseMessage candidate = await _client.GetAsync(recentUrl);
+        candidate.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+
+        PostgresTestFixture.SetBearerToken(_client, _factory.Fixture.CreateJwt(TestDataSeeder.HrUserId.ToString(), "HR"));
+        HttpResponseMessage hrOwner = await _client.GetAsync(recentUrl);
+        hrOwner.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task JobApplications_Should_Forbid_Hr_Outside_Job_Ownership_And_Allow_Owner_NotSystemAdmin()
+    {
+        string url = $"/api/jobs/{TestDataSeeder.ApprovedJobId}/applications?page=1&pageSize=10";
+
+        // HR that owns neither the job nor the department -> 403 even with a valid HR role.
+        PostgresTestFixture.SetBearerToken(_client, _factory.Fixture.CreateJwt(Guid.NewGuid().ToString(), "HR"));
+        HttpResponseMessage outsider = await _client.GetAsync(url);
+        outsider.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+
+        PostgresTestFixture.SetBearerToken(_client, _factory.Fixture.CreateJwt(TestDataSeeder.HrUserId.ToString(), "HR"));
+        HttpResponseMessage owner = await _client.GetAsync(url);
+        owner.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        // SystemAdmin-only → 403: Phase 2.2b removed CanAccessJob bypass; no HR/Manager role → forbidden.
+        PostgresTestFixture.SetBearerToken(_client, _factory.Fixture.CreateJwt(TestDataSeeder.SystemAdminUserId.ToString(), "SystemAdmin"));
+        HttpResponseMessage admin = await _client.GetAsync(url);
+        admin.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task ApplicationReviewDetail_Should_Be_Scoped_To_Owner_And_DeptHead_NotSystemAdmin()
+    {
+        string url = $"/api/hr/applications/{TestDataSeeder.ApplicationId}";
+
+        // Owning recruiter (HR) -> allowed.
+        PostgresTestFixture.SetBearerToken(_client, _factory.Fixture.CreateJwt(TestDataSeeder.HrUserId.ToString(), "HR"));
+        (await _client.GetAsync(url)).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        // Department head (Manager role, heads Engineering) -> allowed.
+        PostgresTestFixture.SetBearerToken(_client, _factory.Fixture.CreateJwt(TestDataSeeder.ManagerUserId.ToString(), "Manager"));
+        (await _client.GetAsync(url)).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        // SystemAdmin-only → 403: Phase 2.2b removed the ownership bypass; SystemAdmin is not a
+        // business-data superuser and does not satisfy CanAccessApplication without an HR/Manager role.
+        PostgresTestFixture.SetBearerToken(_client, _factory.Fixture.CreateJwt(TestDataSeeder.SystemAdminUserId.ToString(), "SystemAdmin"));
+        (await _client.GetAsync(url)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+
+        // HR with no ownership over this application -> forbidden, despite the HR role.
+        PostgresTestFixture.SetBearerToken(_client, _factory.Fixture.CreateJwt(Guid.NewGuid().ToString(), "HR"));
+        HttpResponseMessage outsider = await _client.GetAsync(url);
+        outsider.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task HrApplicationsList_Should_Be_Empty_For_OutOfScope_Hr_And_NonEmpty_For_Owner_And_Admin()
+    {
+        const string url = "/api/hr/applications?page=1&pageSize=10";
+
+        PostgresTestFixture.SetBearerToken(_client, _factory.Fixture.CreateJwt(Guid.NewGuid().ToString(), "HR"));
+        var outsiderJson = await ApiResponseAssertions.AssertNo500AndEnvelopeAsync(await _client.GetAsync(url));
+        outsiderJson.RootElement.GetProperty("data").GetProperty("items").GetArrayLength().Should().Be(0);
+
+        PostgresTestFixture.SetBearerToken(_client, _factory.Fixture.CreateJwt(TestDataSeeder.HrUserId.ToString(), "HR"));
+        var ownerJson = await ApiResponseAssertions.AssertNo500AndEnvelopeAsync(await _client.GetAsync(url));
+        ownerJson.RootElement.GetProperty("data").GetProperty("items").GetArrayLength().Should().BeGreaterThan(0);
+
+        PostgresTestFixture.SetBearerToken(_client, _factory.Fixture.CreateJwt(TestDataSeeder.SystemAdminUserId.ToString(), "SystemAdmin"));
+        var adminJson = await ApiResponseAssertions.AssertNo500AndEnvelopeAsync(await _client.GetAsync(url));
+        adminJson.RootElement.GetProperty("data").GetProperty("items").GetArrayLength().Should().BeGreaterThan(0);
+    }
+
+    [Fact]
+    public async Task HrCandidateDetail_Should_Hide_Candidate_From_OutOfScope_Hr()
+    {
+        string url = $"/api/hr/candidates/{TestDataSeeder.CandidateProfileId}";
+
+        // Owning recruiter sees the candidate (reached through an owned application).
+        PostgresTestFixture.SetBearerToken(_client, _factory.Fixture.CreateJwt(TestDataSeeder.HrUserId.ToString(), "HR"));
+        (await _client.GetAsync(url)).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        // HR with no owned application for this candidate -> 404 (existence is not leaked).
+        PostgresTestFixture.SetBearerToken(_client, _factory.Fixture.CreateJwt(Guid.NewGuid().ToString(), "HR"));
+        (await _client.GetAsync(url)).StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task InterviewEndpoints_Should_No_Longer_Be_Anonymous()
+    {
+        // Previously these were completely unauthenticated and leaked candidate interview PII.
+        HttpResponseMessage hrAnonymous = await _client.GetAsync("/api/hr/interviews?page=1&pageSize=10");
+        hrAnonymous.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+
+        PostgresTestFixture.SetBearerToken(_client, _factory.Fixture.CreateJwt(TestDataSeeder.CandidateUserId.ToString(), "Candidate"));
+        HttpResponseMessage hrAsCandidate = await _client.GetAsync("/api/hr/interviews?page=1&pageSize=10");
+        hrAsCandidate.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+
+        PostgresTestFixture.SetBearerToken(_client, _factory.Fixture.CreateJwt(TestDataSeeder.HrUserId.ToString(), "HR"));
+        HttpResponseMessage hrAsHr = await _client.GetAsync("/api/hr/interviews?page=1&pageSize=10");
+        hrAsHr.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        // The candidate route is scoped to the authenticated candidate; without a token it is rejected.
+        _client.DefaultRequestHeaders.Authorization = null;
+        HttpResponseMessage candidateAnonymous = await _client.GetAsync("/api/candidate/interviews");
+        candidateAnonymous.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task OfferEndpoints_Should_No_Longer_Be_Anonymous()
+    {
+        // Sending an offer was previously callable without authentication.
+        HttpResponseMessage anonymousGet = await _client.GetAsync($"/api/hr/applications/{TestDataSeeder.ApplicationId}/offer");
+        anonymousGet.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+
+        PostgresTestFixture.SetBearerToken(_client, _factory.Fixture.CreateJwt(TestDataSeeder.CandidateUserId.ToString(), "Candidate"));
+        HttpResponseMessage candidateSend = await _client.PostAsJsonAsync(
+            $"/api/hr/applications/{TestDataSeeder.ApplicationId}/offer/send",
+            new { });
+        candidateSend.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task DashboardAndDiscovery_PII_Endpoints_Should_Require_Auth()
+    {
+        (await _client.GetAsync("/api/hr/dashboard")).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        (await _client.GetAsync("/api/manager/dashboard")).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        (await _client.GetAsync("/api/hr/talent-pool/search")).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        (await _client.GetAsync("/api/copilot/jobs")).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
 }

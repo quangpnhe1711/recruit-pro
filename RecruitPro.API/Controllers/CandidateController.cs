@@ -19,6 +19,10 @@ public class CandidateController : ControllerBase
 
     [HttpPost("api/candidates/register")]
     [HttpPost("api/candidate/register")]
+    // ~6 MB = 5 MB CV cap (CandidateService) + multipart/form-field overhead. Framework rejects larger
+    // bodies before model binding; the service still enforces the precise 5 MB on the file content.
+    [RequestSizeLimit(6_291_456)]
+    [RequestFormLimits(MultipartBodyLengthLimit = 6_291_456)]
     public async Task<IActionResult> RegisterAsync([FromForm] CandidateRegisterRequest request, IFormFile? resume)
     {
         await using Stream? stream = resume?.OpenReadStream();
@@ -53,6 +57,8 @@ public class CandidateController : ControllerBase
 
     [HttpPost("api/candidate/profile/save")]
     [Authorize(Roles = "Candidate")]
+    [RequestSizeLimit(6_291_456)]
+    [RequestFormLimits(MultipartBodyLengthLimit = 6_291_456)]
     public async Task<IActionResult> SaveProfile([FromForm] string payload, IFormFile? resume)
     {
         UpdateCandidateProfileRequest? request = JsonSerializer.Deserialize<UpdateCandidateProfileRequest>(
@@ -108,6 +114,8 @@ public class CandidateController : ControllerBase
 
     [HttpPost("api/candidate/profile/resume/parse")]
     [Authorize(Roles = "Candidate")]
+    [RequestSizeLimit(6_291_456)]
+    [RequestFormLimits(MultipartBodyLengthLimit = 6_291_456)]
     public async Task<IActionResult> ParseResume(IFormFile resume)
     {
         await using Stream resumeStream = resume.OpenReadStream();
@@ -117,6 +125,8 @@ public class CandidateController : ControllerBase
 
     [HttpPost("api/candidate/profile/resume")]
     [Authorize(Roles = "Candidate")]
+    [RequestSizeLimit(6_291_456)]
+    [RequestFormLimits(MultipartBodyLengthLimit = 6_291_456)]
     public async Task<IActionResult> UploadResume(IFormFile resume)
     {
         await using Stream resumeStream = resume.OpenReadStream();
@@ -128,7 +138,7 @@ public class CandidateController : ControllerBase
     [Authorize(Roles = "HR,Manager")]
     public async Task<IActionResult> GetCandidates([FromQuery] int page = 1, [FromQuery] int pageSize = 10, [FromQuery] string? keyword = null, [FromQuery] string? status = null, [FromQuery] string? source = null)
     {
-        var result = await _candidateService.GetCandidatesAsync(page, pageSize, keyword, status, source);
+        var result = await _candidateService.GetCandidatesAsync(page, pageSize, keyword, status, source, User.TryGetCurrentUserId(), User.GetRoles());
         return StatusCode(result.StatusCode, result);
     }
 
@@ -136,7 +146,7 @@ public class CandidateController : ControllerBase
     [Authorize(Roles = "HR,Manager")]
     public async Task<IActionResult> GetCandidateDetail(string candidateId)
     {
-        var result = await _candidateService.GetCandidateDetailAsync(candidateId);
+        var result = await _candidateService.GetCandidateDetailAsync(candidateId, User.TryGetCurrentUserId(), User.GetRoles());
         return StatusCode(result.StatusCode, result);
     }
 

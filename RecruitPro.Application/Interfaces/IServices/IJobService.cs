@@ -17,7 +17,7 @@ public interface IJobService
     Task<ApiResponse<DepartmentResponseDto>> UpdateDepartmentAsync(string departmentId, UpdateDepartmentRequest request);
     Task<ApiResponse<IReadOnlyList<SkillLookupDto>>> GetSkillsAsync();
     Task<ApiResponse<JobDetailScreenDto>> GetJobScreenDetailAsync(string jobId);
-    Task<ApiResponse<HrJobsResponseDto>> GetHrJobsAsync(HrJobQueryRequest request, Guid currentUserId);
+    Task<ApiResponse<HrJobsResponseDto>> GetHrJobsAsync(HrJobQueryRequest request, Guid currentUserId, IReadOnlyCollection<string>? currentUserRoles = null);
     // BR-OWN-003: the approval queue/detail are scoped to the job's DepartmentHead (Department.HeadUserId)
     // or a SystemAdmin. currentUserId/currentUserRoles drive that scoping (null = legacy/unscoped caller).
     Task<ApiResponse<ManagerJobApprovalQueueResponseDto>> GetManagerApprovalQueueAsync(ManagerJobApprovalQueryRequest request, Guid? currentUserId = null, IReadOnlyCollection<string>? currentUserRoles = null);

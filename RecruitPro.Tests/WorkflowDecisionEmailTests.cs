@@ -19,6 +19,8 @@ namespace RecruitPro.Tests;
 /// </summary>
 public sealed class WorkflowDecisionEmailTests
 {
+    // Stable ID used as both actor and AssignedRecruiterId so workflow tests pass ownership checks.
+    private static readonly Guid WorkflowActorId = Guid.Parse("A0000000-0000-0000-0000-000000000001");
     // ---- T-WF-001: Screening -> ManagerReview records the Head Review hand-off date ----
     [Fact]
     public async Task ScreeningToManagerReview_SetsDepartmentHeadReviewRequestedAt()
@@ -82,7 +84,7 @@ public sealed class WorkflowDecisionEmailTests
         Domain.Entities.Application application = BuildApplication(ApplicationStatus.Interview);
         OfferService service = BuildOfferService(application, out _);
 
-        var response = await service.SendOfferAsync(application.Id.ToString(), Guid.NewGuid(), BuildOfferRequest());
+        var response = await service.SendOfferAsync(application.Id.ToString(), WorkflowActorId, new[] { "HR" }, BuildOfferRequest());
 
         response.StatusCode.Should().Be(422);
         response.ErrorCode.Should().Be(ErrorCodes.InterviewRequired);
@@ -112,7 +114,7 @@ public sealed class WorkflowDecisionEmailTests
         application.Interviews.Add(new Interview { Id = Guid.NewGuid(), ApplicationId = application.Id, Status = InterviewStatus.Scheduled });
         OfferService service = BuildOfferService(application, out _);
 
-        var response = await service.SendOfferAsync(application.Id.ToString(), Guid.NewGuid(), BuildOfferRequest());
+        var response = await service.SendOfferAsync(application.Id.ToString(), WorkflowActorId, new[] { "HR" }, BuildOfferRequest());
 
         response.StatusCode.Should().Be(422);
         response.ErrorCode.Should().Be(ErrorCodes.InterviewNotCompleted);
@@ -175,7 +177,7 @@ public sealed class WorkflowDecisionEmailTests
         application.Interviews.Add(new Interview { Id = Guid.NewGuid(), ApplicationId = application.Id, Status = InterviewStatus.Completed });
         OfferService service = BuildOfferService(application, out Mock<IEmailService> emailService);
 
-        var response = await service.SendOfferAsync(application.Id.ToString(), Guid.NewGuid(), BuildOfferRequest());
+        var response = await service.SendOfferAsync(application.Id.ToString(), WorkflowActorId, new[] { "HR" }, BuildOfferRequest());
 
         response.StatusCode.Should().Be(200);
         application.Status.Should().Be(ApplicationStatus.Offer);
@@ -287,7 +289,9 @@ public sealed class WorkflowDecisionEmailTests
         });
         ApplicationService service = BuildApplicationService(application);
 
-        var response = await service.GetApplicationReviewDetailAsync(application.Id.ToString());
+        // Read-detail is ownership-scoped; the owning recruiter (WorkflowActorId == AssignedRecruiterId) can see it.
+        var response = await service.GetApplicationReviewDetailAsync(
+            application.Id.ToString(), WorkflowActorId, new[] { "HR" });
 
         response.StatusCode.Should().Be(200);
         response.Data!.Status.Should().Be("Interview");
@@ -322,7 +326,7 @@ public sealed class WorkflowDecisionEmailTests
             UserId = candidateId,
             JobId = jobId,
             Status = status,
-            AssignedRecruiterId = Guid.NewGuid(),
+            AssignedRecruiterId = WorkflowActorId,
             AssignedDepartmentHeadId = assignedHeadId,
             AppliedAt = new DateTime(2026, 6, 1),
             User = new User { Id = candidateId, Username = "candidate", FullName = "Candidate", Email = "c@test.com" },

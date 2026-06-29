@@ -46,10 +46,10 @@ public class JobController : ControllerBase
     }
 
     // Hardened: this previously-public endpoint now requires auth and routes through the same guarded
-    // path as PATCH /api/hr/jobs/{id}/status — approve/reject is scoped to the DepartmentHead or
-    // SystemAdmin (BR-OWN-003). It is an alias of the HR status endpoint and returns the same shape.
+    // path as PATCH /api/hr/jobs/{id}/status — approve/reject is scoped to the job's DepartmentHead
+    // (BR-OWN-003). It is an alias of the HR status endpoint and returns the same shape.
     [HttpPatch("api/jobs/{jobId}/status")]
-    [Authorize(Roles = "HR,Manager,HeadDepartment,SystemAdmin")]
+    [Authorize(Roles = "HR,Manager,HeadDepartment")]
     public async Task<IActionResult> UpdateJobStatus(string jobId, [FromBody] UpdateJobStatusRequest request)
     {
         var result = await _jobService.PatchJobAsync(jobId, new PatchJobRequest
@@ -63,7 +63,7 @@ public class JobController : ControllerBase
     [Authorize(Roles = "HR,Manager")]
     public async Task<IActionResult> GetHrJobs([FromQuery] HrJobQueryRequest request)
     {
-        var result = await _jobService.GetHrJobsAsync(request, User.GetCurrentUserId());
+        var result = await _jobService.GetHrJobsAsync(request, User.GetCurrentUserId(), User.GetRoles());
         return StatusCode(result.StatusCode, result);
     }
 
@@ -75,12 +75,12 @@ public class JobController : ControllerBase
         return StatusCode(result.StatusCode, result);
     }
 
-    // BR-OWN-003: the approval queue is the DepartmentHead's workflow surface (SystemAdmin sees all).
-    // Manager is kept temporarily for compatibility, but the service scopes the queue to the departments
+    // BR-OWN-003: the approval queue is the DepartmentHead's workflow surface.
+    // Manager is kept for compatibility, but the service scopes the queue to the departments
     // the caller heads — a non-head Manager sees an empty queue, not every department's jobs. Route name
     // kept as `manager/...` for compatibility.
     [HttpGet("api/manager/jobs/approval-queue")]
-    [Authorize(Roles = "Manager,HeadDepartment,SystemAdmin")]
+    [Authorize(Roles = "Manager,HeadDepartment")]
     public async Task<IActionResult> GetManagerApprovalQueue([FromQuery] ManagerJobApprovalQueryRequest request)
     {
         var result = await _jobService.GetManagerApprovalQueueAsync(request, User.TryGetCurrentUserId(), User.GetRoles());
@@ -88,9 +88,9 @@ public class JobController : ControllerBase
     }
 
     // BR-OWN-003: viewing the approval detail uses the same authorization as approving — the job's
-    // DepartmentHead or a SystemAdmin (service returns 403/422 otherwise).
+    // DepartmentHead (service returns 403/422 otherwise).
     [HttpGet("api/manager/jobs/{jobId}/approval-detail")]
-    [Authorize(Roles = "Manager,HeadDepartment,SystemAdmin")]
+    [Authorize(Roles = "Manager,HeadDepartment")]
     public async Task<IActionResult> GetManagerApprovalDetail(string jobId)
     {
         var result = await _jobService.GetManagerApprovalDetailAsync(jobId, User.TryGetCurrentUserId(), User.GetRoles());
@@ -105,11 +105,11 @@ public class JobController : ControllerBase
         return StatusCode(result.StatusCode, result);
     }
 
-    // SystemAdmin + HeadDepartment are admitted here so the department head / admin can approve/reject;
+    // HeadDepartment is admitted here so the department head can approve/reject;
     // the service guard (BR-OWN-003) restricts the Approved/Rejected transition to the job's department
-    // head or a SystemAdmin. General field edits remain available to HR/Manager.
+    // head. General field edits remain available to HR/Manager.
     [HttpPatch("api/hr/jobs/{jobId}")]
-    [Authorize(Roles = "HR,Manager,HeadDepartment,SystemAdmin")]
+    [Authorize(Roles = "HR,Manager,HeadDepartment")]
     public async Task<IActionResult> PatchJob(string jobId, [FromBody] PatchJobRequest request)
     {
         var result = await _jobService.PatchJobAsync(jobId, request, User.TryGetCurrentUserId(), User.GetRoles());
@@ -117,7 +117,7 @@ public class JobController : ControllerBase
     }
 
     [HttpPatch("api/hr/jobs/{jobId}/status")]
-    [Authorize(Roles = "HR,Manager,HeadDepartment,SystemAdmin")]
+    [Authorize(Roles = "HR,Manager,HeadDepartment")]
     public async Task<IActionResult> PatchHrJobStatus(string jobId, [FromBody] UpdateJobStatusRequest request)
     {
         var result = await _jobService.PatchJobAsync(jobId, new PatchJobRequest

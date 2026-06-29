@@ -265,9 +265,15 @@ public class ApplicationService : IApplicationService
     /// <param name="page">The <paramref name="page"/> value.</param>
     /// <param name="pageSize">The <paramref name="pageSize"/> value.</param>
     /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
-    public async Task<ApiResponse<PaginatedResponseDto<ApplicationListItemDto>>> GetJobApplicationsAsync(string jobId, int page = 1, int pageSize = 10)
+    public async Task<ApiResponse<PaginatedResponseDto<ApplicationListItemDto>>> GetJobApplicationsAsync(string jobId, int page = 1, int pageSize = 10, Guid? currentUserId = null, IReadOnlyCollection<string>? currentUserRoles = null)
     {
         Job job = await GetJobAsync(jobId);
+        if (!OwnershipScope.CanAccessJob(job, currentUserId, currentUserRoles))
+        {
+            return ApiResponse<PaginatedResponseDto<ApplicationListItemDto>>.Forbidden(
+                "Bạn không có quyền xem ứng viên của tin tuyển dụng này.", errorCode: ErrorCodes.Forbidden);
+        }
+
         (IReadOnlyList<Domain.Entities.Application> applications, int total) = await _applicationRepository.GetByJobIdAsync(job.Id, page, pageSize);
         List<ApplicationListItemDto> items = applications.Select(MapApplicationToDto).ToList();
 
@@ -285,9 +291,15 @@ public class ApplicationService : IApplicationService
     /// </summary>
     /// <param name="jobId">The <paramref name="jobId"/> value.</param>
     /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
-    public async Task<ApiResponse<IReadOnlyList<RecentJobApplicationDto>>> GetRecentApplicationsAsync(string jobId)
+    public async Task<ApiResponse<IReadOnlyList<RecentJobApplicationDto>>> GetRecentApplicationsAsync(string jobId, Guid? currentUserId = null, IReadOnlyCollection<string>? currentUserRoles = null)
     {
         Job job = await GetJobAsync(jobId);
+        if (!OwnershipScope.CanAccessJob(job, currentUserId, currentUserRoles))
+        {
+            return ApiResponse<IReadOnlyList<RecentJobApplicationDto>>.Forbidden(
+                "Bạn không có quyền xem ứng viên của tin tuyển dụng này.", errorCode: ErrorCodes.Forbidden);
+        }
+
         IReadOnlyList<Domain.Entities.Application> applications = await _applicationRepository.GetRecentByJobIdAsync(job.Id, 5);
 
         List<RecentJobApplicationDto> items = applications.Select(application => new RecentJobApplicationDto
@@ -517,11 +529,14 @@ public class ApplicationService : IApplicationService
     /// <param name="status">The <paramref name="status"/> value.</param>
     /// <param name="jobId">The <paramref name="jobId"/> value.</param>
     /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
-    public async Task<ApiResponse<PaginatedResponseDto<ApplicationListItemDto>>> GetHrApplicationsAsync(int page, int pageSize, string? keyword, string? department, string? status, string? jobId)
+    public async Task<ApiResponse<PaginatedResponseDto<ApplicationListItemDto>>> GetHrApplicationsAsync(int page, int pageSize, string? keyword, string? department, string? status, string? jobId, Guid? currentUserId = null, IReadOnlyCollection<string>? currentUserRoles = null)
     {
         ApplicationStatus? parsedStatus = ParseApplicationStatus(status);
         Guid? parsedJobId = Guid.TryParse(jobId, out Guid jobGuid) ? jobGuid : null;
-        (IReadOnlyList<Domain.Entities.Application> applications, int total) = await _applicationRepository.GetPagedAsync(page, pageSize, keyword, department, parsedStatus, parsedJobId);
+        // Phase 2.2: role grant is not enough — scope the list to applications the caller owns. SystemAdmin
+        // is unscoped (null); any other caller is scoped to their own owned applications.
+        Guid? ownerScopeUserId = OwnershipScope.ResolveListScopeUserId(currentUserId, currentUserRoles);
+        (IReadOnlyList<Domain.Entities.Application> applications, int total) = await _applicationRepository.GetPagedAsync(page, pageSize, keyword, department, parsedStatus, parsedJobId, ownerScopeUserId);
 
         return ApiResponse<PaginatedResponseDto<ApplicationListItemDto>>.Ok(new PaginatedResponseDto<ApplicationListItemDto>
         {
@@ -577,7 +592,7 @@ public class ApplicationService : IApplicationService
     /// </summary>
     /// <param name="applicationId">The <paramref name="applicationId"/> value.</param>
     /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
-    public async Task<ApiResponse<ApplicationReviewDetailDto>> GetApplicationReviewDetailAsync(string applicationId)
+    public async Task<ApiResponse<ApplicationReviewDetailDto>> GetApplicationReviewDetailAsync(string applicationId, Guid? currentUserId = null, IReadOnlyCollection<string>? currentUserRoles = null)
     {
         if (!Guid.TryParse(applicationId, out Guid applicationGuid))
         {
@@ -588,6 +603,12 @@ public class ApplicationService : IApplicationService
         if (application == null)
         {
             return ApiResponse<ApplicationReviewDetailDto>.NotFound("Không tìm thấy hồ sơ ứng tuyển.");
+        }
+
+        if (!OwnershipScope.CanAccessApplication(application, currentUserId, currentUserRoles))
+        {
+            return ApiResponse<ApplicationReviewDetailDto>.Forbidden(
+                "Bạn không có quyền truy cập hồ sơ ứng tuyển này.", errorCode: ErrorCodes.Forbidden);
         }
 
         return ApiResponse<ApplicationReviewDetailDto>.Ok(MapApplicationToReviewDetailDto(application));
@@ -615,6 +636,10 @@ public class ApplicationService : IApplicationService
         {
             return ApiResponse<ApplicationReviewDetailDto>.NotFound("Không tìm thấy hồ sơ ứng tuyển.");
         }
+
+        // NOTE: write-authorization for decision transitions is enforced by the existing head/recruiter
+        // workflow guard further below (BR-OWN-003/007), which deliberately permits HR early-stage
+        // transitions without per-application ownership. We do NOT add a blanket ownership gate here.
 
         ApplicationStatus? targetStatus = ParseApplicationStatus(request.TargetStatus);
         if (!targetStatus.HasValue)
@@ -762,6 +787,9 @@ public class ApplicationService : IApplicationService
             return ApiResponse<ApplicationReviewDetailDto>.NotFound("Không tìm thấy hồ sơ ứng tuyển.");
         }
 
+        // Write-authorization for the rejection flow follows the existing workflow guard (interview
+        // completion + transition rules below); no blanket ownership gate is added here.
+
         // INV-009: an application in Offer is candidate-owned (accept/decline); a reviewer must not reject
         // out of Offer. Any other non-allowed transition to Rejected is also an invalid business state.
         if (application.Status == ApplicationStatus.Offer
@@ -888,7 +916,7 @@ public class ApplicationService : IApplicationService
     /// </summary>
     /// <param name="applicationId">The <paramref name="applicationId"/> value.</param>
     /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
-    public async Task<ApiResponse<ResumeFileResponseDto>> GetApplicationCvAsync(string applicationId)
+    public async Task<ApiResponse<ResumeFileResponseDto>> GetApplicationCvAsync(string applicationId, Guid? currentUserId = null, IReadOnlyCollection<string>? currentUserRoles = null)
     {
         if (!Guid.TryParse(applicationId, out Guid applicationGuid))
         {
@@ -899,6 +927,12 @@ public class ApplicationService : IApplicationService
         if (application == null)
         {
             return ApiResponse<ResumeFileResponseDto>.NotFound("Không tìm thấy hồ sơ ứng tuyển.");
+        }
+
+        if (!OwnershipScope.CanAccessApplication(application, currentUserId, currentUserRoles))
+        {
+            return ApiResponse<ResumeFileResponseDto>.Forbidden(
+                "Bạn không có quyền xem CV của hồ sơ ứng tuyển này.", errorCode: ErrorCodes.Forbidden);
         }
 
         CandidateResume? resume = application.User.CandidateProfile == null

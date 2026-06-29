@@ -1,11 +1,16 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using RecruitPro.API.Extensions;
 using RecruitPro.Application.DTOs.Request.Copilot;
 using RecruitPro.Application.Interfaces.IServices;
 
 namespace RecruitPro.API.Controllers;
 
+// Phase 2.2b: SystemAdmin removed. Copilot is a business-data tool (candidate ranking, job criteria,
+// conversation history) restricted to HR/Manager business roles. Job-ownership check for the
+// candidate pool endpoint is enforced in the service layer.
 [ApiController]
+[Authorize(Roles = "HR,Manager")]
 public class CopilotController : ControllerBase
 {
     private readonly ICopilotService _copilotService;
@@ -39,7 +44,7 @@ public class CopilotController : ControllerBase
     [HttpGet("api/copilot/jobs/{jobId:guid}/candidates")]
     public async Task<IActionResult> GetCandidatePool(Guid jobId)
     {
-        var result = await _copilotService.GetCandidatePoolAsync(jobId);
+        var result = await _copilotService.GetCandidatePoolAsync(jobId, User.TryGetCurrentUserId(), User.GetRoles());
         return StatusCode(result.StatusCode, result);
     }
 

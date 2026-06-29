@@ -44,6 +44,23 @@ public class CandidateService : ICandidateService
     private const string ResumeParseStatusFailed = "Failed";
     private const string ResumeEmbeddingStatusNotStarted = "NotStarted";
     private const int MinimumResumeTextLength = 50;
+
+    // Resume upload hardening: cap the accepted CV at 5 MB and only accept the document formats we can
+    // actually parse. The stream is bounded while it is buffered so an oversized upload is rejected
+    // before the whole file is pulled into memory.
+    private const long MaxResumeFileSizeBytes = 5L * 1024 * 1024;
+    private static readonly IReadOnlyDictionary<string, string[]> AllowedResumeContentTypes =
+        new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
+        {
+            [".pdf"] = ["application/pdf"],
+            [".docx"] =
+            [
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "application/zip",
+                "application/octet-stream"
+            ],
+            [".txt"] = ["text/plain", "application/octet-stream"]
+        };
     private const string ResumeExtractionFailureMessage = "Không đọc được nội dung CV. Hãy dùng file PDF hoặc DOCX có thể chọn văn bản.";
     private const string ResumeAiRetryMessage = "CV đã tải lên, nhưng AI đang bận. Hệ thống sẽ thử lại sau.";
     private const string ResumeAiFailedMessage = "CV đã tải lên, nhưng chưa phân tích được lúc này. Bạn có thể thử lại sau.";
@@ -104,6 +121,28 @@ public class CandidateService : ICandidateService
     /// <param name="resumeContentType">The <paramref name="resumeContentType"/> value.</param>
     /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<CandidateRegisterResponseDto>> RegisterAsync(CandidateRegisterRequest request, Stream? resumeStream, string? resumeFileName, string? resumeContentType = null)
+    {
+        // Validate and size-bound the optional resume up front (before opening the transaction or
+        // touching storage) so a bad/oversized file is rejected without creating a half-built account.
+        MemoryStream? bufferedResume = null;
+        if (resumeStream != null && !string.IsNullOrWhiteSpace(resumeFileName))
+        {
+            ResumeBufferResult buffered = await ValidateAndBufferResumeAsync(resumeStream, resumeFileName, resumeContentType);
+            if (!buffered.IsValid)
+            {
+                return ApiResponse<CandidateRegisterResponseDto>.BadRequest(buffered.ErrorMessage!, buffered.ErrorCode);
+            }
+
+            bufferedResume = buffered.Buffer;
+        }
+
+        await using (bufferedResume)
+        {
+            return await RegisterInternalAsync(request, bufferedResume, resumeFileName, resumeContentType);
+        }
+    }
+
+    private async Task<ApiResponse<CandidateRegisterResponseDto>> RegisterInternalAsync(CandidateRegisterRequest request, Stream? resumeStream, string? resumeFileName, string? resumeContentType)
     {
         string? uploadedObjectName = null;
         await _unitOfWork.BeginTransactionAsync();
@@ -216,12 +255,16 @@ public class CandidateService : ICandidateService
     /// <param name="status">The <paramref name="status"/> value.</param>
     /// <param name="source">The <paramref name="source"/> value.</param>
     /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
-    public async Task<ApiResponse<HrCandidatesResponseDto>> GetCandidatesAsync(int page, int pageSize, string? keyword, string? status, string? source)
+    public async Task<ApiResponse<HrCandidatesResponseDto>> GetCandidatesAsync(int page, int pageSize, string? keyword, string? status, string? source, Guid? currentUserId = null, IReadOnlyCollection<string>? currentUserRoles = null)
     {
         (IReadOnlyList<CandidateProfile> candidates, int total) = await _candidateRepository.GetPagedAsync(page, pageSize, keyword);
 
+        // Phase 2.2c: SystemAdmin is blocked at [Authorize] and can no longer reach this method.
+        // A caller may only see candidates they reach through an application they own.
         IEnumerable<CandidateProfile> visibleCandidates = candidates.Where(candidate =>
-            candidate.User.Applications.Any() || IsProfileComplete(candidate));
+            (candidate.User.Applications.Any() || IsProfileComplete(candidate))
+            && candidate.User.Applications.Any(application =>
+                OwnershipScope.CanAccessApplication(application, currentUserId, currentUserRoles)));
 
         IEnumerable<HrCandidateListItemDto> items = visibleCandidates.Select(candidate =>
         {
@@ -258,7 +301,7 @@ public class CandidateService : ICandidateService
     /// </summary>
     /// <param name="candidateId">The <paramref name="candidateId"/> value.</param>
     /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
-    public async Task<ApiResponse<HrCandidateDetailDto>> GetCandidateDetailAsync(string candidateId)
+    public async Task<ApiResponse<HrCandidateDetailDto>> GetCandidateDetailAsync(string candidateId, Guid? currentUserId = null, IReadOnlyCollection<string>? currentUserRoles = null)
     {
         if (!Guid.TryParse(candidateId, out Guid candidateGuid))
         {
@@ -267,6 +310,15 @@ public class CandidateService : ICandidateService
 
         CandidateProfile? profile = await _candidateRepository.GetHrDetailByIdAsync(candidateGuid);
         if (profile == null)
+        {
+            return ApiResponse<HrCandidateDetailDto>.NotFound("Không tìm thấy ứng viên.");
+        }
+
+        // Phase 2.2c: a caller may only open a candidate they reach through an owned application.
+        // SystemAdmin is blocked at [Authorize] and can no longer reach this method.
+        // Return NotFound (not Forbidden) so an out-of-scope caller cannot probe which candidate ids exist.
+        if (!profile.User.Applications.Any(application =>
+                OwnershipScope.CanAccessApplication(application, currentUserId, currentUserRoles)))
         {
             return ApiResponse<HrCandidateDetailDto>.NotFound("Không tìm thấy ứng viên.");
         }
@@ -512,16 +564,13 @@ public class CandidateService : ICandidateService
             return await UpdateProfileAsync(userId, request);
         }
 
-        try
+        ResumeBufferResult buffered = await ValidateAndBufferResumeAsync(resumeStream, resumeFileName, resumeContentType);
+        if (!buffered.IsValid)
         {
-            ValidateSupportedResumeFile(resumeFileName);
-        }
-        catch (NotSupportedException exception)
-        {
-            return ApiResponse<CandidateProfileResponseDto>.BadRequest(exception.Message);
+            return ApiResponse<CandidateProfileResponseDto>.BadRequest(buffered.ErrorMessage!, buffered.ErrorCode);
         }
 
-        await using MemoryStream bufferedResume = await CopyToMemoryAsync(resumeStream);
+        await using MemoryStream bufferedResume = buffered.Buffer!;
         CandidateProfile profile = await GetOrCreateProfileEntityAsync(userId);
         await ApplyProfileUpdateAsync(profile, request);
 
@@ -722,13 +771,14 @@ public class CandidateService : ICandidateService
     /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<CandidateResumeParseResponseDto>> ParseResumeAsync(Guid userId, Stream resumeStream, string fileName, string? contentType = null)
     {
-        if (resumeStream == null || string.IsNullOrWhiteSpace(fileName))
+        ResumeBufferResult buffered = await ValidateAndBufferResumeAsync(resumeStream, fileName, contentType);
+        if (!buffered.IsValid)
         {
-            return ApiResponse<CandidateResumeParseResponseDto>.BadRequest("Please select a valid resume file.");
+            return ApiResponse<CandidateResumeParseResponseDto>.BadRequest(buffered.ErrorMessage!, buffered.ErrorCode);
         }
 
         CandidateProfile profile = await GetProfileEntityAsync(userId);
-        await using MemoryStream bufferedResume = await CopyToMemoryAsync(resumeStream);
+        await using MemoryStream bufferedResume = buffered.Buffer!;
         string extractedText;
         try
         {
@@ -776,23 +826,15 @@ public class CandidateService : ICandidateService
     /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<ResumeUploadResponseDto>> UploadResumeAsync(Guid userId, Stream resumeStream, string fileName, string contentType)
     {
-        if (resumeStream == null || string.IsNullOrWhiteSpace(fileName))
+        ResumeBufferResult buffered = await ValidateAndBufferResumeAsync(resumeStream, fileName, contentType);
+        if (!buffered.IsValid)
         {
-            return ApiResponse<ResumeUploadResponseDto>.BadRequest("Please select a valid resume file.");
-        }
-
-        try
-        {
-            ValidateSupportedResumeFile(fileName);
-        }
-        catch (NotSupportedException exception)
-        {
-            return ApiResponse<ResumeUploadResponseDto>.BadRequest(exception.Message);
+            return ApiResponse<ResumeUploadResponseDto>.BadRequest(buffered.ErrorMessage!, buffered.ErrorCode);
         }
 
         CandidateProfile profile = await GetProfileEntityAsync(userId);
         DateTime uploadedAt = DbDateTime.Now;
-        await using MemoryStream bufferedResume = await CopyToMemoryAsync(resumeStream);
+        await using MemoryStream bufferedResume = buffered.Buffer!;
         string objectName = $"resumes/{userId}/{Guid.NewGuid()}_{Path.GetFileName(fileName)}";
         bufferedResume.Position = 0;
         string uploadedObjectKey = await _fileStorage.UploadFileAsync(bufferedResume, objectName, contentType);
@@ -2140,28 +2182,80 @@ public class CandidateService : ICandidateService
         return extractedText.Trim().Length >= MinimumResumeTextLength;
     }
 
-    private static void ValidateSupportedResumeFile(string fileName)
+    /// <summary>
+    /// Outcome of validating and buffering an uploaded resume. On success <see cref="Buffer"/> holds the
+    /// fully-buffered (and size-bounded) file positioned at 0; on failure it carries a stable error code
+    /// and a user-facing message and <see cref="Buffer"/> is null.
+    /// </summary>
+    private readonly record struct ResumeBufferResult(MemoryStream? Buffer, string? ErrorMessage, string? ErrorCode)
     {
-        string extension = Path.GetExtension(fileName).Trim().ToLowerInvariant();
-        if (extension is ".pdf" or ".docx" or ".txt")
-        {
-            return;
-        }
+        public bool IsValid => Buffer != null;
 
-        throw new NotSupportedException("Định dạng CV không hỗ trợ. Hãy tải lên PDF, DOCX hoặc TXT.");
+        public static ResumeBufferResult Fail(string message, string errorCode) => new(null, message, errorCode);
+        public static ResumeBufferResult Success(MemoryStream buffer) => new(buffer, null, null);
     }
 
-    private static async Task<MemoryStream> CopyToMemoryAsync(Stream source)
+    /// <summary>
+    /// Validates an uploaded resume (presence, extension, MIME type) and streams it into memory with a
+    /// hard size cap. The copy is chunked so an oversized file is rejected mid-stream instead of being
+    /// fully materialised, and an empty file is rejected. The returned buffer is owned by the caller.
+    /// </summary>
+    private static async Task<ResumeBufferResult> ValidateAndBufferResumeAsync(Stream? source, string? fileName, string? contentType)
     {
+        if (source == null || string.IsNullOrWhiteSpace(fileName))
+        {
+            return ResumeBufferResult.Fail("Vui lòng chọn một tệp CV hợp lệ.", ErrorCodes.ResumeFileRequired);
+        }
+
+        string extension = Path.GetExtension(fileName).Trim().ToLowerInvariant();
+        if (!AllowedResumeContentTypes.TryGetValue(extension, out string[]? allowedTypes))
+        {
+            return ResumeBufferResult.Fail(
+                "Định dạng CV không hỗ trợ. Hãy tải lên PDF, DOCX hoặc TXT.", ErrorCodes.ResumeFileUnsupportedType);
+        }
+
+        // The browser-supplied content type is advisory (clients vary), but a clearly wrong MIME type
+        // (image, executable, ...) for the extension is rejected. octet-stream is tolerated for docx/txt.
+        if (!string.IsNullOrWhiteSpace(contentType))
+        {
+            string normalizedType = contentType.Split(';')[0].Trim();
+            if (!allowedTypes.Contains(normalizedType, StringComparer.OrdinalIgnoreCase))
+            {
+                return ResumeBufferResult.Fail(
+                    "Loại nội dung tệp CV không hợp lệ.", ErrorCodes.ResumeFileUnsupportedType);
+            }
+        }
+
         MemoryStream buffer = new();
         if (source.CanSeek)
         {
             source.Position = 0;
         }
 
-        await source.CopyToAsync(buffer);
+        byte[] chunk = new byte[81920];
+        long total = 0;
+        int read;
+        while ((read = await source.ReadAsync(chunk.AsMemory(0, chunk.Length))) > 0)
+        {
+            total += read;
+            if (total > MaxResumeFileSizeBytes)
+            {
+                await buffer.DisposeAsync();
+                return ResumeBufferResult.Fail(
+                    "Tệp CV vượt quá dung lượng tối đa 5MB.", ErrorCodes.ResumeFileTooLarge);
+            }
+
+            await buffer.WriteAsync(chunk.AsMemory(0, read));
+        }
+
+        if (total == 0)
+        {
+            await buffer.DisposeAsync();
+            return ResumeBufferResult.Fail("Tệp CV rỗng.", ErrorCodes.ResumeFileEmpty);
+        }
+
         buffer.Position = 0;
-        return buffer;
+        return ResumeBufferResult.Success(buffer);
     }
 
     private void LogRetryableAiFailure(ResumeParsingAiResult aiResult)
