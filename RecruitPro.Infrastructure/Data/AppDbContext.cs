@@ -37,11 +37,17 @@ public partial class AppDbContext : DbContext
 
     public virtual DbSet<CandidateSkill> CandidateSkills { get; set; }
 
+    public virtual DbSet<CandidateFitAnalysis> CandidateFitAnalyses { get; set; }
+
     public virtual DbSet<CopilotCandidateTag> CopilotCandidateTags { get; set; }
 
     public virtual DbSet<CopilotConversation> CopilotConversations { get; set; }
 
+    public virtual DbSet<CopilotGeneratedArtifact> CopilotGeneratedArtifacts { get; set; }
+
     public virtual DbSet<CopilotMessage> CopilotMessages { get; set; }
+
+    public virtual DbSet<CopilotPromptTemplate> CopilotPromptTemplates { get; set; }
 
     public virtual DbSet<CopilotRankingResult> CopilotRankingResults { get; set; }
 
@@ -536,6 +542,23 @@ public partial class AppDbContext : DbContext
             entity.HasOne(e => e.Conversation).WithMany(e => e.Messages).HasForeignKey(e => e.ConversationId).HasConstraintName("copilot_messages_conversation_id_fkey");
         });
 
+        modelBuilder.Entity<CopilotPromptTemplate>(entity =>
+        {
+            entity.HasKey(e => e.Id).HasName("copilot_prompt_templates_pkey");
+            entity.ToTable("copilot_prompt_templates");
+            entity.Property(e => e.Id).HasDefaultValueSql("gen_random_uuid()").HasColumnName("id");
+            entity.Property(e => e.OwnerUserId).HasColumnName("owner_user_id");
+            entity.Property(e => e.Name).HasMaxLength(200).HasColumnName("name");
+            entity.Property(e => e.TemplateType).HasMaxLength(60).HasColumnName("template_type");
+            entity.Property(e => e.Prompt).HasColumnName("prompt");
+            entity.Property(e => e.IsActive).HasDefaultValue(true).HasColumnName("is_active");
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP").HasColumnType("timestamp without time zone").HasColumnName("created_at");
+            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP").HasColumnType("timestamp without time zone").HasColumnName("updated_at");
+
+            entity.HasIndex(e => new { e.OwnerUserId, e.TemplateType, e.IsActive }, "ix_copilot_prompt_templates_owner_type_active");
+            entity.HasOne(e => e.OwnerUser).WithMany().HasForeignKey(e => e.OwnerUserId).HasConstraintName("copilot_prompt_templates_owner_user_id_fkey");
+        });
+
         modelBuilder.Entity<CopilotRankingSession>(entity =>
         {
             entity.HasKey(e => e.Id).HasName("copilot_ranking_sessions_pkey");
@@ -627,6 +650,57 @@ public partial class AppDbContext : DbContext
             entity.HasOne(e => e.Job).WithMany().HasForeignKey(e => e.JobId).HasConstraintName("copilot_candidate_tags_job_id_fkey");
             entity.HasOne(e => e.RankingSession).WithMany().HasForeignKey(e => e.RankingSessionId).HasConstraintName("copilot_candidate_tags_ranking_session_id_fkey");
             entity.HasOne(e => e.CreatedByUser).WithMany().HasForeignKey(e => e.CreatedByUserId).HasConstraintName("copilot_candidate_tags_created_by_user_id_fkey");
+        });
+
+        modelBuilder.Entity<CandidateFitAnalysis>(entity =>
+        {
+            entity.HasKey(e => e.Id).HasName("candidate_fit_analyses_pkey");
+            entity.ToTable("candidate_fit_analyses");
+            entity.Property(e => e.Id).HasDefaultValueSql("gen_random_uuid()").HasColumnName("id");
+            entity.Property(e => e.AuditId).HasColumnName("audit_id");
+            entity.Property(e => e.JobId).HasColumnName("job_id");
+            entity.Property(e => e.CandidateUserId).HasColumnName("candidate_user_id");
+            entity.Property(e => e.ApplicationId).HasColumnName("application_id");
+            entity.Property(e => e.FitLabel).HasMaxLength(40).HasColumnName("fit_label");
+            entity.Property(e => e.ConfidenceScore).HasPrecision(5, 2).HasColumnName("confidence_score");
+            entity.Property(e => e.TotalScore).HasPrecision(5, 2).HasColumnName("total_score");
+            entity.Property(e => e.StrengthsJson).HasColumnType("jsonb").HasColumnName("strengths_json");
+            entity.Property(e => e.GapsJson).HasColumnType("jsonb").HasColumnName("gaps_json");
+            entity.Property(e => e.EvidenceJson).HasColumnType("jsonb").HasColumnName("evidence_json");
+            entity.Property(e => e.Summary).HasColumnName("summary");
+            entity.Property(e => e.ProviderName).HasMaxLength(100).HasColumnName("provider_name");
+            entity.Property(e => e.ModelName).HasMaxLength(100).HasColumnName("model_name");
+            entity.Property(e => e.FallbackUsed).HasDefaultValue(false).HasColumnName("fallback_used");
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP").HasColumnType("timestamp without time zone").HasColumnName("created_at");
+
+            entity.HasIndex(e => new { e.JobId, e.CandidateUserId, e.CreatedAt }, "ix_candidate_fit_analyses_job_candidate_created");
+            entity.HasIndex(e => e.AuditId, "ix_candidate_fit_analyses_audit_id");
+            entity.HasOne(e => e.Job).WithMany().HasForeignKey(e => e.JobId).HasConstraintName("candidate_fit_analyses_job_id_fkey");
+            entity.HasOne(e => e.CandidateUser).WithMany().HasForeignKey(e => e.CandidateUserId).HasConstraintName("candidate_fit_analyses_candidate_user_id_fkey");
+            entity.HasOne(e => e.Application).WithMany().HasForeignKey(e => e.ApplicationId).HasConstraintName("candidate_fit_analyses_application_id_fkey");
+        });
+
+        modelBuilder.Entity<CopilotGeneratedArtifact>(entity =>
+        {
+            entity.HasKey(e => e.Id).HasName("copilot_generated_artifacts_pkey");
+            entity.ToTable("copilot_generated_artifacts");
+            entity.Property(e => e.Id).HasDefaultValueSql("gen_random_uuid()").HasColumnName("id");
+            entity.Property(e => e.OwnerUserId).HasColumnName("owner_user_id");
+            entity.Property(e => e.JobId).HasColumnName("job_id");
+            entity.Property(e => e.ApplicationId).HasColumnName("application_id");
+            entity.Property(e => e.ArtifactType).HasMaxLength(60).HasColumnName("artifact_type");
+            entity.Property(e => e.Prompt).HasColumnName("prompt");
+            entity.Property(e => e.PayloadJson).HasColumnType("jsonb").HasColumnName("payload_json");
+            entity.Property(e => e.ProviderName).HasMaxLength(100).HasColumnName("provider_name");
+            entity.Property(e => e.ModelName).HasMaxLength(100).HasColumnName("model_name");
+            entity.Property(e => e.FallbackUsed).HasDefaultValue(false).HasColumnName("fallback_used");
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP").HasColumnType("timestamp without time zone").HasColumnName("created_at");
+
+            entity.HasIndex(e => new { e.OwnerUserId, e.ArtifactType, e.CreatedAt }, "ix_copilot_generated_artifacts_owner_type_created");
+            entity.HasIndex(e => new { e.JobId, e.CreatedAt }, "ix_copilot_generated_artifacts_job_created");
+            entity.HasOne(e => e.OwnerUser).WithMany().HasForeignKey(e => e.OwnerUserId).HasConstraintName("copilot_generated_artifacts_owner_user_id_fkey");
+            entity.HasOne(e => e.Job).WithMany().HasForeignKey(e => e.JobId).HasConstraintName("copilot_generated_artifacts_job_id_fkey");
+            entity.HasOne(e => e.Application).WithMany().HasForeignKey(e => e.ApplicationId).HasConstraintName("copilot_generated_artifacts_application_id_fkey");
         });
 
         modelBuilder.Entity<Department>(entity =>

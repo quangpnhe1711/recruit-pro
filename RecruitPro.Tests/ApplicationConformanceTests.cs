@@ -1,5 +1,6 @@
 using AutoMapper;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using RecruitPro.Application.DTOs.Request.Interviews;
 using RecruitPro.Application.DTOs.Request.Jobs;
 using RecruitPro.Application.Interfaces;
@@ -301,7 +302,7 @@ public sealed class ApplicationConformanceTests
     private static IMapper CreateMapper()
     {
         // Minimal mapper; the interview tests exercised here return before any mapping occurs.
-        return new MapperConfiguration(_ => { }).CreateMapper();
+        return new MapperConfiguration(_ => { }, NullLoggerFactory.Instance).CreateMapper();
     }
 
     private static ApplicationService CreateService(

@@ -19,6 +19,8 @@ Use these principles:
 - `candidate_fit_analyses`
 - `copilot_generated_artifacts`
 
+Implementation status: these tables are covered by migration `20260630000000_AddCopilotV2Artifacts`.
+
 ### Modified Tables
 
 - `copilot_ranking_sessions`

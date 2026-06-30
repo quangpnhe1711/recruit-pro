@@ -1,6 +1,11 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using RecruitPro.Domain.Entities;
+using RecruitPro.Infrastructure.Data;
 using RecruitPro.Tests.Infrastructure;
 
 namespace RecruitPro.Tests;
@@ -282,11 +287,217 @@ public sealed class ApiIntegrationTests : IClassFixture<PostgresTestFixture>, IA
     }
 
     [Fact]
+    public async Task CopilotLatestFitAnalysis_Should_Enforce_Role_And_Ownership_And_Return_Newest()
+    {
+        await SeedFitAnalysesAsync();
+        string url = $"/api/copilot/applications/{TestDataSeeder.ApplicationId}/fit-analysis/latest";
+
+        HttpResponseMessage anonymous = await _client.GetAsync(url);
+        anonymous.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+
+        PostgresTestFixture.SetBearerToken(_client, _factory.Fixture.CreateJwt(TestDataSeeder.CandidateUserId.ToString(), "Candidate"));
+        (await _client.GetAsync(url)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+
+        PostgresTestFixture.SetBearerToken(_client, _factory.Fixture.CreateJwt(Guid.NewGuid().ToString(), "HR"));
+        (await _client.GetAsync(url)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+
+        PostgresTestFixture.SetBearerToken(_client, _factory.Fixture.CreateJwt(TestDataSeeder.ManagerUserId.ToString(), "Manager"));
+        HttpResponseMessage managerResponse = await _client.GetAsync(url);
+        managerResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        PostgresTestFixture.SetBearerToken(_client, _factory.Fixture.CreateJwt(TestDataSeeder.HrUserId.ToString(), "HR"));
+        var json = await ApiResponseAssertions.AssertNo500AndEnvelopeAsync(await _client.GetAsync(url));
+        json.RootElement.GetProperty("data").GetProperty("fitLabel").GetString().Should().Be("StrongFit");
+        json.RootElement.GetProperty("data").GetProperty("totalScore").GetDecimal().Should().Be(91);
+        json.RootElement.GetProperty("data").GetProperty("strengths").GetArrayLength().Should().Be(2);
+    }
+
+    [Fact]
+    public async Task CopilotLatestFitAnalysis_WhenMissing_Should_Return_Clean_404()
+    {
+        string url = $"/api/copilot/applications/{TestDataSeeder.ApplicationId}/fit-analysis/latest";
+        PostgresTestFixture.SetBearerToken(_client, _factory.Fixture.CreateJwt(TestDataSeeder.HrUserId.ToString(), "HR"));
+
+        var json = await ApiResponseAssertions.AssertNo500AndEnvelopeAsync(await _client.GetAsync(url));
+
+        json.RootElement.GetProperty("success").GetBoolean().Should().BeFalse();
+        json.RootElement.GetProperty("statusCode").GetInt32().Should().Be(404);
+        json.RootElement.GetProperty("message").GetString().Should().Be("Fit analysis not found");
+    }
+
+    [Fact]
+    public async Task CopilotArtifacts_Should_Return_Current_User_History_And_Apply_Filters()
+    {
+        await SeedArtifactsAsync();
+        string url = $"/api/copilot/artifacts?jobId={TestDataSeeder.ApprovedJobId}&artifactType=candidate_search&take=20";
+
+        HttpResponseMessage anonymous = await _client.GetAsync(url);
+        anonymous.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+
+        PostgresTestFixture.SetBearerToken(_client, _factory.Fixture.CreateJwt(TestDataSeeder.CandidateUserId.ToString(), "Candidate"));
+        (await _client.GetAsync(url)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+
+        PostgresTestFixture.SetBearerToken(_client, _factory.Fixture.CreateJwt(TestDataSeeder.HrUserId.ToString(), "HR"));
+        var json = await ApiResponseAssertions.AssertNo500AndEnvelopeAsync(await _client.GetAsync(url));
+
+        json.RootElement.GetProperty("data").GetArrayLength().Should().Be(1);
+        JsonElement artifact = json.RootElement.GetProperty("data")[0];
+        artifact.GetProperty("artifactType").GetString().Should().Be("candidate_search");
+        artifact.GetProperty("ownerUserId").GetGuid().Should().Be(TestDataSeeder.HrUserId);
+        artifact.GetProperty("payloadJson").GetString().Should().Contain("Candidate User");
+
+        string emptyUrl = $"/api/copilot/artifacts?jobId={TestDataSeeder.PendingJobId}&artifactType=email_draft";
+        var emptyJson = await ApiResponseAssertions.AssertNo500AndEnvelopeAsync(await _client.GetAsync(emptyUrl));
+        emptyJson.RootElement.GetProperty("data").GetArrayLength().Should().Be(0);
+    }
+
+    [Fact]
+    public async Task CopilotPromptTemplateEndpoints_Should_Enforce_Roles_And_Persist_For_Current_User()
+    {
+        const string url = "/api/copilot/prompt-templates";
+
+        HttpResponseMessage anonymous = await _client.GetAsync(url);
+        anonymous.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+
+        PostgresTestFixture.SetBearerToken(_client, _factory.Fixture.CreateJwt(TestDataSeeder.CandidateUserId.ToString(), "Candidate"));
+        (await _client.GetAsync(url)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        HttpResponseMessage candidateCreate = await _client.PostAsJsonAsync(url, new
+        {
+            name = "Nope",
+            templateType = "candidate_search",
+            prompt = "Should not persist",
+            isActive = true
+        });
+        candidateCreate.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+
+        PostgresTestFixture.SetBearerToken(_client, _factory.Fixture.CreateJwt(TestDataSeeder.HrUserId.ToString(), "HR"));
+        HttpResponseMessage created = await _client.PostAsJsonAsync(url, new
+        {
+            name = "Search backend",
+            templateType = "candidate_search",
+            prompt = "Find backend candidates with SQL evidence",
+            isActive = true
+        });
+        var createdJson = await ApiResponseAssertions.AssertNo500AndEnvelopeAsync(created);
+        created.StatusCode.Should().Be(HttpStatusCode.Created);
+        createdJson.RootElement.GetProperty("data").GetProperty("name").GetString().Should().Be("Search backend");
+
+        var listJson = await ApiResponseAssertions.AssertNo500AndEnvelopeAsync(await _client.GetAsync(url));
+        listJson.RootElement.GetProperty("data").GetArrayLength().Should().Be(1);
+        listJson.RootElement.GetProperty("data")[0].GetProperty("templateType").GetString().Should().Be("candidate_search");
+    }
+
+    [Fact]
     public async Task DashboardAndDiscovery_PII_Endpoints_Should_Require_Auth()
     {
         (await _client.GetAsync("/api/hr/dashboard")).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
         (await _client.GetAsync("/api/manager/dashboard")).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
         (await _client.GetAsync("/api/hr/talent-pool/search")).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
         (await _client.GetAsync("/api/copilot/jobs")).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    private async Task SeedFitAnalysesAsync()
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        AppDbContext db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        DateTime older = DateTime.SpecifyKind(DateTime.UtcNow.AddHours(-2), DateTimeKind.Unspecified);
+        DateTime newer = DateTime.SpecifyKind(DateTime.UtcNow.AddHours(-1), DateTimeKind.Unspecified);
+
+        db.CandidateFitAnalyses.AddRange(
+            new CandidateFitAnalysis
+            {
+                Id = Guid.NewGuid(),
+                AuditId = Guid.NewGuid(),
+                JobId = TestDataSeeder.ApprovedJobId,
+                CandidateUserId = TestDataSeeder.CandidateUserId,
+                ApplicationId = TestDataSeeder.ApplicationId,
+                FitLabel = "PotentialFit",
+                ConfidenceScore = 70,
+                TotalScore = 72,
+                StrengthsJson = JsonSerializer.Serialize(new[] { ".NET" }),
+                GapsJson = JsonSerializer.Serialize(new[] { "SQL depth" }),
+                EvidenceJson = JsonSerializer.Serialize(new[] { "older snapshot" }),
+                Summary = "Older snapshot",
+                ProviderName = "deterministic-copilot",
+                ModelName = "deterministic-copilot-v2",
+                FallbackUsed = true,
+                CreatedAt = older
+            },
+            new CandidateFitAnalysis
+            {
+                Id = Guid.NewGuid(),
+                AuditId = Guid.NewGuid(),
+                JobId = TestDataSeeder.ApprovedJobId,
+                CandidateUserId = TestDataSeeder.CandidateUserId,
+                ApplicationId = TestDataSeeder.ApplicationId,
+                FitLabel = "StrongFit",
+                ConfidenceScore = 94,
+                TotalScore = 91,
+                StrengthsJson = JsonSerializer.Serialize(new[] { ".NET", "SQL" }),
+                GapsJson = JsonSerializer.Serialize(Array.Empty<string>()),
+                EvidenceJson = JsonSerializer.Serialize(new[] { "newest snapshot" }),
+                Summary = "Newest snapshot",
+                ProviderName = "deterministic-copilot",
+                ModelName = "deterministic-copilot-v2",
+                FallbackUsed = true,
+                CreatedAt = newer
+            });
+
+        await db.SaveChangesAsync();
+    }
+
+    private async Task SeedArtifactsAsync()
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        AppDbContext db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        DateTime now = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
+
+        db.CopilotGeneratedArtifacts.AddRange(
+            new CopilotGeneratedArtifact
+            {
+                Id = Guid.NewGuid(),
+                OwnerUserId = TestDataSeeder.HrUserId,
+                JobId = TestDataSeeder.ApprovedJobId,
+                ApplicationId = TestDataSeeder.ApplicationId,
+                ArtifactType = "candidate_search",
+                Prompt = "Find backend candidates",
+                PayloadJson = JsonSerializer.Serialize(new
+                {
+                    query = "Find backend candidates",
+                    results = new[] { new { fullName = "Candidate User", evidence = ".NET and SQL" } }
+                }),
+                ProviderName = "deterministic-copilot",
+                ModelName = "deterministic-copilot-v2",
+                FallbackUsed = true,
+                CreatedAt = now
+            },
+            new CopilotGeneratedArtifact
+            {
+                Id = Guid.NewGuid(),
+                OwnerUserId = TestDataSeeder.HrUserId,
+                JobId = TestDataSeeder.ApprovedJobId,
+                ArtifactType = "shortlist_suggestion",
+                Prompt = "Shortlist",
+                PayloadJson = JsonSerializer.Serialize(new { suggestions = Array.Empty<object>() }),
+                ProviderName = "deterministic-copilot",
+                ModelName = "deterministic-copilot-v2",
+                FallbackUsed = true,
+                CreatedAt = now.AddMinutes(-5)
+            },
+            new CopilotGeneratedArtifact
+            {
+                Id = Guid.NewGuid(),
+                OwnerUserId = TestDataSeeder.ManagerUserId,
+                JobId = TestDataSeeder.ApprovedJobId,
+                ArtifactType = "candidate_search",
+                Prompt = "Manager artifact",
+                PayloadJson = "{}",
+                ProviderName = "deterministic-copilot",
+                ModelName = "deterministic-copilot-v2",
+                FallbackUsed = true,
+                CreatedAt = now.AddMinutes(-10)
+            });
+
+        await db.SaveChangesAsync();
     }
 }

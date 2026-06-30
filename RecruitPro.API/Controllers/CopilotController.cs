@@ -48,6 +48,73 @@ public class CopilotController : ControllerBase
         return StatusCode(result.StatusCode, result);
     }
 
+    [HttpPost("api/copilot/candidate-search")]
+    public async Task<IActionResult> SearchCandidates([FromBody] NaturalLanguageCandidateSearchRequest request)
+    {
+        var result = await _copilotService.SearchCandidatesAsync(request, User.TryGetCurrentUserId(), User.GetRoles());
+        return StatusCode(result.StatusCode, result);
+    }
+
+    [HttpPost("api/copilot/jobs/{jobId:guid}/fit-analysis")]
+    public async Task<IActionResult> AnalyzeCandidateFit(Guid jobId, [FromBody] CandidateFitAnalysisRequest request)
+    {
+        var result = await _copilotService.AnalyzeCandidateFitAsync(jobId, request, User.TryGetCurrentUserId(), User.GetRoles());
+        return StatusCode(result.StatusCode, result);
+    }
+
+    [HttpPost("api/copilot/jobs/{jobId:guid}/interview-questions")]
+    public async Task<IActionResult> GenerateInterviewQuestions(Guid jobId, [FromBody] InterviewQuestionRequest request)
+    {
+        var result = await _copilotService.GenerateInterviewQuestionsAsync(jobId, request, User.TryGetCurrentUserId(), User.GetRoles());
+        return StatusCode(result.StatusCode, result);
+    }
+
+    [HttpPost("api/copilot/jobs/{jobId:guid}/shortlists")]
+    public async Task<IActionResult> GenerateShortlist(Guid jobId, [FromBody] ShortlistRequest request)
+    {
+        var result = await _copilotService.GenerateShortlistAsync(jobId, request, User.TryGetCurrentUserId(), User.GetRoles());
+        return StatusCode(result.StatusCode, result);
+    }
+
+    [HttpPost("api/copilot/applications/{applicationId:guid}/emails/draft")]
+    public async Task<IActionResult> DraftApplicationEmail(Guid applicationId, [FromBody] HrEmailDraftRequest request)
+    {
+        var result = await _copilotService.DraftApplicationEmailAsync(applicationId, request, User.TryGetCurrentUserId(), User.GetRoles());
+        return StatusCode(result.StatusCode, result);
+    }
+
+    [HttpGet("api/copilot/prompt-templates")]
+    public async Task<IActionResult> GetPromptTemplates()
+    {
+        var result = await _copilotService.GetPromptTemplatesAsync(User.GetCurrentUserId());
+        return StatusCode(result.StatusCode, result);
+    }
+
+    [HttpPost("api/copilot/prompt-templates")]
+    public async Task<IActionResult> CreatePromptTemplate([FromBody] CreateCopilotPromptTemplateRequest request)
+    {
+        var result = await _copilotService.CreatePromptTemplateAsync(request, User.GetCurrentUserId());
+        return StatusCode(result.StatusCode, result);
+    }
+
+    [HttpGet("api/copilot/applications/{applicationId:guid}/fit-analysis/latest")]
+    public async Task<IActionResult> GetLatestFitAnalysis(Guid applicationId)
+    {
+        var result = await _copilotService.GetLatestFitAnalysisForApplicationAsync(applicationId, User.TryGetCurrentUserId(), User.GetRoles());
+        return StatusCode(result.StatusCode, result);
+    }
+
+    [HttpGet("api/copilot/artifacts")]
+    public async Task<IActionResult> GetGeneratedArtifacts(
+        [FromQuery] Guid? jobId,
+        [FromQuery] Guid? applicationId,
+        [FromQuery] string? artifactType,
+        [FromQuery] int take = 20)
+    {
+        var result = await _copilotService.GetGeneratedArtifactsAsync(User.GetCurrentUserId(), jobId, applicationId, artifactType, take);
+        return StatusCode(result.StatusCode, result);
+    }
+
     [HttpPost("api/copilot/conversations/{conversationId:guid}/rankings")]
     public async Task<IActionResult> CreateRanking(Guid conversationId, [FromBody] CopilotPromptRequest request)
     {

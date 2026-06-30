@@ -109,7 +109,7 @@ builder.Services.AddApplicationBusinessLogicServices();
 builder.Services.AddHostedService<SemanticScoringBackgroundService>();
 
 //register auto mapper
-builder.Services.AddAutoMapper(AppDomain.CurrentDomain.GetAssemblies());
+builder.Services.AddAutoMapper(_ => { }, AppDomain.CurrentDomain.GetAssemblies());
 
 var app = builder.Build();
 

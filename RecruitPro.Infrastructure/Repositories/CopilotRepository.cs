@@ -62,18 +62,18 @@ public class CopilotRepository : ICopilotRepository
             .Where(application => application.JobId == jobId)
             .OrderByDescending(application => application.AppliedAt)
             .Include(application => application.User)
-                .ThenInclude(user => user.CandidateProfile)
+                .ThenInclude(user => user.CandidateProfile!)
                     .ThenInclude(profile => profile.CandidateSkills)
                         .ThenInclude(candidateSkill => candidateSkill.Skill)
             .Include(application => application.User)
-                .ThenInclude(user => user.CandidateProfile)
+                .ThenInclude(user => user.CandidateProfile!)
                     .ThenInclude(profile => profile.Projects)
             .Include(application => application.User)
-                .ThenInclude(user => user.CandidateProfile)
+                .ThenInclude(user => user.CandidateProfile!)
                     .ThenInclude(profile => profile.Sections)
                         .ThenInclude(section => section.Items)
             .Include(application => application.User)
-                .ThenInclude(user => user.CandidateProfile)
+                .ThenInclude(user => user.CandidateProfile!)
                     .ThenInclude(profile => profile.Resumes)
             .ToListAsync();
 
@@ -155,6 +155,59 @@ public class CopilotRepository : ICopilotRepository
             .FirstOrDefaultAsync(rule => rule.Id == ruleId && rule.UserId == userId && !rule.IsDeleted);
     }
 
+    public async Task<IReadOnlyList<CopilotPromptTemplate>> GetPromptTemplatesAsync(Guid ownerUserId)
+    {
+        return await _context.CopilotPromptTemplates
+            .AsNoTracking()
+            .Where(template => template.OwnerUserId == ownerUserId)
+            .OrderByDescending(template => template.IsActive)
+            .ThenBy(template => template.TemplateType)
+            .ThenBy(template => template.Name)
+            .ToListAsync();
+    }
+
+    public Task<CandidateFitAnalysis?> GetLatestFitAnalysisAsync(Guid applicationId)
+    {
+        return _context.CandidateFitAnalyses
+            .AsNoTracking()
+            .Include(analysis => analysis.CandidateUser)
+            .OrderByDescending(analysis => analysis.CreatedAt)
+            .FirstOrDefaultAsync(analysis => analysis.ApplicationId == applicationId);
+    }
+
+    public async Task<IReadOnlyList<CopilotGeneratedArtifact>> GetGeneratedArtifactsAsync(
+        Guid ownerUserId,
+        Guid? jobId,
+        Guid? applicationId,
+        string? artifactType,
+        int take)
+    {
+        IQueryable<CopilotGeneratedArtifact> query = _context.CopilotGeneratedArtifacts
+            .AsNoTracking()
+            .Where(artifact => artifact.OwnerUserId == ownerUserId);
+
+        if (jobId.HasValue)
+        {
+            query = query.Where(artifact => artifact.JobId == jobId.Value);
+        }
+
+        if (applicationId.HasValue)
+        {
+            query = query.Where(artifact => artifact.ApplicationId == applicationId.Value);
+        }
+
+        if (!string.IsNullOrWhiteSpace(artifactType))
+        {
+            string normalizedType = artifactType.Trim();
+            query = query.Where(artifact => artifact.ArtifactType == normalizedType);
+        }
+
+        return await query
+            .OrderByDescending(artifact => artifact.CreatedAt)
+            .Take(Math.Clamp(take, 1, 50))
+            .ToListAsync();
+    }
+
     public async Task<int> GetNextMessageSequenceAsync(Guid conversationId)
     {
         int currentMax = await _context.CopilotMessages
@@ -184,6 +237,21 @@ public class CopilotRepository : ICopilotRepository
     public async Task AddSavedRuleAsync(CopilotSavedRule rule)
     {
         await _context.CopilotSavedRules.AddAsync(rule);
+    }
+
+    public async Task AddPromptTemplateAsync(CopilotPromptTemplate template)
+    {
+        await _context.CopilotPromptTemplates.AddAsync(template);
+    }
+
+    public async Task AddFitAnalysisAsync(CandidateFitAnalysis analysis)
+    {
+        await _context.CandidateFitAnalyses.AddAsync(analysis);
+    }
+
+    public async Task AddGeneratedArtifactAsync(CopilotGeneratedArtifact artifact)
+    {
+        await _context.CopilotGeneratedArtifacts.AddAsync(artifact);
     }
 
     private static IReadOnlyList<string> SplitText(string? value)

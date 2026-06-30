@@ -49,6 +49,119 @@
 - `WorkflowActionOutputSchema`
 - `AiRiskFlagSchema`
 
+## v2 Structured JSON Contracts
+
+Provider-backed v2 generation must return only JSON. `CopilotService` parses, normalizes, and validates these shapes before replacing deterministic fallback output. If provider config is disabled, the provider fails, JSON parsing fails, or required fields are missing, the deterministic output is returned and persisted with fallback metadata.
+
+### `candidate_search`
+
+```json
+{
+  "normalizedIntent": "candidate_search",
+  "query": "string",
+  "extractedFilters": {
+    "requiredSkills": [],
+    "preferredSkills": [],
+    "minExperienceYears": null,
+    "autoRejectRules": [],
+    "minTotalScore": null,
+    "priorityCriteria": [],
+    "negativeCriteria": []
+  },
+  "results": [
+    {
+      "candidateUserId": "uuid",
+      "applicationId": "uuid",
+      "fullName": "string",
+      "matchScore": 0,
+      "matchedSkills": [],
+      "missingSkills": [],
+      "evidence": "string"
+    }
+  ]
+}
+```
+
+Required validation: at least one result; each result must map to a candidate/application in the current job pool and include `fullName` plus `evidence`.
+
+### `fit_analysis`
+
+```json
+{
+  "jobId": "uuid",
+  "analyses": [
+    {
+      "candidateUserId": "uuid",
+      "applicationId": "uuid",
+      "fullName": "string",
+      "fitLabel": "StrongFit",
+      "confidenceScore": 0,
+      "totalScore": 0,
+      "strengths": [],
+      "gaps": [],
+      "evidence": [],
+      "summary": "string"
+    }
+  ]
+}
+```
+
+Required validation: `jobId`, at least one analysis, current candidate/application ids, `fullName`, `fitLabel`, and `summary`.
+
+### `interview_questions`
+
+```json
+{
+  "jobId": "uuid",
+  "candidateUserId": "uuid or null",
+  "focus": "string",
+  "questions": [
+    {
+      "category": "string",
+      "question": "string",
+      "evidence": "string"
+    }
+  ]
+}
+```
+
+Required validation: `jobId`, at least one question, and every question must include `category`, `question`, and `evidence`.
+
+### `shortlist_suggestion`
+
+```json
+{
+  "jobId": "uuid",
+  "suggestions": [
+    {
+      "candidateUserId": "uuid",
+      "applicationId": "uuid",
+      "fullName": "string",
+      "rankPosition": 1,
+      "score": 0,
+      "recommendation": "string",
+      "rationale": []
+    }
+  ]
+}
+```
+
+Required validation: `jobId`, at least one suggestion, current candidate/application ids, `fullName`, and `recommendation`.
+
+### `email_draft`
+
+```json
+{
+  "applicationId": "uuid",
+  "templateType": "string",
+  "subject": "string",
+  "body": "string",
+  "evidence": []
+}
+```
+
+Required validation: `applicationId`, `templateType`, `subject`, and `body`.
+
 ## Tool Catalog Direction
 
 All AI tools should map to application-service capabilities:
@@ -77,3 +190,4 @@ All AI tools should map to application-service capabilities:
 - explanation failure -> computed score breakdown only
 - draft failure -> static template
 - agent plan failure -> single-step copilot response
+- v2 provider disabled/missing API key/exception/timeout/invalid JSON/validation failure -> deterministic v2 response with fallback warning persisted in artifact or fit-analysis metadata

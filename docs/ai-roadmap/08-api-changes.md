@@ -5,7 +5,7 @@
 - keep current `/api/...` routing style
 - use existing API envelope conventions
 - protect all AI routes with JWT + permission checks
-- return structured AI metadata: `auditId`, `fallbackUsed`, `provider`, `model`, `warnings`
+- return structured AI metadata: `auditId`, optional `artifactId`, `fallbackUsed`, `provider`, `model`, `warnings`
 
 ## v2 Endpoints
 
@@ -18,6 +18,8 @@
 | `POST` | `/api/copilot/applications/{applicationId}/emails/draft` | draft HR email |
 | `GET` | `/api/copilot/prompt-templates` | list templates |
 | `POST` | `/api/copilot/prompt-templates` | create template |
+| `GET` | `/api/copilot/applications/{applicationId}/fit-analysis/latest` | latest persisted fit-analysis snapshot |
+| `GET` | `/api/copilot/artifacts` | current user's generated artifacts |
 
 ## v3 Endpoints
 

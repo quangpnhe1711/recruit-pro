@@ -1,5 +1,6 @@
 using AutoMapper;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using RecruitPro.Application.Configurations;
 using RecruitPro.Application.DTOs.Request.Applications;
@@ -451,6 +452,7 @@ public sealed class CopilotServiceUnitTests
         var service = new CopilotService(
             repository.Object,
             Mock.Of<IJobRepository>(),
+            Mock.Of<IApplicationRepository>(),
             Mock.Of<IFileStorageService>(),
             Mock.Of<IResumeTextExtractor>(),
             Mock.Of<IAiCopilotProvider>(),
@@ -477,6 +479,7 @@ public sealed class CopilotServiceUnitTests
         var service = new CopilotService(
             repository.Object,
             Mock.Of<IJobRepository>(),
+            Mock.Of<IApplicationRepository>(),
             Mock.Of<IFileStorageService>(),
             Mock.Of<IResumeTextExtractor>(),
             Mock.Of<IAiCopilotProvider>(),
@@ -488,6 +491,673 @@ public sealed class CopilotServiceUnitTests
 
         response.Success.Should().BeTrue();
         response.Data!.ConversationId.Should().Be(existingConversation.Id);
+    }
+
+    [Fact]
+    public async Task SearchCandidatesAsync_ReturnsDeterministicMetadataAndRankedResults()
+    {
+        var repository = new Mock<ICopilotRepository>();
+        var jobRepository = new Mock<IJobRepository>();
+        var aiProvider = new Mock<IAiCopilotProvider>();
+        Guid jobId = Guid.NewGuid();
+        Guid ownerId = Guid.NewGuid();
+        CopilotCandidatePoolDto pool = BuildCopilotPool(jobId);
+
+        jobRepository.Setup(value => value.GetByIdAsync(jobId)).ReturnsAsync(new Job
+        {
+            Id = jobId,
+            CreatedBy = ownerId,
+            Title = "Senior .NET Engineer"
+        });
+        repository.Setup(value => value.GetCandidatePoolAsync(jobId)).ReturnsAsync(pool);
+        repository.Setup(value => value.AddGeneratedArtifactAsync(It.IsAny<CopilotGeneratedArtifact>()))
+            .Returns(Task.CompletedTask);
+
+        CopilotService service = CreateService(repository.Object, jobRepository.Object, aiProvider: aiProvider.Object);
+
+        var response = await service.SearchCandidatesAsync(
+            new NaturalLanguageCandidateSearchRequest
+            {
+                JobId = jobId,
+                Query = "Find .NET candidates with SQL and at least 3 years",
+                MaxResults = 2
+            },
+            ownerId,
+            ["HR"]);
+
+        response.Success.Should().BeTrue();
+        response.Data!.Ai.FallbackUsed.Should().BeTrue();
+        response.Data.Ai.ProviderName.Should().Be("deterministic-copilot");
+        response.Data.Ai.ArtifactId.Should().Be(response.Data.Ai.AuditId);
+        response.Data.Results.Should().HaveCount(2);
+        response.Data.Results[0].FullName.Should().Be("Strong Candidate");
+        aiProvider.Verify(value => value.TryCreateStructuredJsonAsync(
+            It.IsAny<string>(),
+            It.IsAny<string>(),
+            It.IsAny<string>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+        repository.Verify(value => value.AddGeneratedArtifactAsync(It.Is<CopilotGeneratedArtifact>(artifact =>
+            artifact.OwnerUserId == ownerId
+            && artifact.JobId == jobId
+            && artifact.ArtifactType == "candidate_search"
+            && artifact.ProviderName == "deterministic-copilot")), Times.Once);
+    }
+
+    [Fact]
+    public async Task SearchCandidatesAsync_WhenProviderReturnsValidJson_UsesProviderAndPersistsProviderMetadata()
+    {
+        var repository = new Mock<ICopilotRepository>();
+        var jobRepository = new Mock<IJobRepository>();
+        var aiProvider = new Mock<IAiCopilotProvider>();
+        Guid jobId = Guid.NewGuid();
+        Guid ownerId = Guid.NewGuid();
+        CopilotCandidatePoolDto pool = BuildCopilotPool(jobId);
+        CopilotCandidateDto candidate = pool.Candidates[0];
+        CopilotGeneratedArtifact? persistedArtifact = null;
+
+        jobRepository.Setup(value => value.GetByIdAsync(jobId)).ReturnsAsync(new Job
+        {
+            Id = jobId,
+            CreatedBy = ownerId,
+            Title = "Senior .NET Engineer"
+        });
+        repository.Setup(value => value.GetCandidatePoolAsync(jobId)).ReturnsAsync(pool);
+        repository.Setup(value => value.GetPromptTemplatesAsync(ownerId)).ReturnsAsync(
+        [
+            new CopilotPromptTemplate
+            {
+                Id = Guid.NewGuid(),
+                OwnerUserId = ownerId,
+                Name = "Provider candidate search",
+                TemplateType = "candidate_search",
+                Prompt = "Rank {{jobTitle}} candidates for {{query}}.",
+                IsActive = true
+            }
+        ]);
+        repository.Setup(value => value.AddGeneratedArtifactAsync(It.IsAny<CopilotGeneratedArtifact>()))
+            .Callback<CopilotGeneratedArtifact>(artifact => persistedArtifact = artifact)
+            .Returns(Task.CompletedTask);
+
+        NaturalLanguageCandidateSearchResponseDto providerResponse = new()
+        {
+            Query = "provider query",
+            ExtractedFilters = new CopilotNormalizedRulesDto { RequiredSkills = [".NET"] },
+            Results =
+            [
+                new CopilotCandidateSearchResultDto
+                {
+                    CandidateUserId = candidate.CandidateUserId,
+                    ApplicationId = candidate.ApplicationId,
+                    FullName = candidate.FullName,
+                    MatchScore = 98,
+                    MatchedSkills = [".NET", "SQL"],
+                    MissingSkills = [],
+                    Evidence = "Provider grounded evidence"
+                }
+            ]
+        };
+
+        aiProvider.Setup(value => value.TryCreateStructuredJsonAsync(
+                "candidate_search",
+                It.IsAny<string>(),
+                It.Is<string>(prompt => prompt.Contains("Provider candidate search") && prompt.Contains("provider query", StringComparison.OrdinalIgnoreCase)),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(AiStructuredJsonResult.Success(JsonSerializer.Serialize(providerResponse), "test-provider", "test-model"));
+
+        CopilotService service = CreateService(
+            repository.Object,
+            jobRepository.Object,
+            aiProvider: aiProvider.Object,
+            aiSettings: new AiProviderSettings { Enabled = true, ApiKey = "test-key", Model = "test-model" });
+
+        var response = await service.SearchCandidatesAsync(
+            new NaturalLanguageCandidateSearchRequest
+            {
+                JobId = jobId,
+                Query = "provider query",
+                MaxResults = 2
+            },
+            ownerId,
+            ["HR"]);
+
+        response.Success.Should().BeTrue();
+        response.Data!.Ai.FallbackUsed.Should().BeFalse();
+        response.Data.Ai.ProviderName.Should().Be("test-provider");
+        response.Data.Ai.ModelName.Should().Be("test-model");
+        response.Data.Ai.Warnings.Should().Contain("provider-json:valid");
+        response.Data.Ai.Warnings.Should().Contain("prompt-template:Provider candidate search");
+        response.Data.Results.Should().ContainSingle();
+        response.Data.Results[0].Evidence.Should().Be("Provider grounded evidence");
+        persistedArtifact.Should().NotBeNull();
+        persistedArtifact!.ProviderName.Should().Be("test-provider");
+        persistedArtifact.FallbackUsed.Should().BeFalse();
+        persistedArtifact.PayloadJson.Should().Contain("Provider grounded evidence");
+    }
+
+    [Theory]
+    [InlineData("invalid_json")]
+    [InlineData("missing_required")]
+    [InlineData("provider_throw")]
+    public async Task SearchCandidatesAsync_WhenProviderCannotReturnValidStructuredJson_FallsBack(string failureMode)
+    {
+        var repository = new Mock<ICopilotRepository>();
+        var jobRepository = new Mock<IJobRepository>();
+        var aiProvider = new Mock<IAiCopilotProvider>();
+        Guid jobId = Guid.NewGuid();
+        Guid ownerId = Guid.NewGuid();
+        CopilotCandidatePoolDto pool = BuildCopilotPool(jobId);
+        CopilotGeneratedArtifact? persistedArtifact = null;
+
+        jobRepository.Setup(value => value.GetByIdAsync(jobId)).ReturnsAsync(new Job
+        {
+            Id = jobId,
+            CreatedBy = ownerId,
+            Title = "Senior .NET Engineer"
+        });
+        repository.Setup(value => value.GetCandidatePoolAsync(jobId)).ReturnsAsync(pool);
+        repository.Setup(value => value.GetPromptTemplatesAsync(ownerId)).ReturnsAsync([]);
+        repository.Setup(value => value.AddGeneratedArtifactAsync(It.IsAny<CopilotGeneratedArtifact>()))
+            .Callback<CopilotGeneratedArtifact>(artifact => persistedArtifact = artifact)
+            .Returns(Task.CompletedTask);
+
+        if (failureMode == "invalid_json")
+        {
+            aiProvider.Setup(value => value.TryCreateStructuredJsonAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<string>(),
+                    It.IsAny<string>(),
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync(AiStructuredJsonResult.Success("{not-json", "test-provider", "test-model"));
+        }
+        else if (failureMode == "missing_required")
+        {
+            aiProvider.Setup(value => value.TryCreateStructuredJsonAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<string>(),
+                    It.IsAny<string>(),
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync(AiStructuredJsonResult.Success("""{"query":"provider","results":[]}""", "test-provider", "test-model"));
+        }
+        else
+        {
+            aiProvider.Setup(value => value.TryCreateStructuredJsonAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<string>(),
+                    It.IsAny<string>(),
+                    It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new TimeoutException("provider timed out"));
+        }
+
+        CopilotService service = CreateService(
+            repository.Object,
+            jobRepository.Object,
+            aiProvider: aiProvider.Object,
+            aiSettings: new AiProviderSettings { Enabled = true, ApiKey = "test-key", Model = "test-model" });
+
+        var response = await service.SearchCandidatesAsync(
+            new NaturalLanguageCandidateSearchRequest
+            {
+                JobId = jobId,
+                Query = "Find .NET candidates",
+                MaxResults = 2
+            },
+            ownerId,
+            ["HR"]);
+
+        response.Success.Should().BeTrue();
+        response.Data!.Ai.FallbackUsed.Should().BeTrue();
+        response.Data.Ai.ProviderName.Should().Be("deterministic-copilot");
+        response.Data.Ai.Warnings.Should().Contain(warning =>
+            warning.StartsWith("Provider", StringComparison.Ordinal)
+            || warning.StartsWith("Provider JSON", StringComparison.Ordinal));
+        response.Data.Results.Should().HaveCount(2);
+        persistedArtifact.Should().NotBeNull();
+        persistedArtifact!.ProviderName.Should().Be("deterministic-copilot");
+        persistedArtifact.FallbackUsed.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task AnalyzeCandidateFitAsync_WhenProviderReturnsValidJson_PersistsProviderSnapshot()
+    {
+        var repository = new Mock<ICopilotRepository>();
+        var jobRepository = new Mock<IJobRepository>();
+        var aiProvider = new Mock<IAiCopilotProvider>();
+        Guid jobId = Guid.NewGuid();
+        Guid ownerId = Guid.NewGuid();
+        CopilotCandidatePoolDto pool = BuildCopilotPool(jobId);
+        CopilotCandidateDto candidate = pool.Candidates[0];
+        CandidateFitAnalysis? persistedSnapshot = null;
+
+        jobRepository.Setup(value => value.GetByIdAsync(jobId)).ReturnsAsync(new Job
+        {
+            Id = jobId,
+            CreatedBy = ownerId,
+            Title = "Senior .NET Engineer"
+        });
+        repository.Setup(value => value.GetCandidatePoolAsync(jobId)).ReturnsAsync(pool);
+        repository.Setup(value => value.GetPromptTemplatesAsync(ownerId)).ReturnsAsync([]);
+        repository.Setup(value => value.AddFitAnalysisAsync(It.IsAny<CandidateFitAnalysis>()))
+            .Callback<CandidateFitAnalysis>(analysis => persistedSnapshot = analysis)
+            .Returns(Task.CompletedTask);
+
+        CandidateFitAnalysisResponseDto providerResponse = new()
+        {
+            JobId = jobId,
+            Analyses =
+            [
+                new CandidateFitAnalysisDto
+                {
+                    CandidateUserId = candidate.CandidateUserId,
+                    ApplicationId = candidate.ApplicationId,
+                    FullName = candidate.FullName,
+                    FitLabel = "StrongFit",
+                    ConfidenceScore = 97,
+                    TotalScore = 96,
+                    Strengths = [".NET", "SQL"],
+                    Gaps = [],
+                    Evidence = ["Provider fit evidence"],
+                    Summary = "Provider says this is a strong fit."
+                }
+            ]
+        };
+
+        aiProvider.Setup(value => value.TryCreateStructuredJsonAsync(
+                "fit_analysis",
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(AiStructuredJsonResult.Success(JsonSerializer.Serialize(providerResponse), "fit-provider", "fit-model"));
+
+        CopilotService service = CreateService(
+            repository.Object,
+            jobRepository.Object,
+            aiProvider: aiProvider.Object,
+            aiSettings: new AiProviderSettings { Enabled = true, ApiKey = "test-key", Model = "fit-model" });
+
+        var response = await service.AnalyzeCandidateFitAsync(
+            jobId,
+            new CandidateFitAnalysisRequest { Prompt = "Prioritize backend depth" },
+            ownerId,
+            ["HR"]);
+
+        response.Success.Should().BeTrue();
+        response.Data!.Ai.FallbackUsed.Should().BeFalse();
+        response.Data.Ai.ProviderName.Should().Be("fit-provider");
+        response.Data.Analyses.Should().ContainSingle();
+        response.Data.Analyses[0].Summary.Should().Be("Provider says this is a strong fit.");
+        persistedSnapshot.Should().NotBeNull();
+        persistedSnapshot!.ProviderName.Should().Be("fit-provider");
+        persistedSnapshot.ModelName.Should().Be("fit-model");
+        persistedSnapshot.FallbackUsed.Should().BeFalse();
+        persistedSnapshot.Summary.Should().Be("Provider says this is a strong fit.");
+    }
+
+    [Fact]
+    public async Task GenerateInterviewQuestionsAsync_WhenProviderReturnsValidJson_PersistsProviderArtifact()
+    {
+        var repository = new Mock<ICopilotRepository>();
+        var jobRepository = new Mock<IJobRepository>();
+        var aiProvider = new Mock<IAiCopilotProvider>();
+        Guid jobId = Guid.NewGuid();
+        Guid ownerId = Guid.NewGuid();
+        CopilotCandidatePoolDto pool = BuildCopilotPool(jobId);
+        CopilotCandidateDto candidate = pool.Candidates[0];
+        CopilotGeneratedArtifact? persistedArtifact = null;
+
+        jobRepository.Setup(value => value.GetByIdAsync(jobId)).ReturnsAsync(new Job
+        {
+            Id = jobId,
+            CreatedBy = ownerId,
+            Title = "Senior .NET Engineer"
+        });
+        repository.Setup(value => value.GetCandidatePoolAsync(jobId)).ReturnsAsync(pool);
+        repository.Setup(value => value.GetPromptTemplatesAsync(ownerId)).ReturnsAsync([]);
+        repository.Setup(value => value.AddGeneratedArtifactAsync(It.IsAny<CopilotGeneratedArtifact>()))
+            .Callback<CopilotGeneratedArtifact>(artifact => persistedArtifact = artifact)
+            .Returns(Task.CompletedTask);
+
+        InterviewQuestionSetDto providerResponse = new()
+        {
+            JobId = jobId,
+            CandidateUserId = candidate.CandidateUserId,
+            Focus = "backend depth",
+            Questions =
+            [
+                new InterviewQuestionDto
+                {
+                    Category = "Technical",
+                    Question = "How did you design the SQL-backed .NET APIs?",
+                    Evidence = "Provider question evidence"
+                }
+            ]
+        };
+
+        aiProvider.Setup(value => value.TryCreateStructuredJsonAsync(
+                "interview_questions",
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(AiStructuredJsonResult.Success(JsonSerializer.Serialize(providerResponse), "question-provider", "question-model"));
+
+        CopilotService service = CreateService(
+            repository.Object,
+            jobRepository.Object,
+            aiProvider: aiProvider.Object,
+            aiSettings: new AiProviderSettings { Enabled = true, ApiKey = "test-key", Model = "question-model" });
+
+        var response = await service.GenerateInterviewQuestionsAsync(
+            jobId,
+            new InterviewQuestionRequest
+            {
+                CandidateUserId = candidate.CandidateUserId,
+                Focus = "backend depth",
+                QuestionCount = 3
+            },
+            ownerId,
+            ["HR"]);
+
+        response.Success.Should().BeTrue();
+        response.Data!.Ai.FallbackUsed.Should().BeFalse();
+        response.Data.Ai.ProviderName.Should().Be("question-provider");
+        response.Data.Questions.Should().ContainSingle();
+        response.Data.Questions[0].Evidence.Should().Be("Provider question evidence");
+        persistedArtifact.Should().NotBeNull();
+        persistedArtifact!.ArtifactType.Should().Be("interview_questions");
+        persistedArtifact.ProviderName.Should().Be("question-provider");
+        persistedArtifact.FallbackUsed.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task GenerateShortlistAsync_WhenProviderReturnsValidJson_PersistsProviderArtifact()
+    {
+        var repository = new Mock<ICopilotRepository>();
+        var jobRepository = new Mock<IJobRepository>();
+        var aiProvider = new Mock<IAiCopilotProvider>();
+        Guid jobId = Guid.NewGuid();
+        Guid ownerId = Guid.NewGuid();
+        CopilotCandidatePoolDto pool = BuildCopilotPool(jobId);
+        CopilotCandidateDto candidate = pool.Candidates[0];
+        CopilotGeneratedArtifact? persistedArtifact = null;
+
+        jobRepository.Setup(value => value.GetByIdAsync(jobId)).ReturnsAsync(new Job
+        {
+            Id = jobId,
+            CreatedBy = ownerId,
+            Title = "Senior .NET Engineer"
+        });
+        repository.Setup(value => value.GetCandidatePoolAsync(jobId)).ReturnsAsync(pool);
+        repository.Setup(value => value.GetPromptTemplatesAsync(ownerId)).ReturnsAsync([]);
+        repository.Setup(value => value.AddGeneratedArtifactAsync(It.IsAny<CopilotGeneratedArtifact>()))
+            .Callback<CopilotGeneratedArtifact>(artifact => persistedArtifact = artifact)
+            .Returns(Task.CompletedTask);
+
+        ShortlistSuggestionResponseDto providerResponse = new()
+        {
+            JobId = jobId,
+            Suggestions =
+            [
+                new ShortlistSuggestionDto
+                {
+                    CandidateUserId = candidate.CandidateUserId,
+                    ApplicationId = candidate.ApplicationId,
+                    FullName = candidate.FullName,
+                    RankPosition = 1,
+                    Score = 99,
+                    Recommendation = "Prioritize for interview",
+                    Rationale = ["Provider shortlist evidence"]
+                }
+            ]
+        };
+
+        aiProvider.Setup(value => value.TryCreateStructuredJsonAsync(
+                "shortlist_suggestion",
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(AiStructuredJsonResult.Success(JsonSerializer.Serialize(providerResponse), "shortlist-provider", "shortlist-model"));
+
+        CopilotService service = CreateService(
+            repository.Object,
+            jobRepository.Object,
+            aiProvider: aiProvider.Object,
+            aiSettings: new AiProviderSettings { Enabled = true, ApiKey = "test-key", Model = "shortlist-model" });
+
+        var response = await service.GenerateShortlistAsync(
+            jobId,
+            new ShortlistRequest { Prompt = "Give me a shortlist", MaxCandidates = 3 },
+            ownerId,
+            ["HR"]);
+
+        response.Success.Should().BeTrue();
+        response.Data!.Ai.FallbackUsed.Should().BeFalse();
+        response.Data.Ai.ProviderName.Should().Be("shortlist-provider");
+        response.Data.Suggestions.Should().ContainSingle();
+        response.Data.Suggestions[0].Recommendation.Should().Be("Prioritize for interview");
+        persistedArtifact.Should().NotBeNull();
+        persistedArtifact!.ArtifactType.Should().Be("shortlist_suggestion");
+        persistedArtifact.ProviderName.Should().Be("shortlist-provider");
+        persistedArtifact.FallbackUsed.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task DraftApplicationEmailAsync_WhenProviderReturnsValidJson_PersistsProviderArtifact()
+    {
+        var repository = new Mock<ICopilotRepository>();
+        var applicationRepository = new Mock<IApplicationRepository>();
+        var aiProvider = new Mock<IAiCopilotProvider>();
+        Guid ownerId = Guid.NewGuid();
+        Guid applicationId = Guid.NewGuid();
+        Guid jobId = Guid.NewGuid();
+        CopilotGeneratedArtifact? persistedArtifact = null;
+
+        applicationRepository.Setup(value => value.GetByIdAsync(applicationId)).ReturnsAsync(new Domain.Entities.Application
+        {
+            Id = applicationId,
+            UserId = Guid.NewGuid(),
+            JobId = jobId,
+            AssignedRecruiterId = ownerId,
+            Status = ApplicationStatus.Screening,
+            User = new User { FullName = "Strong Candidate", Email = "candidate@test.com" },
+            Job = new Job { Id = jobId, Title = "Senior .NET Engineer", CreatedBy = ownerId }
+        });
+        repository.Setup(value => value.GetPromptTemplatesAsync(ownerId)).ReturnsAsync([]);
+        repository.Setup(value => value.AddGeneratedArtifactAsync(It.IsAny<CopilotGeneratedArtifact>()))
+            .Callback<CopilotGeneratedArtifact>(artifact => persistedArtifact = artifact)
+            .Returns(Task.CompletedTask);
+
+        HrEmailDraftResponseDto providerResponse = new()
+        {
+            ApplicationId = applicationId,
+            TemplateType = "interview_invite",
+            Subject = "Next step for Senior .NET Engineer",
+            Body = "Provider email body",
+            Evidence = ["Provider email evidence"]
+        };
+
+        aiProvider.Setup(value => value.TryCreateStructuredJsonAsync(
+                "email_draft",
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(AiStructuredJsonResult.Success(JsonSerializer.Serialize(providerResponse), "email-provider", "email-model"));
+
+        CopilotService service = CreateService(
+            repository.Object,
+            applicationRepository: applicationRepository.Object,
+            aiProvider: aiProvider.Object,
+            aiSettings: new AiProviderSettings { Enabled = true, ApiKey = "test-key", Model = "email-model" });
+
+        var response = await service.DraftApplicationEmailAsync(
+            applicationId,
+            new HrEmailDraftRequest { TemplateType = "interview_invite" },
+            ownerId,
+            ["HR"]);
+
+        response.Success.Should().BeTrue();
+        response.Data!.Ai.FallbackUsed.Should().BeFalse();
+        response.Data.Ai.ProviderName.Should().Be("email-provider");
+        response.Data.Body.Should().Be("Provider email body");
+        persistedArtifact.Should().NotBeNull();
+        persistedArtifact!.ArtifactType.Should().Be("email_draft");
+        persistedArtifact.ProviderName.Should().Be("email-provider");
+        persistedArtifact.FallbackUsed.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task DraftApplicationEmailAsync_WhenCallerOutOfScope_Returns403()
+    {
+        var applicationRepository = new Mock<IApplicationRepository>();
+        Guid applicationId = Guid.NewGuid();
+        applicationRepository.Setup(value => value.GetByIdAsync(applicationId)).ReturnsAsync(new Domain.Entities.Application
+        {
+            Id = applicationId,
+            UserId = Guid.NewGuid(),
+            JobId = Guid.NewGuid(),
+            AssignedRecruiterId = Guid.NewGuid(),
+            Status = ApplicationStatus.Screening,
+            User = new User { FullName = "Candidate User", Email = "candidate@test.com" },
+            Job = new Job { Title = "Senior .NET Engineer", CreatedBy = Guid.NewGuid() }
+        });
+
+        CopilotService service = CreateService(applicationRepository: applicationRepository.Object);
+
+        var response = await service.DraftApplicationEmailAsync(
+            applicationId,
+            new HrEmailDraftRequest { TemplateType = "interview_invite" },
+            Guid.NewGuid(),
+            ["HR"]);
+
+        response.StatusCode.Should().Be(403);
+    }
+
+    [Fact]
+    public async Task CreatePromptTemplateAsync_PersistsTemplateForCurrentUser()
+    {
+        var repository = new Mock<ICopilotRepository>();
+        repository.Setup(value => value.AddPromptTemplateAsync(It.IsAny<CopilotPromptTemplate>()))
+            .Returns(Task.CompletedTask);
+        Guid userId = Guid.NewGuid();
+        CopilotService service = CreateService(repository.Object);
+
+        var response = await service.CreatePromptTemplateAsync(new CreateCopilotPromptTemplateRequest
+        {
+            Name = "Interview screen",
+            TemplateType = "interview_questions",
+            Prompt = "Focus on backend depth",
+            IsActive = true
+        }, userId);
+
+        response.StatusCode.Should().Be(201);
+        response.Data!.Name.Should().Be("Interview screen");
+        repository.Verify(value => value.AddPromptTemplateAsync(It.Is<CopilotPromptTemplate>(template =>
+            template.OwnerUserId == userId
+            && template.TemplateType == "interview_questions"
+            && template.Prompt == "Focus on backend depth")), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetLatestFitAnalysisForApplicationAsync_WhenInScope_ReturnsPersistedSnapshot()
+    {
+        var repository = new Mock<ICopilotRepository>();
+        var applicationRepository = new Mock<IApplicationRepository>();
+        Guid ownerId = Guid.NewGuid();
+        Guid applicationId = Guid.NewGuid();
+        Guid jobId = Guid.NewGuid();
+        Guid candidateUserId = Guid.NewGuid();
+
+        applicationRepository.Setup(value => value.GetByIdAsync(applicationId)).ReturnsAsync(new Domain.Entities.Application
+        {
+            Id = applicationId,
+            UserId = candidateUserId,
+            JobId = jobId,
+            AssignedRecruiterId = ownerId,
+            Job = new Job { Id = jobId, CreatedBy = ownerId }
+        });
+        repository.Setup(value => value.GetLatestFitAnalysisAsync(applicationId)).ReturnsAsync(new CandidateFitAnalysis
+        {
+            Id = Guid.NewGuid(),
+            AuditId = Guid.NewGuid(),
+            JobId = jobId,
+            CandidateUserId = candidateUserId,
+            ApplicationId = applicationId,
+            FitLabel = "StrongFit",
+            ConfidenceScore = 92,
+            TotalScore = 88,
+            StrengthsJson = JsonSerializer.Serialize(new[] { ".NET", "SQL" }),
+            GapsJson = JsonSerializer.Serialize(Array.Empty<string>()),
+            EvidenceJson = JsonSerializer.Serialize(new[] { "Scores: total 88" }),
+            Summary = "Strong deterministic match",
+            ProviderName = "deterministic-copilot",
+            ModelName = "deterministic-copilot-v2",
+            FallbackUsed = true,
+            CandidateUser = new User { Id = candidateUserId, FullName = "Strong Candidate" }
+        });
+
+        CopilotService service = CreateService(repository.Object, applicationRepository: applicationRepository.Object);
+
+        var response = await service.GetLatestFitAnalysisForApplicationAsync(applicationId, ownerId, ["HR"]);
+
+        response.Success.Should().BeTrue();
+        response.Data!.FitLabel.Should().Be("StrongFit");
+        response.Data.FullName.Should().Be("Strong Candidate");
+        response.Data.Strengths.Should().Contain(".NET");
+    }
+
+    private static CopilotService CreateService(
+        ICopilotRepository? repository = null,
+        IJobRepository? jobRepository = null,
+        IApplicationRepository? applicationRepository = null,
+        IAiCopilotProvider? aiProvider = null,
+        AiProviderSettings? aiSettings = null)
+    {
+        var unitOfWork = new Mock<IUnitOfWork>();
+        unitOfWork.Setup(value => value.SaveChangesAsync()).ReturnsAsync(1);
+
+        return new CopilotService(
+            repository ?? Mock.Of<ICopilotRepository>(),
+            jobRepository ?? Mock.Of<IJobRepository>(),
+            applicationRepository ?? Mock.Of<IApplicationRepository>(),
+            Mock.Of<IFileStorageService>(),
+            Mock.Of<IResumeTextExtractor>(),
+            aiProvider ?? Mock.Of<IAiCopilotProvider>(),
+            unitOfWork.Object,
+            Options.Create(aiSettings ?? new AiProviderSettings()),
+            TestMapperFactory.Create());
+    }
+
+    private static CopilotCandidatePoolDto BuildCopilotPool(Guid jobId)
+    {
+        return new CopilotCandidatePoolDto
+        {
+            Job = new CopilotJobContextDto
+            {
+                JobId = jobId,
+                Title = "Senior .NET Engineer",
+                RequiredSkills = [".NET", "SQL"],
+                Requirements = ["3+ years backend experience"]
+            },
+            Candidates =
+            [
+                new CopilotCandidateDto
+                {
+                    CandidateUserId = Guid.NewGuid(),
+                    ApplicationId = Guid.NewGuid(),
+                    FullName = "Strong Candidate",
+                    ExperienceYears = 5,
+                    Skills = [".NET", "SQL", "Azure"],
+                    CvSummary = "Built .NET APIs with SQL and Azure."
+                },
+                new CopilotCandidateDto
+                {
+                    CandidateUserId = Guid.NewGuid(),
+                    ApplicationId = Guid.NewGuid(),
+                    FullName = "Junior Candidate",
+                    ExperienceYears = 1,
+                    Skills = ["JavaScript"],
+                    CvSummary = "Frontend internship experience."
+                }
+            ]
+        };
     }
 }
 
@@ -958,7 +1628,7 @@ internal static class TestMapperFactory
             config.AddProfile<UserProfile>();
             config.AddProfile<JobProfile>();
             config.AddProfile<SharedProfile>();
-        });
+        }, NullLoggerFactory.Instance);
         return configuration.CreateMapper();
     });
 

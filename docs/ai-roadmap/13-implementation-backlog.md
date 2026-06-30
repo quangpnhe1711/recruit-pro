@@ -12,16 +12,25 @@
 
 ### P0
 
-- extend copilot endpoints for NL search, fit analysis, interview questions, shortlist, email draft
-- add `candidate_fit_analyses` and prompt-template storage
-- upgrade HR copilot UI
-- add audit metadata and fallback flags
-- add tests for structured outputs and RBAC
+- extend copilot endpoints for NL search, fit analysis, interview questions, shortlist, email draft — **foundation slice implemented with deterministic fallback**
+- add `candidate_fit_analyses`, `copilot_generated_artifacts`, and prompt-template storage — **implemented with repository + migration**
+- upgrade HR copilot UI — **compact v2 tools panel implemented**
+- add audit metadata and fallback flags — **implemented for foundation endpoints; generated artifacts expose `artifactId`**
+- expose persisted fit snapshots/artifact history — **latest application fit snapshot + current-user artifacts API implemented**
+- artifact history UI — **implemented in `AiCopilotScreen` with job/type filters**
+- prompt-template management UI — **minimal list/create/detail implemented in `AiCopilotScreen`**
+- add tests for structured outputs and RBAC — **unit + API integration/RBAC coverage expanded for v2 read/template endpoints**
+- provider-backed structured JSON generation — **implemented for search, fit analysis, interview questions, shortlist, and email draft with deterministic fallback on disabled provider, errors, invalid JSON, or validation failure**
+- frontend E2E coverage for AI Copilot artifact/template/provider metadata workflows — **implemented with deterministic Playwright route mocks**
+- frontend performance hardening — **route-level lazy loading removes Vite chunk-size warning**
+- critical package warning triage — **AutoMapper upgraded to 15.1.3; NU1903 resolved**
 
 ### P1
 
 - prompt presets
 - candidate comparison view
+- richer artifact drill-down/editing after backend API expansion
+- prompt-template edit/delete/versioning after backend API expansion
 - cached explanation refresh job
 
 ## v3 Backlog

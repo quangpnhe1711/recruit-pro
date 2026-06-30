@@ -31,6 +31,65 @@ public class AiCopilotProvider : IAiCopilotProvider
         _settings = options.Value;
     }
 
+    public async Task<AiStructuredJsonResult> TryCreateStructuredJsonAsync(
+        string actionType,
+        string systemPrompt,
+        string userPrompt,
+        CancellationToken cancellationToken = default)
+    {
+        string providerName = ResolveProviderName();
+        if (!_settings.Enabled || string.IsNullOrWhiteSpace(_settings.ApiKey))
+        {
+            _logger.LogInformation(
+                "Structured AI copilot skipped. Action: {ActionType}. Enabled: {Enabled}. ApiKeyPresent: {ApiKeyPresent}.",
+                actionType,
+                _settings.Enabled,
+                !string.IsNullOrWhiteSpace(_settings.ApiKey));
+            return AiStructuredJsonResult.Failure("AI provider disabled or missing API configuration.", providerName, _settings.Model);
+        }
+
+        object requestBody = BuildRequestBody(
+            systemPrompt: systemPrompt,
+            userPrompt: userPrompt,
+            requireJson: true);
+
+        using HttpRequestMessage request = AiCompatibleApiHelper.BuildRequest(_settings, requestBody, JsonOptions);
+
+        try
+        {
+            _logger.LogInformation(
+                "Structured AI copilot request started. Action: {ActionType}. Model: {Model}.",
+                actionType,
+                _settings.Model);
+
+            using HttpResponseMessage response = await _httpClient.SendAsync(request, cancellationToken);
+            string raw = await response.Content.ReadAsStringAsync(cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "Structured AI copilot request failed. Action: {ActionType}. Status: {StatusCode}. Response: {Response}",
+                    actionType,
+                    response.StatusCode,
+                    raw);
+                return AiStructuredJsonResult.Failure($"AI provider request failed with status {(int)response.StatusCode}.", providerName, _settings.Model);
+            }
+
+            string? outputText = AiCompatibleApiHelper.ExtractOutputText(raw);
+            if (string.IsNullOrWhiteSpace(outputText))
+            {
+                return AiStructuredJsonResult.Failure("AI provider returned no JSON content.", providerName, _settings.Model);
+            }
+
+            string normalizedOutput = AiCompatibleApiHelper.NormalizeJsonPayload(outputText);
+            return AiStructuredJsonResult.Success(normalizedOutput, providerName, _settings.Model);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Structured AI copilot provider failed. Action: {ActionType}.", actionType);
+            return AiStructuredJsonResult.Failure(ex.Message, providerName, _settings.Model);
+        }
+    }
+
     /// <summary>
     /// Attempts to create ranking.
     /// </summary>
@@ -304,6 +363,16 @@ public class AiCopilotProvider : IAiCopilotProvider
                 }
             }
         };
+    }
+
+    private string ResolveProviderName()
+    {
+        if (Uri.TryCreate(_settings.BaseUrl, UriKind.Absolute, out Uri? uri))
+        {
+            return uri.Host;
+        }
+
+        return "configured-ai-provider";
     }
 
     /// <summary>

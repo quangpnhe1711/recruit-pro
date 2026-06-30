@@ -1,5 +1,29 @@
 # v2 - AI Recruitment Copilot
 
+## Implementation Status
+
+Started on 2026-06-30 with a v2 P0 foundation slice:
+
+- added structured backend endpoints for natural-language candidate search, fit analysis, interview questions, shortlist suggestions, and HR email draft
+- all new outputs include `auditId`, `fallbackUsed`, provider/model metadata, and warnings
+- the first slice uses deterministic ATS evidence and existing copilot ranking logic as the fallback path; no ATS state is mutated
+- added persistence for prompt templates, generated artifacts, and per-candidate fit-analysis snapshots
+- generated artifacts now expose `artifactId` in AI metadata when the output is persisted
+- HR `AiCopilotScreen` now exposes a compact v2 tools panel for demoing the endpoints from the existing copilot UI
+- review detail screens can now read the latest persisted fit-analysis snapshot for an application
+- copilot generated artifacts can now be queried for the current user with optional job/application/type filters
+- `AiCopilotScreen` now includes artifact history and prompt-template management panels
+- provider-backed structured JSON generation is wired for search, fit analysis, interview questions, shortlist suggestions, and email drafts behind deterministic fallback
+- prompt templates are reused by provider calls when an active template exists for the current user and template type
+- Playwright acceptance E2E covers latest fit-analysis cards, artifact history, prompt-template create/detail, provider metadata, and fallback metadata with deterministic API mocks
+- frontend routes are lazy-loaded to keep production chunks below the Vite warning threshold
+- AutoMapper package warning was resolved by upgrading to `AutoMapper` 15.1.3 and removing the deprecated DI extension package
+
+Still pending for later v2 hardening:
+
+- richer artifact history drill-down/editing, if new backend APIs are added
+- prompt-template edit/delete/versioning, if new backend APIs are added
+
 ## 1. Goal
 
 ### Business
@@ -100,9 +124,12 @@ Recommended services:
 ### Providers
 
 - structured JSON output contract for:
+  - natural-language candidate search
   - fit analysis
   - question sets
+  - shortlist suggestions
   - email drafts
+- deterministic fallback remains the public contract whenever provider config is disabled, provider calls fail, JSON cannot be parsed, or required fields fail validation
 
 ### Interfaces
 
@@ -142,8 +169,10 @@ Recommended services:
 | `POST` | `/api/copilot/jobs/{jobId}/interview-questions` | generate structured interview questions | HR, Interviewer |
 | `POST` | `/api/copilot/jobs/{jobId}/shortlists` | create shortlist suggestions | HR |
 | `POST` | `/api/copilot/applications/{applicationId}/emails/draft` | generate recruiter email draft | HR |
-| `GET` | `/api/copilot/prompt-templates` | list saved prompt templates | HR, Admin |
-| `POST` | `/api/copilot/prompt-templates` | save prompt template | HR, Admin |
+| `GET` | `/api/copilot/prompt-templates` | list saved prompt templates | HR, Manager |
+| `POST` | `/api/copilot/prompt-templates` | save prompt template | HR, Manager |
+| `GET` | `/api/copilot/applications/{applicationId}/fit-analysis/latest` | latest persisted fit-analysis snapshot | HR, Manager |
+| `GET` | `/api/copilot/artifacts` | current user's generated artifact history | HR, Manager |
 
 Request/response should follow the current API envelope style and include:
 
@@ -202,6 +231,7 @@ Use backend-owned tools only:
 
 All new outputs should return typed JSON:
 
+- `SearchIntentSchema`
 - `FitAnalysisSchema`
 - `InterviewQuestionSchema`
 - `ShortlistSchema`

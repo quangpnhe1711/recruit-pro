@@ -142,3 +142,145 @@ public class CopilotSavedRuleDto
     public DateTime? UpdatedAt { get; set; }
     public CopilotNormalizedRulesDto Rule { get; set; } = new();
 }
+
+public class CopilotAiMetadataDto
+{
+    public Guid AuditId { get; set; }
+    public Guid? ArtifactId { get; set; }
+    public bool FallbackUsed { get; set; }
+    public string ProviderName { get; set; } = string.Empty;
+    public string ModelName { get; set; } = string.Empty;
+    public IReadOnlyList<string> Warnings { get; set; } = [];
+}
+
+public class CopilotPromptTemplateDto
+{
+    public Guid TemplateId { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string TemplateType { get; set; } = string.Empty;
+    public string Prompt { get; set; } = string.Empty;
+    public bool IsActive { get; set; }
+    public DateTime? CreatedAt { get; set; }
+    public DateTime? UpdatedAt { get; set; }
+}
+
+public class CandidateFitAnalysisSnapshotDto
+{
+    public Guid FitAnalysisId { get; set; }
+    public Guid AuditId { get; set; }
+    public Guid JobId { get; set; }
+    public Guid CandidateUserId { get; set; }
+    public Guid ApplicationId { get; set; }
+    public string FullName { get; set; } = string.Empty;
+    public string FitLabel { get; set; } = string.Empty;
+    public decimal ConfidenceScore { get; set; }
+    public decimal TotalScore { get; set; }
+    public IReadOnlyList<string> Strengths { get; set; } = [];
+    public IReadOnlyList<string> Gaps { get; set; } = [];
+    public IReadOnlyList<string> Evidence { get; set; } = [];
+    public string Summary { get; set; } = string.Empty;
+    public string ProviderName { get; set; } = string.Empty;
+    public string ModelName { get; set; } = string.Empty;
+    public bool FallbackUsed { get; set; }
+    public DateTime? CreatedAt { get; set; }
+}
+
+public class CopilotGeneratedArtifactDto
+{
+    public Guid ArtifactId { get; set; }
+    public Guid OwnerUserId { get; set; }
+    public Guid? JobId { get; set; }
+    public Guid? ApplicationId { get; set; }
+    public string ArtifactType { get; set; } = string.Empty;
+    public string Prompt { get; set; } = string.Empty;
+    public string PayloadJson { get; set; } = "{}";
+    public string ProviderName { get; set; } = string.Empty;
+    public string ModelName { get; set; } = string.Empty;
+    public bool FallbackUsed { get; set; }
+    public DateTime? CreatedAt { get; set; }
+}
+
+public class NaturalLanguageCandidateSearchResponseDto
+{
+    public string NormalizedIntent { get; set; } = "candidate_search";
+    public string Query { get; set; } = string.Empty;
+    public CopilotNormalizedRulesDto ExtractedFilters { get; set; } = new();
+    public IReadOnlyList<CopilotCandidateSearchResultDto> Results { get; set; } = [];
+    public CopilotAiMetadataDto Ai { get; set; } = new();
+}
+
+public class CopilotCandidateSearchResultDto
+{
+    public Guid CandidateUserId { get; set; }
+    public Guid ApplicationId { get; set; }
+    public string FullName { get; set; } = string.Empty;
+    public decimal MatchScore { get; set; }
+    public IReadOnlyList<string> MatchedSkills { get; set; } = [];
+    public IReadOnlyList<string> MissingSkills { get; set; } = [];
+    public string Evidence { get; set; } = string.Empty;
+}
+
+public class CandidateFitAnalysisResponseDto
+{
+    public Guid JobId { get; set; }
+    public IReadOnlyList<CandidateFitAnalysisDto> Analyses { get; set; } = [];
+    public CopilotAiMetadataDto Ai { get; set; } = new();
+}
+
+public class CandidateFitAnalysisDto
+{
+    public Guid CandidateUserId { get; set; }
+    public Guid ApplicationId { get; set; }
+    public string FullName { get; set; } = string.Empty;
+    public string FitLabel { get; set; } = string.Empty;
+    public decimal ConfidenceScore { get; set; }
+    public decimal TotalScore { get; set; }
+    public IReadOnlyList<string> Strengths { get; set; } = [];
+    public IReadOnlyList<string> Gaps { get; set; } = [];
+    public IReadOnlyList<string> Evidence { get; set; } = [];
+    public string Summary { get; set; } = string.Empty;
+}
+
+public class InterviewQuestionSetDto
+{
+    public Guid JobId { get; set; }
+    public Guid? CandidateUserId { get; set; }
+    public string Focus { get; set; } = string.Empty;
+    public IReadOnlyList<InterviewQuestionDto> Questions { get; set; } = [];
+    public CopilotAiMetadataDto Ai { get; set; } = new();
+}
+
+public class InterviewQuestionDto
+{
+    public string Category { get; set; } = string.Empty;
+    public string Question { get; set; } = string.Empty;
+    public string Evidence { get; set; } = string.Empty;
+}
+
+public class ShortlistSuggestionResponseDto
+{
+    public Guid JobId { get; set; }
+    public IReadOnlyList<ShortlistSuggestionDto> Suggestions { get; set; } = [];
+    public CopilotAiMetadataDto Ai { get; set; } = new();
+}
+
+public class ShortlistSuggestionDto
+{
+    public Guid CandidateUserId { get; set; }
+    public Guid ApplicationId { get; set; }
+    public string FullName { get; set; } = string.Empty;
+    public int RankPosition { get; set; }
+    public decimal Score { get; set; }
+    public string Recommendation { get; set; } = string.Empty;
+    public IReadOnlyList<string> Rationale { get; set; } = [];
+}
+
+public class HrEmailDraftResponseDto
+{
+    public Guid ApplicationId { get; set; }
+    public string TemplateType { get; set; } = string.Empty;
+    public string Subject { get; set; } = string.Empty;
+    public string Body { get; set; } = string.Empty;
+    public IReadOnlyList<string> Evidence { get; set; } = [];
+    public CopilotAiMetadataDto Ai { get; set; } = new();
+}

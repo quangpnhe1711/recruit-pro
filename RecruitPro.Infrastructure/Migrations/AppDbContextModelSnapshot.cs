@@ -641,6 +641,104 @@ namespace RecruitPro.Infrastructure.Migrations
                     b.ToTable("candidate_skills", (string)null);
                 });
 
+            modelBuilder.Entity("RecruitPro.Domain.Entities.CandidateFitAnalysis", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<Guid>("ApplicationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("application_id");
+
+                    b.Property<Guid>("AuditId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("audit_id");
+
+                    b.Property<Guid>("CandidateUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("candidate_user_id");
+
+                    b.Property<decimal>("ConfidenceScore")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)")
+                        .HasColumnName("confidence_score");
+
+                    b.Property<DateTime?>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<string>("EvidenceJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("evidence_json");
+
+                    b.Property<bool>("FallbackUsed")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("fallback_used");
+
+                    b.Property<string>("FitLabel")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("fit_label");
+
+                    b.Property<string>("GapsJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("gaps_json");
+
+                    b.Property<Guid>("JobId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("job_id");
+
+                    b.Property<string>("ModelName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("model_name");
+
+                    b.Property<string>("ProviderName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("provider_name");
+
+                    b.Property<string>("StrengthsJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("strengths_json");
+
+                    b.Property<string>("Summary")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("summary");
+
+                    b.Property<decimal>("TotalScore")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)")
+                        .HasColumnName("total_score");
+
+                    b.HasKey("Id")
+                        .HasName("candidate_fit_analyses_pkey");
+
+                    b.HasIndex("ApplicationId");
+
+                    b.HasIndex("AuditId", "ix_candidate_fit_analyses_audit_id");
+
+                    b.HasIndex("CandidateUserId");
+
+                    b.HasIndex(new[] { "JobId", "CandidateUserId", "CreatedAt" }, "ix_candidate_fit_analyses_job_candidate_created");
+
+                    b.ToTable("candidate_fit_analyses", (string)null);
+                });
+
             modelBuilder.Entity("RecruitPro.Domain.Entities.CopilotCandidateTag", b =>
                 {
                     b.Property<Guid>("Id")
@@ -760,6 +858,78 @@ namespace RecruitPro.Infrastructure.Migrations
                     b.ToTable("copilot_conversations", (string)null);
                 });
 
+            modelBuilder.Entity("RecruitPro.Domain.Entities.CopilotGeneratedArtifact", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<Guid?>("ApplicationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("application_id");
+
+                    b.Property<string>("ArtifactType")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("artifact_type");
+
+                    b.Property<DateTime?>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<bool>("FallbackUsed")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("fallback_used");
+
+                    b.Property<Guid?>("JobId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("job_id");
+
+                    b.Property<string>("ModelName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("model_name");
+
+                    b.Property<Guid>("OwnerUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_user_id");
+
+                    b.Property<string>("PayloadJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("payload_json");
+
+                    b.Property<string>("Prompt")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("prompt");
+
+                    b.Property<string>("ProviderName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("provider_name");
+
+                    b.HasKey("Id")
+                        .HasName("copilot_generated_artifacts_pkey");
+
+                    b.HasIndex("ApplicationId");
+
+                    b.HasIndex(new[] { "JobId", "CreatedAt" }, "ix_copilot_generated_artifacts_job_created");
+
+                    b.HasIndex(new[] { "OwnerUserId", "ArtifactType", "CreatedAt" }, "ix_copilot_generated_artifacts_owner_type_created");
+
+                    b.ToTable("copilot_generated_artifacts", (string)null);
+                });
+
             modelBuilder.Entity("RecruitPro.Domain.Entities.CopilotMessage", b =>
                 {
                     b.Property<Guid>("Id")
@@ -803,6 +973,61 @@ namespace RecruitPro.Infrastructure.Migrations
                     b.HasIndex(new[] { "ConversationId", "SequenceNo" }, "ix_copilot_messages_conversation_sequence");
 
                     b.ToTable("copilot_messages", (string)null);
+                });
+
+            modelBuilder.Entity("RecruitPro.Domain.Entities.CopilotPromptTemplate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<DateTime?>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("is_active");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("name");
+
+                    b.Property<Guid>("OwnerUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_user_id");
+
+                    b.Property<string>("Prompt")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("prompt");
+
+                    b.Property<string>("TemplateType")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("template_type");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("updated_at")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.HasKey("Id")
+                        .HasName("copilot_prompt_templates_pkey");
+
+                    b.HasIndex(new[] { "OwnerUserId", "TemplateType", "IsActive" }, "ix_copilot_prompt_templates_owner_type_active");
+
+                    b.ToTable("copilot_prompt_templates", (string)null);
                 });
 
             modelBuilder.Entity("RecruitPro.Domain.Entities.CopilotRankingResult", b =>
@@ -1872,6 +2097,36 @@ namespace RecruitPro.Infrastructure.Migrations
                     b.Navigation("Skill");
                 });
 
+            modelBuilder.Entity("RecruitPro.Domain.Entities.CandidateFitAnalysis", b =>
+                {
+                    b.HasOne("RecruitPro.Domain.Entities.Application", "Application")
+                        .WithMany()
+                        .HasForeignKey("ApplicationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("candidate_fit_analyses_application_id_fkey");
+
+                    b.HasOne("RecruitPro.Domain.Entities.User", "CandidateUser")
+                        .WithMany()
+                        .HasForeignKey("CandidateUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("candidate_fit_analyses_candidate_user_id_fkey");
+
+                    b.HasOne("RecruitPro.Domain.Entities.Job", "Job")
+                        .WithMany()
+                        .HasForeignKey("JobId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("candidate_fit_analyses_job_id_fkey");
+
+                    b.Navigation("Application");
+
+                    b.Navigation("CandidateUser");
+
+                    b.Navigation("Job");
+                });
+
             modelBuilder.Entity("RecruitPro.Domain.Entities.CopilotCandidateTag", b =>
                 {
                     b.HasOne("RecruitPro.Domain.Entities.User", "CandidateUser")
@@ -1937,6 +2192,32 @@ namespace RecruitPro.Infrastructure.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("RecruitPro.Domain.Entities.CopilotGeneratedArtifact", b =>
+                {
+                    b.HasOne("RecruitPro.Domain.Entities.Application", "Application")
+                        .WithMany()
+                        .HasForeignKey("ApplicationId")
+                        .HasConstraintName("copilot_generated_artifacts_application_id_fkey");
+
+                    b.HasOne("RecruitPro.Domain.Entities.Job", "Job")
+                        .WithMany()
+                        .HasForeignKey("JobId")
+                        .HasConstraintName("copilot_generated_artifacts_job_id_fkey");
+
+                    b.HasOne("RecruitPro.Domain.Entities.User", "OwnerUser")
+                        .WithMany()
+                        .HasForeignKey("OwnerUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("copilot_generated_artifacts_owner_user_id_fkey");
+
+                    b.Navigation("Application");
+
+                    b.Navigation("Job");
+
+                    b.Navigation("OwnerUser");
+                });
+
             modelBuilder.Entity("RecruitPro.Domain.Entities.CopilotMessage", b =>
                 {
                     b.HasOne("RecruitPro.Domain.Entities.CopilotConversation", "Conversation")
@@ -1947,6 +2228,18 @@ namespace RecruitPro.Infrastructure.Migrations
                         .HasConstraintName("copilot_messages_conversation_id_fkey");
 
                     b.Navigation("Conversation");
+                });
+
+            modelBuilder.Entity("RecruitPro.Domain.Entities.CopilotPromptTemplate", b =>
+                {
+                    b.HasOne("RecruitPro.Domain.Entities.User", "OwnerUser")
+                        .WithMany()
+                        .HasForeignKey("OwnerUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("copilot_prompt_templates_owner_user_id_fkey");
+
+                    b.Navigation("OwnerUser");
                 });
 
             modelBuilder.Entity("RecruitPro.Domain.Entities.CopilotRankingResult", b =>

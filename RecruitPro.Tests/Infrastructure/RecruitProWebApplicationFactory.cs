@@ -126,6 +126,9 @@ internal sealed class FakeEmbeddingProvider : IEmbeddingProvider
 
 internal sealed class FakeAiCopilotProvider : IAiCopilotProvider
 {
+    public Task<AiStructuredJsonResult> TryCreateStructuredJsonAsync(string actionType, string systemPrompt, string userPrompt, CancellationToken cancellationToken = default)
+        => Task.FromResult(AiStructuredJsonResult.Failure("Disabled in tests", "fake-ai", "fake-model"));
+
     public Task<CopilotPromptResponseDto?> TryCreateRankingAsync(CopilotCandidatePoolDto pool, CopilotNormalizedRulesDto rules, IReadOnlyList<CopilotRankingResultDto> deterministicResults, string userPrompt, Guid conversationId, CancellationToken cancellationToken = default)
         => Task.FromResult<CopilotPromptResponseDto?>(null);
 
