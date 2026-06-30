@@ -98,7 +98,7 @@
    - Evidence:
      - `RecruitPro.API/appsettings.json`
      - `RecruitPro.API/appsettings.Production.json`
-     - `.env.railway.example`
+     - `RecruitPro.API/appsettings.Production.json`
    - Cach sua:
      - Rotate secrets, dua ve env vars/user secrets, xoa khoi repo.
 
