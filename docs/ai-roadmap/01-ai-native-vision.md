@@ -17,7 +17,7 @@ The target state is not "LLM everywhere". The target state is:
 - PostgreSQL + EF Core
 - React + TypeScript frontend
 - MinIO-backed file storage
-- SignalR notifications
+- SSE notifications via `GET /api/notifications/stream`
 - JWT + RBAC
 - resume parsing provider with fallback
 - embedding provider and in-memory embedding cache
@@ -81,7 +81,7 @@ RecruitPro should keep the existing layer boundaries and add an AI orchestration
 - `Domain`: AI audit, workflow, agent run, tool registry, evaluation entities
 - `Application`: orchestration services, agent/workflow services, tool contracts, evaluation services
 - `Infrastructure`: provider adapters, workflow executors, MCP server adapter, persistent queue later if needed
-- `API`: HTTP endpoints, SignalR updates, admin dashboards, workflow triggers
+- `API`: HTTP endpoints, SSE updates, admin dashboards, workflow triggers
 
 The present in-memory queue is acceptable for v2. v3-v5 should introduce abstractions so execution can move to durable workers without breaking application services.
 

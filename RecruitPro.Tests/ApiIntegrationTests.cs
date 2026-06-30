@@ -216,7 +216,7 @@ public sealed class ApiIntegrationTests : IClassFixture<PostgresTestFixture>, IA
     }
 
     [Fact]
-    public async Task HrApplicationsList_Should_Be_Empty_For_OutOfScope_Hr_And_NonEmpty_For_Owner_And_Admin()
+    public async Task HrApplicationsList_Should_Be_Empty_For_OutOfScope_Hr_NonEmpty_For_Owner_And_Forbid_SystemAdminOnly()
     {
         const string url = "/api/hr/applications?page=1&pageSize=10";
 
@@ -229,8 +229,7 @@ public sealed class ApiIntegrationTests : IClassFixture<PostgresTestFixture>, IA
         ownerJson.RootElement.GetProperty("data").GetProperty("items").GetArrayLength().Should().BeGreaterThan(0);
 
         PostgresTestFixture.SetBearerToken(_client, _factory.Fixture.CreateJwt(TestDataSeeder.SystemAdminUserId.ToString(), "SystemAdmin"));
-        var adminJson = await ApiResponseAssertions.AssertNo500AndEnvelopeAsync(await _client.GetAsync(url));
-        adminJson.RootElement.GetProperty("data").GetProperty("items").GetArrayLength().Should().BeGreaterThan(0);
+        (await _client.GetAsync(url)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 
     [Fact]

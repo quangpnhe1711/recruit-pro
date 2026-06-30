@@ -10,8 +10,8 @@ namespace RecruitPro.Tests;
 
 /// <summary>
 /// Phase 4 hardening — the job approval queue/detail are now the DepartmentHead's workflow surface
-/// (BR-OWN-003). Access is scoped to the job's Department.HeadUserId or a SystemAdmin; a generic Manager
-/// who is not the department head no longer sees or approves other departments' jobs. The route names
+/// (BR-OWN-003). Access is scoped to the job's Department.HeadUserId; SystemAdmin-only and a generic
+/// Manager who is not the department head no longer see or approve other departments' jobs. The route names
 /// (`/api/manager/...`) are kept for compatibility. See TEST-MATRIX.md (T-OWN-034..040).
 /// </summary>
 public sealed class ApprovalQueueAccessIntegrationTests : IClassFixture<PostgresTestFixture>, IAsyncLifetime
@@ -87,17 +87,14 @@ public sealed class ApprovalQueueAccessIntegrationTests : IClassFixture<Postgres
         json.RootElement.GetProperty("data").GetProperty("summary").GetProperty("pendingApprovals").GetInt32().Should().Be(0);
     }
 
-    // T-OWN-036: a SystemAdmin sees every department's pending approval jobs.
+    // T-OWN-036: SystemAdmin-only is not a recruitment workflow role for the approval queue.
     [Fact]
-    public async Task SystemAdmin_CanViewAllApprovalQueue()
+    public async Task SystemAdminOnly_CannotViewApprovalQueue()
     {
         PostgresTestFixture.SetBearerToken(_client, _factory.Fixture.CreateJwt(TestDataSeeder.SystemAdminUserId.ToString(), "SystemAdmin"));
 
         HttpResponseMessage response = await _client.GetAsync(QueuePath);
-        using JsonDocument json = await ApiResponseAssertions.AssertNo500AndEnvelopeAsync(response);
-
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-        QueueContainsPendingJob(json).Should().BeTrue();
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 
     // T-OWN-037: a DepartmentHead can open the approval detail for a job in the department they head.

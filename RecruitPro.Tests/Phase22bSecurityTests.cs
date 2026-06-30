@@ -227,7 +227,7 @@ public sealed class Phase22bSecurityTests : IClassFixture<PostgresTestFixture>, 
     public async Task Interview_ScheduleData_HeadDepartment_Returns200()
     {
         Authenticate(TestDataSeeder.HeadDepartmentUserId, "HeadDepartment");
-        HttpResponseMessage response = await _client.GetAsync("/api/hr/interviews/schedule-data");
+        HttpResponseMessage response = await _client.GetAsync($"/api/hr/interviews/schedule-data?applicationId={TestDataSeeder.ApplicationId}");
         response.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 

@@ -33,7 +33,7 @@
 ### P2
 
 - multi-agent negotiation and delegation policies
-- proactive agent suggestions via SignalR
+- proactive agent suggestions via the existing SSE notification stream
 
 ## 3. Architecture
 

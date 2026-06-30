@@ -13,7 +13,7 @@ namespace RecruitPro.Tests;
 
 /// <summary>
 /// Phase 2/3 — authorization guards (unit, mocked):
-///   * Job approve/reject scoped to the department head or SystemAdmin (BR-OWN-003).
+///   * Job approve/reject scoped to the department head (BR-OWN-003/009).
 ///   * ManagerReview (DepartmentHeadReview) advance scoped to the assigned head / SystemAdmin, with a
 ///     Manager-role fallback only when no head was snapshotted (BR-OWN-007).
 /// See TEST-MATRIX.md (T-OWN-018..027).
@@ -75,6 +75,23 @@ public sealed class OwnershipGuardUnitTests
 
         response.StatusCode.Should().Be(403,
             "SystemAdmin-only callers cannot approve jobs; only the job's DepartmentHead may (Phase 2.2c)");
+    }
+
+    [Fact]
+    public async Task SystemAdminPlusHr_CannotApproveUnlessDepartmentHead()
+    {
+        Guid headId = Guid.NewGuid();
+        (JobService service, Job job) = CreateJobServiceWithJob(headId);
+
+        var response = await service.PatchJobAsync(
+            job.Id.ToString(),
+            new PatchJobRequest { ApprovalStatus = "Approved" },
+            Guid.NewGuid(),
+            new[] { "HR", "SystemAdmin" });
+
+        response.StatusCode.Should().Be(403);
+        response.ErrorCode.Should().Be("FORBIDDEN");
+        job.Status.Should().Be(JobStatus.PendingApproval);
     }
 
     // T-OWN-021: approving a job whose department has no head is a 422 business state.

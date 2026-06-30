@@ -72,17 +72,14 @@ public sealed class JobStatusGuardIntegrationTests : IClassFixture<PostgresTestF
         json.RootElement.GetProperty("data").GetProperty("approvalStatus").GetString().Should().Be("Approved");
     }
 
-    // T-OWN-031: a SystemAdmin can approve any department's job via this endpoint.
+    // T-OWN-031: SystemAdmin-only is not a recruitment workflow role on this endpoint.
     [Fact]
-    public async Task UpdateJobStatus_ApproveBySystemAdmin_Succeeds()
+    public async Task UpdateJobStatus_ApproveBySystemAdminOnly_Returns403()
     {
         PostgresTestFixture.SetBearerToken(_client, _factory.Fixture.CreateJwt(TestDataSeeder.SystemAdminUserId.ToString(), "SystemAdmin"));
 
         HttpResponseMessage response = await _client.PatchAsJsonAsync(StatusPath, new { status = "Approved" });
-        using JsonDocument json = await ApiResponseAssertions.AssertNo500AndEnvelopeAsync(response);
-
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-        json.RootElement.GetProperty("data").GetProperty("approvalStatus").GetString().Should().Be("Approved");
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 
     // T-OWN-032: when the department has no head, approval is a 422 business state.

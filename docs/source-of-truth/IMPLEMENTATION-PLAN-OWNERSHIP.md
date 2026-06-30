@@ -81,7 +81,7 @@ until Phase 2+.
 ## Phase 3 — Job approval guard + application ownership snapshot
 
 > **Status: IMPLEMENTED (2026-06-26).** Apply-time snapshot landed in Phase 1. Phase 3 added the
-> authorization guards: job **approve/reject** is scoped to `Department.HeadUserId` or `SystemAdmin`
+> authorization guards: job **approve/reject** is scoped to `Department.HeadUserId`
 > (`JobService.PatchJobAsync` — 403 otherwise, 422 `DEPARTMENT_HEAD_REQUIRED` when no head, `ApprovedBy`
 > = acting user); the **ManagerReview → Interview/Rejected** decision is scoped to the application's
 > `AssignedDepartmentHeadId` or `SystemAdmin` (`ApplicationService.UpdateApplicationDecisionAsync`), with
@@ -128,8 +128,8 @@ fallback; ensure snapshot is taken inside the apply transaction (before commit).
 **Phase 4 follow-up — DepartmentHead approval-queue access (DONE):** the prior limitation (the approval
 queue/detail were `Manager`-role only, so a `HeadDepartment` user could not reach them) is **fixed**.
 Backend: `GET /api/manager/jobs/approval-queue` + `…/{id}/approval-detail` now
-`[Authorize(Roles = "Manager,HeadDepartment,SystemAdmin")]` and **scoped** to `Department.HeadUserId`
-(SystemAdmin = all; non-head Manager = empty/403), sharing `EvaluateApprovalAccess` with the submit
+`[Authorize(Roles = "Manager,HeadDepartment")]` and **scoped** to `Department.HeadUserId`
+(SystemAdmin-only blocked; non-head Manager = empty/403), sharing `EvaluateApprovalAccess` with the submit
 guard. Frontend: `JOB_APPROVE` now includes `HeadDepartment`, `JobsRouteScreen` routes it to the queue,
 and the side-nav exposes "Duyệt tin tuyển dụng". Route/screen names unchanged for compatibility. Covered
 by `ApprovalQueueAccessIntegrationTests` (T-OWN-034..040).

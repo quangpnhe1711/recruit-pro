@@ -3,9 +3,13 @@
 All tests below are in `RecruitPro.Tests` and run under `dotnet test` (xUnit + Moq + FluentAssertions;
 integration via Testcontainers PostgreSQL).
 
-> **Current full backend suite: 197 passed, 0 failed (verified 2026-06-26).** The 138 / 156 / 187
-> figures cited in the sections below are historical milestones (each "after this pass"); **197** is the
-> canonical current count.
+> **Current backend suite inventory: 303 tests discovered (verified 2026-06-30).** Focused runs after
+> this audit covered **241 non-container-heavy tests**, plus targeted integration/security regressions.
+> They exposed stale assertions around `GET /api/hr/interviews/schedule-data`, SystemAdmin job approval,
+> approval queue access, and HR application list access; those are now aligned to the current
+> SystemAdmin-lockdown policy. A full-suite attempt reached **293 passed / 10 failed** because several
+> Testcontainers/PostgreSQL checks timed out after the targeted regressions had passed. The older
+> 138 / 156 / 187 / 197 figures cited below are historical milestones, not the current suite size.
 >
 > **Frontend E2E (Playwright, `recruit-pro-internal/e2e/`): E2E-OWN-001/002/003 — implemented and
 > passing (5 specs).** See the [Frontend E2E section](#frontend-e2e-playwright--implemented) below and
@@ -105,7 +109,7 @@ Full suite after this pass: **156 passed, 0 failed** (was 138). New/updated test
 | T-OWN-017 | `JobList_ReturnsEffectiveDepartmentHead` | integration (PG) | BR-OWN-003 | HR list returns `effectiveDepartmentHeadId` |
 | T-OWN-018 | `OwnershipGuardUnitTests.DepartmentHead_CanApproveOwnDepartmentJob` | unit | BR-OWN-003 | head approves → 200 Approved |
 | T-OWN-019 | `NonDepartmentHead_CannotApproveOtherDepartmentJob` | unit | BR-OWN-003 | non-head/non-admin → 403 `FORBIDDEN`, status unchanged |
-| T-OWN-020 | `SystemAdmin_CanApproveAnyDepartmentJob` | unit | BR-OWN-003 | SystemAdmin → 200 Approved |
+| T-OWN-020 | `SystemAdmin_CannotApproveJobWithoutDepartmentHeadRole`; `SystemAdminPlusHr_CannotApproveUnlessDepartmentHead` | unit | BR-OWN-003 / BR-OWN-009 | SystemAdmin role does not bypass DepartmentHead ownership → 403 |
 | T-OWN-021 | `JobApproval_WhenDepartmentHasNoHead_Returns422` | unit | BR-OWN-003 | no head → 422 `DEPARTMENT_HEAD_REQUIRED` |
 | T-OWN-022 | `ApprovedJob_SetsApprovedByToCurrentDepartmentHead` | unit | BR-OWN-003 | `Job.ApprovedBy` = acting head |
 | T-OWN-023 | `HrCanMoveAppliedToScreening` | unit | BR-OWN-006 | HR stage unaffected by head guard → 200 |
@@ -123,12 +127,12 @@ Full suite after this pass: **156 passed, 0 failed** (was 138). New/updated test
 | T-OWN-028 | `JobStatusGuardIntegrationTests.UpdateJobStatus_WithoutAuth_Returns401` | integration (PG) | BR-OWN-003 | hardened `PATCH /api/jobs/{id}/status` requires auth → 401 |
 | T-OWN-029 | `UpdateJobStatus_ApproveByNonHead_Returns403` | integration (PG) | BR-OWN-003 | HR (non-head) → 403 `FORBIDDEN` |
 | T-OWN-030 | `UpdateJobStatus_ApproveByDepartmentHead_Succeeds` | integration (PG) | BR-OWN-003 | dept head → 200 Approved |
-| T-OWN-031 | `UpdateJobStatus_ApproveBySystemAdmin_Succeeds` | integration (PG) | BR-OWN-003 | SystemAdmin → 200 Approved |
+| T-OWN-031 | `UpdateJobStatus_ApproveBySystemAdminOnly_Returns403` | integration (PG) | BR-OWN-003 / BR-OWN-009 | SystemAdmin-only is blocked by endpoint role authorization |
 | T-OWN-032 | `UpdateJobStatus_WhenDepartmentHasNoHead_Returns422` | integration (PG) | BR-OWN-003 | no head → 422 `DEPARTMENT_HEAD_REQUIRED` |
 | T-OWN-033 | `Departments_LookupRoute_StillReturnsDepartmentsWithHead` | integration (PG) | compat | `GET /api/departments` still works, now incl. head |
 | T-OWN-034 | `ApprovalQueueAccessIntegrationTests.HeadDepartment_CanViewOwnDepartmentApprovalQueue` | integration (PG) | BR-OWN-003 | dept head sees the queue for the department they head |
 | T-OWN-035 | `HeadDepartment_CannotViewOtherDepartmentApprovalQueue` | integration (PG) | BR-OWN-003 | head of nothing → empty queue (no other-dept jobs) |
-| T-OWN-036 | `SystemAdmin_CanViewAllApprovalQueue` | integration (PG) | BR-OWN-003 | SystemAdmin sees all departments' pending jobs |
+| T-OWN-036 | `SystemAdminOnly_CannotViewApprovalQueue` | integration (PG) | BR-OWN-003 / BR-OWN-009 | SystemAdmin-only is blocked from the approval queue |
 | T-OWN-037 | `HeadDepartment_CanViewOwnApprovalDetail` | integration (PG) | BR-OWN-003 | dept head opens detail for their department → 200 |
 | T-OWN-038 | `HeadDepartment_CannotViewOtherDepartmentApprovalDetail` | integration (PG) | BR-OWN-003 | other department's detail → 403 `FORBIDDEN` |
 | T-OWN-039 | `Manager_WhoIsDepartmentHead_CanViewQueueAndDetail` | integration (PG) | BR-OWN-003 | compat — a Manager who IS the head keeps queue + detail |

@@ -371,22 +371,22 @@ A job is not public/applyable until approved. The approver is the Department's h
 (`Department.HeadUserId`). `Job.ApprovedBy` is an **audit** field (the decision actor), not the
 long-term head owner except as a legacy fallback.
 **Phase 3 (implemented):** `JobService.PatchJobAsync` authorizes the **Approved/Rejected** transition
-against `Department.HeadUserId` **or** a `SystemAdmin`:
-- not the head and not SystemAdmin → **403** `FORBIDDEN`;
+against `Department.HeadUserId`:
+- not the head → **403** `FORBIDDEN`;
 - the department has no head → **422** `DEPARTMENT_HEAD_REQUIRED`.
 On approve/reject, `Job.ApprovedBy` is set to the acting user. The controller admits
-`HR,Manager,HeadDepartment,SystemAdmin` so the head/admin can reach the endpoint; the service guard
-enforces the specific head. Both status routes — `/api/hr/jobs/{id}/status` and the hardened
+`HR,Manager,HeadDepartment` so the department head can reach the endpoint; the service guard
+enforces the specific head and SystemAdmin-only is blocked by endpoint role authorization. Both status routes — `/api/hr/jobs/{id}/status` and the hardened
 `/api/jobs/{id}/status` alias (now authenticated, routed through the same guard) — are covered. Other
 status moves keep HR/Manager behavior.
 **Phase 4 (implemented) — approval queue/detail access:** the approval **queue** and **detail**
 (`GET /api/manager/jobs/approval-queue`, `…/{id}/approval-detail`) now admit
-`Manager,HeadDepartment,SystemAdmin` and are **scoped server-side** so the DepartmentHead is the real
+`Manager,HeadDepartment` and are **scoped server-side** so the DepartmentHead is the real
 approval workflow role without needing the generic `Manager` role:
 - the **queue** returns only `PendingApproval` jobs where `Department.HeadUserId == currentUserId`;
-  a `SystemAdmin` sees every department's pending jobs; a non-head Manager sees an **empty** queue;
+  SystemAdmin-only is blocked at authorization; a non-head Manager sees an **empty** queue;
 - the **detail** uses the same predicate as the submit guard (`EvaluateApprovalAccess`): no head → **422**
-  `DEPARTMENT_HEAD_REQUIRED`; not the head and not SystemAdmin → **403** `FORBIDDEN`.
+  `DEPARTMENT_HEAD_REQUIRED`; not the head → **403** `FORBIDDEN`.
 Queue, detail, and submit therefore share one authorization rule. Route/screen names keep the `manager`
 prefix for compatibility.
 

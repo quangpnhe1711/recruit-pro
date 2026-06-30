@@ -455,7 +455,7 @@ public class JobService : IJobService
         if (access == ApprovalAccess.Forbidden)
         {
             return ApiResponse<ManagerJobApprovalDetailDto>.Forbidden(
-                "Only the department head or a system administrator can view or act on this job's approval.",
+                "Only the department head can view or act on this job's approval.",
                 errorCode: ErrorCodes.Forbidden);
         }
 
@@ -1054,7 +1054,7 @@ public class JobService : IJobService
         if (access == ApprovalAccess.Forbidden)
         {
             return ApiResponse<HrJobStatusResponseDto>.Forbidden(
-                "Only the department head or a system administrator can approve or reject this job.",
+                "Only the department head can approve or reject this job.",
                 errorCode: ErrorCodes.Forbidden);
         }
 

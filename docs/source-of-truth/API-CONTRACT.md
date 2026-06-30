@@ -91,8 +91,8 @@ All responses use the `ApiResponse<T>` envelope ([ERROR-CONTRACT.md](ERROR-CONTR
 | GET /api/hr/applications/{id}/cv | HR, Manager | 404 if no CV |
 | POST /api/hr/applications/{id}/send-email | HR, Manager | composes candidate email |
 | GET /api/manager/applications/review-queue | Manager | ManagerReview queue |
-| GET /api/manager/jobs/approval-queue | Manager, HeadDepartment, SystemAdmin | job approval queue — **scoped** to `Department.HeadUserId` (SystemAdmin = all; non-head Manager = empty) (BR-OWN-003) |
-| GET /api/manager/jobs/{id}/approval-detail | Manager, HeadDepartment, SystemAdmin | job approval detail — head/SystemAdmin only: no head → **422** `DEPARTMENT_HEAD_REQUIRED`; not head/admin → **403** `FORBIDDEN` |
+| GET /api/manager/jobs/approval-queue | Manager, HeadDepartment | job approval queue — **scoped** to `Department.HeadUserId` (SystemAdmin-only blocked; non-head Manager = empty) (BR-OWN-003) |
+| GET /api/manager/jobs/{id}/approval-detail | Manager, HeadDepartment | job approval detail — head only: no head → **422** `DEPARTMENT_HEAD_REQUIRED`; not head → **403** `FORBIDDEN` |
 | GET /api/jobs/{jobId}/applications[/recent] | (see controller) | job applications |
 
 Candidate (`Candidate`) hitting HR endpoints → **403** `Bạn không có quyền`.
@@ -159,21 +159,21 @@ long-term owners (BR-OWN-002/003). Candidate-facing endpoints do **not** expose 
 ## Job approval (authorization, BR-OWN-003)
 
 `PATCH /api/hr/jobs/{id}`, `PATCH /api/hr/jobs/{id}/status`, **and `PATCH /api/jobs/{id}/status`** now
-scope the **Approved/Rejected** transition to the job's **DepartmentHead (`Department.HeadUserId`)** or a
-**SystemAdmin**. The formerly-public `PATCH /api/jobs/{id}/status` is now an **authenticated alias**
-(`HR,Manager,HeadDepartment,SystemAdmin`) routed through the same guard — no auth → **401**:
-- not the head / not SystemAdmin → **403** `FORBIDDEN`;
+scope the **Approved/Rejected** transition to the job's **DepartmentHead (`Department.HeadUserId`)**.
+The formerly-public `PATCH /api/jobs/{id}/status` is now an **authenticated alias**
+(`HR,Manager,HeadDepartment`) routed through the same guard — no auth → **401**:
+- not the head → **403** `FORBIDDEN`;
 - department has no head → **422** `DEPARTMENT_HEAD_REQUIRED`.
 On approve/reject, `Job.ApprovedBy` is set to the acting user (decision-actor audit). Other field edits
 and non-approval status moves remain available to HR/Manager. `POST /api/hr/jobs` requires a valid
 department and accepts `recruiterId` (falls back to the creating user when omitted).
 
 **Approval queue/detail access (Phase 4).** `GET /api/manager/jobs/approval-queue` and
-`…/{id}/approval-detail` admit `Manager,HeadDepartment,SystemAdmin` and are **scoped server-side** so the
+`…/{id}/approval-detail` admit `Manager,HeadDepartment` and are **scoped server-side** so the
 DepartmentHead is the approval workflow role without needing the generic `Manager` role: the queue only
-returns pending jobs of the department(s) the caller heads (`Department.HeadUserId`), a SystemAdmin sees
-all, and a non-head Manager sees an empty queue. The detail uses the **same** `EvaluateApprovalAccess`
-predicate as the submit guard (422 no head → 403 not head/admin). Route names keep the `manager` prefix
+returns pending jobs of the department(s) the caller heads (`Department.HeadUserId`), SystemAdmin-only is
+blocked at authorization, and a non-head Manager sees an empty queue. The detail uses the **same**
+`EvaluateApprovalAccess` predicate as the submit guard (422 no head → 403 not head). Route names keep the `manager` prefix
 for compatibility.
 
 These ownership fields back the planned notification routing in

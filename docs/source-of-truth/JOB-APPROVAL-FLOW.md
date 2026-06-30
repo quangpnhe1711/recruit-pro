@@ -1,8 +1,8 @@
 # Job Approval Flow
 
 **Status:** Phase 2/3 — the ownership data model **and** the approval guard are **implemented**.
-Approve/reject is now authorized against the job's **DepartmentHead (`Department.HeadUserId`)** or a
-**SystemAdmin** (BR-OWN-003), with `Job.ApprovedBy` set to the acting user. Only the **frontend
+Approve/reject is now authorized against the job's **DepartmentHead (`Department.HeadUserId`)**
+(BR-OWN-003/009), with `Job.ApprovedBy` set to the acting user. Only the **frontend
 (Phase 4)** remains. Behavior below is verified from code.
 
 ---
@@ -13,7 +13,7 @@ Approve/reject is now authorized against the job's **DepartmentHead (`Department
 HR / Recruiter creates a job (Draft)
         ↓ submit for approval
 Job is PendingApproval (not public, not applyable)
-        ↓ approval authorized against Department.HeadUserId or SystemAdmin [Phase 3, implemented]
+        ↓ approval authorized against Department.HeadUserId [Phase 3, implemented]
 DepartmentHead approves or rejects
         ↓ approve → Approved → public + applyable (until deadline)
         ↓ reject  → Rejected → not public, not applyable
@@ -51,19 +51,19 @@ DepartmentHead approves or rejects
 
 | Aspect | Current behavior | Gap vs target |
 |---|---|---|
-| Who can approve | `PatchJobAsync` guard: the **Approved/Rejected** transition requires `currentUserId == Department.HeadUserId` **or** the `SystemAdmin` role; else 403 `FORBIDDEN`. No head on the department → 422 `DEPARTMENT_HEAD_REQUIRED`. The controller admits `HR,Manager,HeadDepartment,SystemAdmin`. | **Closed** — approval is scoped to the specific Department head (no longer "any Manager"). |
+| Who can approve | `PatchJobAsync` guard: the **Approved/Rejected** transition requires `currentUserId == Department.HeadUserId`; else 403 `FORBIDDEN`. No head on the department → 422 `DEPARTMENT_HEAD_REQUIRED`. The controller admits `HR,Manager,HeadDepartment`; SystemAdmin-only is blocked by endpoint role authorization. | **Closed** — approval is scoped to the specific Department head (no longer "any Manager"). |
 | Approver identity | `Job.ApprovedBy` is set to the acting user (decision-actor audit) on approve/reject. | Conformant. |
 | Department head data | `Department.HeadUserId` exists and is settable via `PUT /api/departments/{id}` (validated against the HeadDepartment/SystemAdmin role). | Conformant. |
-| `PATCH /api/jobs/{id}/status` | **Hardened (Phase 2/3):** now requires auth (`HR,Manager,HeadDepartment,SystemAdmin`) and routes through the same `PatchJobAsync` guard as `/api/hr/jobs/{id}/status` — an authenticated alias (the old unguarded `UpdateJobStatusAsync` was removed). | **Closed** — no longer a public approval bypass. |
-| Approval **queue/detail** access (`GET /api/manager/jobs/approval-queue`, `…/{id}/approval-detail`) | **Hardened (Phase 4):** `[Authorize(Roles = "Manager,HeadDepartment,SystemAdmin")]` **and server-scoped** — `GetManagerApprovalQueueAsync`/`GetManagerApprovalDetailAsync` take the caller's id/roles. The queue is filtered to `Department.HeadUserId == currentUserId` (SystemAdmin = all); the detail uses the same `EvaluateApprovalAccess` predicate as the submit guard (422 no head → 403 not head/admin). A non-head Manager sees an empty queue / 403 detail. | **Closed** — the DepartmentHead is now the approval workflow role; generic Manager no longer sees all departments. |
+| `PATCH /api/jobs/{id}/status` | **Hardened (Phase 2/3):** now requires auth (`HR,Manager,HeadDepartment`) and routes through the same `PatchJobAsync` guard as `/api/hr/jobs/{id}/status` — an authenticated alias (the old unguarded `UpdateJobStatusAsync` was removed). | **Closed** — no longer a public approval bypass. |
+| Approval **queue/detail** access (`GET /api/manager/jobs/approval-queue`, `…/{id}/approval-detail`) | **Hardened (Phase 4):** `[Authorize(Roles = "Manager,HeadDepartment")]` **and server-scoped** — `GetManagerApprovalQueueAsync`/`GetManagerApprovalDetailAsync` take the caller's id/roles. The queue is filtered to `Department.HeadUserId == currentUserId`; SystemAdmin-only is blocked at authorization; the detail uses the same `EvaluateApprovalAccess` predicate as the submit guard (422 no head → 403 not head). A non-head Manager sees an empty queue / 403 detail. | **Closed** — the DepartmentHead is now the approval workflow role; generic Manager no longer sees all departments. |
 | Public listing / apply gating | Only `Approved` jobs accept applications (`BuildApplyEligibility`, INV-001); FE `JobDetailScreen.jobApplyState` disables the CTA otherwise. | Conformant — unchanged. |
 
 **Conclusion:** the approval *gate* exists and works, the ownership *data model*
 (`Department.HeadUserId`, `Job.RecruiterId`) is implemented, and approval is now authorized
-*against the specific Department head* (or a SystemAdmin) in `JobService.PatchJobAsync` (Phase 3, done).
+*against the specific Department head* in `JobService.PatchJobAsync` (Phase 3, done).
 Both status routes (`/api/hr/jobs/{id}/status` and the hardened `/api/jobs/{id}/status` alias) go through
 that guard. **Phase 4 done:** the frontend consumes the ownership model, and the approval **queue/detail**
-access is now the DepartmentHead's (server-scoped to `Department.HeadUserId`, SystemAdmin = all; Manager
+access is now the DepartmentHead's (server-scoped to `Department.HeadUserId`, SystemAdmin-only blocked; Manager
 kept only as compatibility but scoped, not cross-department). The `HeadDepartment` role can now reach the
 approval queue/detail in the UI without needing the generic `Manager` role. What remains is
 **notifications** (Phase 6 — **not implemented**) in

@@ -62,7 +62,7 @@ Examples:
 Examples:
 
 - run fit analysis
-- notify HR via SignalR/notification
+- notify HR via the existing SSE-backed notification channel
 - draft follow-up email
 - refresh embedding
 - create shortlist suggestion

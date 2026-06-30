@@ -32,7 +32,7 @@ Login as a candidate (seed: Phùng Nhật Quang). Open My Applications.
 
 Login as the department head (seed: Trần Trọng Tiến Đạt) and as a non-head Manager.
 
-- [ ] Head sees the approval queue scoped to `Department.HeadUserId`; SystemAdmin sees all;
+- [ ] Head sees the approval queue scoped to `Department.HeadUserId`; SystemAdmin-only is blocked;
       a non-head Manager sees an empty queue and 403 on detail (backend: T-OWN-034…040).
 - [ ] Detail/submit guard: department with no head → **422 `DEPARTMENT_HEAD_REQUIRED`**; non-head,
       non-admin → **403 `FORBIDDEN`** (backend: T-OWN-021/028…032).

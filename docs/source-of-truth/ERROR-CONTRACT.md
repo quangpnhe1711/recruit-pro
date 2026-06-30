@@ -75,7 +75,7 @@ Every API response uses `ApiResponse<T>` (RecruitPro.Application.DTOs.Response):
 | Rejection email missing subject/body | 422 | `A rejection email requires both a subject and a body.` (`EMAIL_REQUIRED_FOR_REJECTION`) | `SendRejectionEmailAsync` |
 | Email send failed (Offer/Reject) | 422 | `…could not be sent; the application was not …` (`EMAIL_SEND_FAILED`) — status NOT changed | `OfferService.SendOfferAsync` / `SendRejectionEmailAsync` |
 | Approve/reject a job, department has no head | 422 | `This job's department has no head assigned…` (`DEPARTMENT_HEAD_REQUIRED`) | `JobService.PatchJobAsync` guard (BR-OWN-003) |
-| Approve/reject a job, actor is not the dept head/SystemAdmin | 403 | `Only the department head or a system administrator can approve or reject this job.` (`FORBIDDEN`) | `JobService.PatchJobAsync` guard |
+| Approve/reject a job, actor is not the department head | 403 | `Only the department head can approve or reject this job.` (`FORBIDDEN`) | endpoint role authorization + `JobService.PatchJobAsync` guard |
 | Advance ManagerReview, actor is not the assigned head/SystemAdmin | 403 | `Only the assigned department head or a system administrator can advance this application from manager review.` (`FORBIDDEN`) | `ApplicationService.UpdateApplicationDecisionAsync` guard (BR-OWN-007) |
 | Create job, no valid department | 422 | `A valid department is required to create a job.` (`DEPARTMENT_NOT_FOUND`) | `JobService.CreateJobAsync` |
 | Create job, recruiter not an existing HR user | 422 | `The selected recruiter must be an existing user with the HR role.` (`INVALID_JOB_RECRUITER`) | `JobService.CreateJobAsync` |
