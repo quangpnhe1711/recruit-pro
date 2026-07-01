@@ -690,6 +690,58 @@ public sealed class CopilotServiceUnitTests
     }
 
     [Fact]
+    public async Task GenerateInterviewQuestionsAsync_WhenAlreadyGenerated_ReturnsCachedWithoutProvider()
+    {
+        // v2: interview questions are generated once per candidate; a repeat click returns the cached
+        // artifact and never calls the provider or persists a new artifact.
+        var repository = new Mock<ICopilotRepository>();
+        var jobRepository = new Mock<IJobRepository>();
+        var aiProvider = new Mock<IAiCopilotProvider>();
+        Guid jobId = Guid.NewGuid();
+        Guid ownerId = Guid.NewGuid();
+        CopilotCandidatePoolDto pool = BuildCopilotPool(jobId);
+        CopilotCandidateDto candidate = pool.Candidates[0];
+
+        jobRepository.Setup(value => value.GetByIdAsync(jobId)).ReturnsAsync(new Job { Id = jobId, CreatedBy = ownerId, Title = "Senior .NET Engineer" });
+        repository.Setup(value => value.GetCandidatePoolAsync(jobId)).ReturnsAsync(pool);
+
+        var cachedSet = new InterviewQuestionSetDto
+        {
+            JobId = jobId,
+            CandidateUserId = candidate.CandidateUserId,
+            Focus = "job-fit",
+            Questions = [new InterviewQuestionDto { Category = "Kỹ thuật", Question = "Câu hỏi đã lưu?", Evidence = "Bằng chứng" }],
+            Ai = new CopilotAiMetadataDto { FallbackUsed = true, ProviderName = "deterministic-copilot", ModelName = "deterministic-copilot-v2" }
+        };
+        repository.Setup(value => value.GetGeneratedArtifactsAsync(ownerId, jobId, (Guid?)candidate.ApplicationId, "interview_questions", 1))
+            .ReturnsAsync([new CopilotGeneratedArtifact
+            {
+                Id = Guid.NewGuid(),
+                OwnerUserId = ownerId,
+                JobId = jobId,
+                ApplicationId = candidate.ApplicationId,
+                ArtifactType = "interview_questions",
+                PayloadJson = JsonSerializer.Serialize(cachedSet)
+            }]);
+
+        CopilotService service = CreateService(repository.Object, jobRepository.Object, aiProvider: aiProvider.Object,
+            aiSettings: new AiProviderSettings { Enabled = true, ApiKey = "test-key", Model = "m" });
+
+        var response = await service.GenerateInterviewQuestionsAsync(
+            jobId,
+            new InterviewQuestionRequest { CandidateUserId = candidate.CandidateUserId, ApplicationId = candidate.ApplicationId, Focus = "job-fit", QuestionCount = 5 },
+            ownerId,
+            ["HR"]);
+
+        response.Success.Should().BeTrue();
+        response.Data!.Questions.Should().ContainSingle();
+        response.Data.Questions[0].Question.Should().Be("Câu hỏi đã lưu?");
+        response.Data.Ai.Warnings.Should().Contain("interview-questions:cached");
+        aiProvider.Verify(value => value.TryCreateStructuredJsonAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        repository.Verify(value => value.AddGeneratedArtifactAsync(It.IsAny<CopilotGeneratedArtifact>()), Times.Never);
+    }
+
+    [Fact]
     public async Task GenerateShortlistAsync_DerivesTopNFromLatestRanking_NoProviderCall()
     {
         // v2 §10 — shortlist takes the top-N non-rejected candidates from the latest ranking result in

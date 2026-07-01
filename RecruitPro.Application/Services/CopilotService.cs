@@ -268,6 +268,34 @@ public class CopilotService : ICopilotService
         int questionCount = Math.Clamp(request.QuestionCount <= 0 ? 8 : request.QuestionCount, 3, 12);
         string focus = string.IsNullOrWhiteSpace(request.Focus) ? "job-fit" : request.Focus.Trim();
 
+        // v2: interview questions are generated ONCE per candidate and cached as an artifact. A repeated
+        // click returns the previously generated set instead of calling the AI provider again.
+        if (callerUserId.HasValue && request.ApplicationId.HasValue && request.ApplicationId.Value != Guid.Empty)
+        {
+            IReadOnlyList<CopilotGeneratedArtifact> existing = await _copilotRepository.GetGeneratedArtifactsAsync(
+                callerUserId.Value, jobId, request.ApplicationId, "interview_questions", 1);
+            CopilotGeneratedArtifact? cached = existing.FirstOrDefault();
+            if (cached is not null && !string.IsNullOrWhiteSpace(cached.PayloadJson))
+            {
+                InterviewQuestionSetDto? cachedSet = null;
+                try
+                {
+                    cachedSet = JsonSerializer.Deserialize<InterviewQuestionSetDto>(cached.PayloadJson, JsonOptions);
+                }
+                catch (JsonException)
+                {
+                    // Corrupt payload — fall through and regenerate.
+                }
+
+                if (cachedSet is not null && cachedSet.Questions.Count > 0)
+                {
+                    cachedSet.Ai ??= new CopilotAiMetadataDto();
+                    cachedSet.Ai.Warnings = cachedSet.Ai.Warnings.Concat(["interview-questions:cached"]).ToList();
+                    return ApiResponse<InterviewQuestionSetDto>.Ok(cachedSet);
+                }
+            }
+        }
+
         List<InterviewQuestionDto> questions = BuildInterviewQuestions(pool.Job, candidate, focus)
             .Take(questionCount)
             .ToList();

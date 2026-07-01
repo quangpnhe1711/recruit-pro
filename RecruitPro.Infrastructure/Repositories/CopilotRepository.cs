@@ -36,7 +36,9 @@ public class CopilotRepository : ICopilotRepository
                 JobId = job.Id,
                 Title = job.Title,
                 Status = job.Status.ToString(),
-                ApplicationCount = job.Applications.Count
+                // v2: the Copilot only screens Screening-stage applications, so the picker badge must
+                // count those — not every application — otherwise a job shows "4" but opens empty.
+                ApplicationCount = job.Applications.Count(application => application.Status == ApplicationStatus.Screening)
             })
             .ToListAsync();
     }
