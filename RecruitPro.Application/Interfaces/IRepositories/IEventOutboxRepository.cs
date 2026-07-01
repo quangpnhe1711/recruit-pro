@@ -16,4 +16,11 @@ public interface IEventOutboxRepository
 
     Task<(IReadOnlyList<PublishedDomainEvent> Items, int Total)> QueryAsync(
         string? status, string? eventType, DateTime? from, DateTime? to, int page, int pageSize);
+
+    // --- diagnostics ---
+    Task<int> CountByStatusAsync(WorkflowEventStatus status);
+    Task<int> CountByEventTypeSinceAsync(string eventType, DateTime since);
+    Task<int> CountByEventTypeAndStatusSinceAsync(string eventType, WorkflowEventStatus status, DateTime since);
+    Task<PublishedDomainEvent?> GetLatestAsync();
+    Task<PublishedDomainEvent?> GetLatestByEventTypeAsync(string eventType);
 }

@@ -18,6 +18,7 @@ public partial class AppDbContext
     public virtual DbSet<WorkflowExecutionStep> WorkflowExecutionSteps { get; set; }
     public virtual DbSet<WorkflowActionDeadLetter> WorkflowActionDeadLetters { get; set; }
     public virtual DbSet<McpToolAudit> McpToolAudits { get; set; }
+    public virtual DbSet<WorkerHeartbeat> WorkerHeartbeats { get; set; }
 
     partial void OnModelCreatingPartial(ModelBuilder modelBuilder)
     {
@@ -174,6 +175,17 @@ public partial class AppDbContext
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP").HasColumnType("timestamp without time zone").HasColumnName("created_at");
 
             entity.HasIndex(e => new { e.ToolName, e.CreatedAt }, "ix_mcp_tool_audits_tool_created");
+        });
+
+        modelBuilder.Entity<WorkerHeartbeat>(entity =>
+        {
+            entity.HasKey(e => e.WorkerName).HasName("workflow_worker_heartbeats_pkey");
+            entity.ToTable("workflow_worker_heartbeats");
+            entity.Property(e => e.WorkerName).HasMaxLength(100).HasColumnName("worker_name");
+            entity.Property(e => e.LastBeatAt).HasColumnType("timestamp without time zone").HasColumnName("last_beat_at");
+            entity.Property(e => e.Status).HasMaxLength(50).HasColumnName("status");
+            entity.Property(e => e.Detail).HasColumnName("detail");
+            entity.Property(e => e.UpdatedAt).HasColumnType("timestamp without time zone").HasColumnName("updated_at");
         });
     }
 }

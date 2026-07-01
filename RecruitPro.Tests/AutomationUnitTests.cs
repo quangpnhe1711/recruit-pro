@@ -255,4 +255,45 @@ public class AutomationUnitTests
         notif.Verify(n => n.AddRangeAsync(It.IsAny<IEnumerable<Notification>>()), Times.Once);
         uow.Verify(u => u.SaveChangesAsync(), Times.Once);
     }
+
+    // ---------------- diagnostics no-execution reasoner ----------------
+
+    private static string? Reason(
+        bool enabled = true, bool wfEnabled = true, bool hasActive = true,
+        WorkflowMode mode = WorkflowMode.Shadow, int eventsToday = 1, int execToday = 1,
+        int pending = 0, int skipped = 0, int success = 1)
+        => AutomationDiagnosticsReasoner.ResolveNoExecutionReason(
+            enabled, wfEnabled, hasActive, mode, eventsToday, execToday, pending, skipped, success);
+
+    [Fact]
+    public void Reason_AutomationDisabled_First()
+        => Reason(enabled: false, wfEnabled: false, hasActive: false).Should().Contain("tắt toàn hệ thống");
+
+    [Fact]
+    public void Reason_WorkflowDisabled()
+        => Reason(wfEnabled: false).Should().Contain("Workflow đang bị tắt");
+
+    [Fact]
+    public void Reason_NoActiveVersion()
+        => Reason(hasActive: false).Should().Contain("chưa có phiên bản active");
+
+    [Fact]
+    public void Reason_ModeDisabled()
+        => Reason(mode: WorkflowMode.Disabled).Should().Contain("Disabled");
+
+    [Fact]
+    public void Reason_NoEventToday()
+        => Reason(eventsToday: 0, execToday: 0).Should().Contain("Chưa có sự kiện loại này");
+
+    [Fact]
+    public void Reason_EventPendingNotProcessed()
+        => Reason(eventsToday: 1, execToday: 0, pending: 1).Should().Contain("worker chưa xử lý");
+
+    [Fact]
+    public void Reason_ConditionFalse()
+        => Reason(execToday: 1, skipped: 1, success: 0).Should().Contain("Điều kiện workflow không thỏa");
+
+    [Fact]
+    public void Reason_Healthy_ReturnsNull()
+        => Reason(eventsToday: 2, execToday: 2, success: 2, skipped: 0).Should().BeNull();
 }

@@ -160,4 +160,55 @@ public class WorkflowRepository : IWorkflowRepository
 
     public Task<int> CountUnresolvedDeadLettersAsync()
         => _context.WorkflowActionDeadLetters.AsNoTracking().CountAsync(d => d.ResolvedAt == null);
+
+    // --- diagnostics ---
+
+    public Task<int> CountExecutionsSinceForWorkflowAsync(Guid definitionId, DateTime since)
+        => _context.WorkflowExecutions.AsNoTracking()
+            .CountAsync(e => e.WorkflowDefinitionId == definitionId && e.CreatedAt >= since);
+
+    public Task<int> CountExecutionsByStatusSinceForWorkflowAsync(Guid definitionId, WorkflowExecutionStatus status, DateTime since)
+        => _context.WorkflowExecutions.AsNoTracking()
+            .CountAsync(e => e.WorkflowDefinitionId == definitionId && e.Status == status && e.CreatedAt >= since);
+
+    public Task<WorkflowExecution?> GetLatestExecutionAsync()
+        => _context.WorkflowExecutions.AsNoTracking()
+            .Include(e => e.WorkflowDefinition)
+            .OrderByDescending(e => e.CreatedAt)
+            .FirstOrDefaultAsync();
+
+    public Task<WorkflowExecution?> GetLatestExecutionForWorkflowAsync(Guid definitionId)
+        => _context.WorkflowExecutions.AsNoTracking()
+            .Include(e => e.WorkflowDefinition)
+            .Where(e => e.WorkflowDefinitionId == definitionId)
+            .OrderByDescending(e => e.CreatedAt)
+            .FirstOrDefaultAsync();
+
+    // --- worker heartbeat ---
+
+    public async Task UpsertHeartbeatAsync(string workerName, DateTime now, string status, string? detail)
+    {
+        WorkerHeartbeat? existing = await _context.WorkerHeartbeats.FirstOrDefaultAsync(h => h.WorkerName == workerName);
+        if (existing is null)
+        {
+            await _context.WorkerHeartbeats.AddAsync(new WorkerHeartbeat
+            {
+                WorkerName = workerName,
+                LastBeatAt = now,
+                Status = status,
+                Detail = detail,
+                UpdatedAt = now,
+            });
+        }
+        else
+        {
+            existing.LastBeatAt = now;
+            existing.Status = status;
+            existing.Detail = detail;
+            existing.UpdatedAt = now;
+        }
+    }
+
+    public async Task<IReadOnlyList<WorkerHeartbeat>> GetHeartbeatsAsync()
+        => await _context.WorkerHeartbeats.AsNoTracking().OrderBy(h => h.WorkerName).ToListAsync();
 }

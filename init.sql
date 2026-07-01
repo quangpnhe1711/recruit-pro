@@ -2454,6 +2454,14 @@ CREATE TABLE IF NOT EXISTS public.workflow_action_dead_letters (
 );
 CREATE INDEX IF NOT EXISTS ix_workflow_action_dead_letters_execution_id ON public.workflow_action_dead_letters USING btree (execution_id);
 
+CREATE TABLE IF NOT EXISTS public.workflow_worker_heartbeats (
+    worker_name character varying(100) NOT NULL PRIMARY KEY,
+    last_beat_at timestamp without time zone NOT NULL,
+    status character varying(50) DEFAULT 'Running' NOT NULL,
+    detail text,
+    updated_at timestamp without time zone
+);
+
 CREATE TABLE IF NOT EXISTS public.mcp_tool_audits (
     id uuid DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY,
     tool_name character varying(150) NOT NULL,

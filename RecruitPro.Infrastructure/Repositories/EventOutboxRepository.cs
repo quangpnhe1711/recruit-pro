@@ -64,4 +64,26 @@ public class EventOutboxRepository : IEventOutboxRepository
 
         return (items, total);
     }
+
+    // --- diagnostics ---
+
+    public Task<int> CountByStatusAsync(WorkflowEventStatus status)
+        => _context.PublishedDomainEvents.AsNoTracking().CountAsync(e => e.Status == status);
+
+    public Task<int> CountByEventTypeSinceAsync(string eventType, DateTime since)
+        => _context.PublishedDomainEvents.AsNoTracking()
+            .CountAsync(e => e.EventType == eventType && e.OccurredAt >= since);
+
+    public Task<int> CountByEventTypeAndStatusSinceAsync(string eventType, WorkflowEventStatus status, DateTime since)
+        => _context.PublishedDomainEvents.AsNoTracking()
+            .CountAsync(e => e.EventType == eventType && e.Status == status && e.OccurredAt >= since);
+
+    public Task<PublishedDomainEvent?> GetLatestAsync()
+        => _context.PublishedDomainEvents.AsNoTracking()
+            .OrderByDescending(e => e.OccurredAt).FirstOrDefaultAsync();
+
+    public Task<PublishedDomainEvent?> GetLatestByEventTypeAsync(string eventType)
+        => _context.PublishedDomainEvents.AsNoTracking()
+            .Where(e => e.EventType == eventType)
+            .OrderByDescending(e => e.OccurredAt).FirstOrDefaultAsync();
 }
