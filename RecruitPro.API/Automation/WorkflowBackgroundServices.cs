@@ -1,3 +1,5 @@
+using RecruitPro.Application.Common;
+using RecruitPro.Application.Interfaces;
 using RecruitPro.Application.Interfaces.IRepositories;
 using RecruitPro.Application.Interfaces.IServices.Automation;
 using RecruitPro.Domain.Automation;
@@ -26,11 +28,31 @@ public class WorkflowDispatcherBackgroundService : BackgroundService
                 using IServiceScope scope = _scopeFactory.CreateScope();
                 IEventOutboxRepository outbox = scope.ServiceProvider.GetRequiredService<IEventOutboxRepository>();
                 IWorkflowEngine engine = scope.ServiceProvider.GetRequiredService<IWorkflowEngine>();
+                IWorkflowRepository workflows = scope.ServiceProvider.GetRequiredService<IWorkflowRepository>();
+                IUnitOfWork unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
 
-                IReadOnlyList<PublishedDomainEvent> events = await outbox.GetDispatchableAsync(DateTime.Now, 25);
+                IReadOnlyList<PublishedDomainEvent> events = await outbox.GetDispatchableAsync(DbDateTime.Now, 25);
+                if (events.Count > 0)
+                {
+                    _logger.LogInformation("Workflow dispatcher claimed {Count} event(s).", events.Count);
+                }
                 foreach (PublishedDomainEvent domainEvent in events)
                 {
+                    _logger.LogInformation("Processing event {EventId} ({EventType}).", domainEvent.Id, domainEvent.EventType);
                     await engine.ProcessEventAsync(domainEvent.Id, stoppingToken);
+                }
+
+                // Heartbeat proves the loop is alive so diagnostics can distinguish "worker dead" from
+                // "no events". Best-effort: a heartbeat write must never crash the dispatch loop.
+                try
+                {
+                    await workflows.UpsertHeartbeatAsync("dispatcher", DbDateTime.Now, "Running",
+                        events.Count > 0 ? $"processed {events.Count} event(s)" : "idle");
+                    await unitOfWork.SaveChangesAsync();
+                }
+                catch (Exception hbEx)
+                {
+                    _logger.LogWarning(hbEx, "Workflow dispatcher heartbeat update failed.");
                 }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)

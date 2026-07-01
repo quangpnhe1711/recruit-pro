@@ -56,6 +56,7 @@ public static class ServiceCollectionExtensions
         // SystemAdmin-facing services
         services.AddScoped<IWorkflowDefinitionService, WorkflowDefinitionService>();
         services.AddScoped<IWorkflowExecutionService, WorkflowExecutionService>();
+        services.AddScoped<IAutomationDiagnosticsService, AutomationDiagnosticsService>();
 
         // MCP tools + registry + services
         services.AddScoped<IMcpTool, JobsSearchTool>();

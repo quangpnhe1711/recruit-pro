@@ -5,7 +5,7 @@ Phạm vi: kiểm thử chấp nhận thủ công cho hệ thống Tự động 
 Nguyên tắc: deterministic-first, AI không bắt buộc. Cutover an toàn theo từng sự kiện (Disabled / Shadow / Live). Không bao giờ gửi trùng thông báo (một nguồn gửi tại một thời điểm).
 
 ## Chuẩn bị
-- [ ] DB đã chạy `init.sql` (fresh) hoặc `db/patches/20260701-add-v4-workflow-automation.sql` + `db/patches/20260701-add-v4-mcp-tool-audits.sql` (DB có sẵn). Không dùng EF migration.
+- [ ] DB đã chạy `init.sql` (fresh) hoặc các patch idempotent (DB có sẵn): `db/patches/20260701-add-v4-workflow-automation.sql` + `db/patches/20260701-add-v4-mcp-tool-audits.sql` + `db/patches/20260702-add-v4-worker-heartbeat.sql`. Không dùng EF migration.
 - [ ] `appsettings` có mục `WorkflowAutomation` (mặc định `Shadow`).
 - [ ] Đăng nhập bằng tài khoản **SystemAdmin**.
 
@@ -54,6 +54,31 @@ Nguyên tắc: deterministic-first, AI không bắt buộc. Cutover an toàn the
 - [ ] Candidate KHÔNG truy cập được.
 - [ ] Người dùng chưa đăng nhập nhận 401.
 - [ ] SystemAdmin truy cập, xuất bản, bật/tắt, thử lại thành công.
+
+## J. Chẩn đoán & runtime (mới)
+- [ ] `/system-admin/automation/diagnostics`: thấy trạng thái tự động hóa (Enabled/Disabled), trạng thái worker dispatcher (Đang chạy / quá hạn heartbeat / chưa chạy), số sự kiện chờ/lỗi/dead-letter, sự kiện & thực thi gần nhất, danh sách cảnh báo.
+- [ ] Với mỗi workflow: thấy chế độ hiệu lực, và nếu chưa tạo execution thì có **lý do bằng tiếng Việt** (workflow tắt / chưa có phiên bản active / mode Disabled / chưa có sự kiện / worker chưa xử lý / điều kiện không thỏa).
+- [ ] Dashboard `/system-admin/automation` hiển thị dải trạng thái worker + banner cảnh báo khi có vấn đề.
+
+## Kịch bản UAT thủ công
+
+### UAT-01: Pass CV tạo execution mới
+- Login HR → Pass CV một application ở Screening (→ ManagerReview).
+- Login SystemAdmin → Tự động hóa tuyển dụng → Lịch sử chạy.
+- Kỳ vọng: thấy execution mới của workflow "Pass CV → Notify Head Review". Mở detail thấy event, condition, action, mode, recipient/wouldNotify.
+
+### UAT-02: Không có execution thì chẩn đoán được lý do
+- Tắt workflow hoặc để không có active version → thực hiện event.
+- Mở Chẩn đoán → Kỳ vọng: UI nói rõ workflow disabled / no active version / no matching trigger / worker chưa xử lý.
+
+### UAT-Toast-01: System notification toast
+- Kích hoạt một thông báo đổi trạng thái hồ sơ (hoặc workflow notification Live).
+- Kỳ vọng: thẻ thông báo bo góc xuất hiện ở **góc dưới-phải** trên desktop; trên mobile nằm gọn trong màn hình (không tràn).
+- Kỳ vọng: tiêu đề/nội dung tiếng Việt, KHÔNG phải `toast.info` mặc định; bấm "Xem chi tiết" mở trang liên quan nếu có URL; chuông thông báo vẫn nhận thông báo.
+
+### UAT-Mobile-01: SystemAdmin mobile drawer
+- Mở SystemAdmin Automation ở viewport mobile.
+- Kỳ vọng: có nút hamburger; sidebar mở dạng drawer từ trái; có backdrop, bấm backdrop/chọn mục điều hướng đều đóng drawer; không tràn ngang.
 
 ## I. Chất lượng UI/UX
 - [ ] Không còn màn hình placeholder “coming soon” cho v4.

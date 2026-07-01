@@ -121,6 +121,72 @@ public class AutomationDashboardDto
     public List<ExecutionSummaryDto> RecentExecutions { get; set; } = new();
 }
 
+public class WorkerHeartbeatDto
+{
+    public string Name { get; set; } = string.Empty;
+    public DateTime? LastBeatAt { get; set; }
+    public double? SecondsSinceBeat { get; set; }
+    public bool IsStale { get; set; }
+    public string Status { get; set; } = "Unknown";
+    public string? Detail { get; set; }
+}
+
+public class DiagnosticsEventDto
+{
+    public string EventType { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    public DateTime OccurredAt { get; set; }
+}
+
+public class DiagnosticsExecutionDto
+{
+    public string WorkflowName { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    public DateTime CreatedAt { get; set; }
+}
+
+/// <summary>Answers "is automation alive and why did / didn't it run?" without reading raw JSON.</summary>
+public class AutomationDiagnosticsDto
+{
+    public bool AutomationEnabled { get; set; }
+    public string DefaultMode { get; set; } = "Shadow";
+    public List<WorkerHeartbeatDto> Workers { get; set; } = new();
+    public bool DispatcherHealthy { get; set; }
+    public int PendingEvents { get; set; }
+    public int ProcessingEvents { get; set; }
+    public int FailedEvents { get; set; }
+    public int DeadLetterEvents { get; set; }
+    public int ExecutionsToday { get; set; }
+    public int FailedExecutions { get; set; }
+    public int UnresolvedDeadLetters { get; set; }
+    public DiagnosticsEventDto? LatestEvent { get; set; }
+    public DiagnosticsExecutionDto? LatestExecution { get; set; }
+    public List<string> Warnings { get; set; } = new();
+}
+
+/// <summary>Per-workflow diagnostics: whether it can run and, if not, the human reason why.</summary>
+public class WorkflowDiagnosticsDto
+{
+    public string Id { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public bool IsEnabled { get; set; }
+    public bool HasActiveVersion { get; set; }
+    public string? VersionMode { get; set; }
+    public string EffectiveMode { get; set; } = "Disabled";
+    public string? TriggerEventType { get; set; }
+    public int EventsTodayOfType { get; set; }
+    public int PendingEventsOfType { get; set; }
+    public int ExecutionsToday { get; set; }
+    public int SuccessCount { get; set; }
+    public int FailedCount { get; set; }
+    public int SkippedCount { get; set; }
+    public DiagnosticsEventDto? LatestMatchingEvent { get; set; }
+    public DiagnosticsExecutionDto? LatestExecution { get; set; }
+    /// <summary>Vietnamese reason no execution appears; null means the workflow is running normally.</summary>
+    public string? NoExecutionReason { get; set; }
+    public bool Healthy => NoExecutionReason == null;
+}
+
 public class McpToolDto
 {
     public string Name { get; set; } = string.Empty;

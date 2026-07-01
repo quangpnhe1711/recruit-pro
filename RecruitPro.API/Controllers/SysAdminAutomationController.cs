@@ -17,17 +17,38 @@ public class SysAdminAutomationController : ControllerBase
 {
     private readonly IWorkflowDefinitionService _definitions;
     private readonly IWorkflowExecutionService _executions;
+    private readonly IAutomationDiagnosticsService _diagnostics;
 
-    public SysAdminAutomationController(IWorkflowDefinitionService definitions, IWorkflowExecutionService executions)
+    public SysAdminAutomationController(
+        IWorkflowDefinitionService definitions,
+        IWorkflowExecutionService executions,
+        IAutomationDiagnosticsService diagnostics)
     {
         _definitions = definitions;
         _executions = executions;
+        _diagnostics = diagnostics;
     }
 
     [HttpGet("api/sysadmin/automation/dashboard")]
     public async Task<IActionResult> GetDashboard()
     {
         var result = await _definitions.GetDashboardAsync();
+        return StatusCode(result.StatusCode, result);
+    }
+
+    // ---- diagnostics ----
+
+    [HttpGet("api/sysadmin/automation/diagnostics")]
+    public async Task<IActionResult> GetDiagnostics()
+    {
+        var result = await _diagnostics.GetGlobalAsync();
+        return StatusCode(result.StatusCode, result);
+    }
+
+    [HttpGet("api/sysadmin/automation/workflows/{id}/diagnostics")]
+    public async Task<IActionResult> GetWorkflowDiagnostics(string id)
+    {
+        var result = await _diagnostics.GetForWorkflowAsync(id);
         return StatusCode(result.StatusCode, result);
     }
 

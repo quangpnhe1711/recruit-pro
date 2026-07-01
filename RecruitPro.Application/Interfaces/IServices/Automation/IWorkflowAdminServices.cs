@@ -26,3 +26,9 @@ public interface IWorkflowExecutionService
         string? status, string? eventType, DateTime? from, DateTime? to, int page, int pageSize);
     Task<ApiResponse<OutboxEventDto>> GetEventAsync(string id);
 }
+
+public interface IAutomationDiagnosticsService
+{
+    Task<ApiResponse<AutomationDiagnosticsDto>> GetGlobalAsync();
+    Task<ApiResponse<WorkflowDiagnosticsDto>> GetForWorkflowAsync(string workflowId);
+}

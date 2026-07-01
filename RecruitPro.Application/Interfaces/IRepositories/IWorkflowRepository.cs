@@ -37,4 +37,14 @@ public interface IWorkflowRepository
     Task<int> CountExecutionsSinceAsync(DateTime since);
     Task<int> CountExecutionsByStatusAsync(WorkflowExecutionStatus status);
     Task<int> CountUnresolvedDeadLettersAsync();
+
+    // --- diagnostics ---
+    Task<int> CountExecutionsSinceForWorkflowAsync(Guid definitionId, DateTime since);
+    Task<int> CountExecutionsByStatusSinceForWorkflowAsync(Guid definitionId, WorkflowExecutionStatus status, DateTime since);
+    Task<WorkflowExecution?> GetLatestExecutionAsync();
+    Task<WorkflowExecution?> GetLatestExecutionForWorkflowAsync(Guid definitionId);
+
+    // --- worker heartbeat ---
+    Task UpsertHeartbeatAsync(string workerName, DateTime now, string status, string? detail);
+    Task<IReadOnlyList<WorkerHeartbeat>> GetHeartbeatsAsync();
 }

@@ -117,6 +117,19 @@ public class WorkflowActionDeadLetter
     public DateTime CreatedAt { get; set; }
 }
 
+/// <summary>
+/// One row per background worker (e.g. "dispatcher"), refreshed each loop. A stale/absent beat is how the
+/// diagnostics screen proves the automation worker is dead — the single most common cause of "no execution".
+/// </summary>
+public class WorkerHeartbeat
+{
+    public string WorkerName { get; set; } = string.Empty;
+    public DateTime LastBeatAt { get; set; }
+    public string Status { get; set; } = "Running";
+    public string? Detail { get; set; }
+    public DateTime? UpdatedAt { get; set; }
+}
+
 /// <summary>Audit row for every internal MCP-style tool call (allowed and denied).</summary>
 public class McpToolAudit
 {
