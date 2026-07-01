@@ -148,5 +148,125 @@ public class SharedProfile : Profile
                 ? new CopilotNormalizedRulesDto()
                 : JsonSerializer.Deserialize<CopilotNormalizedRulesDto>(src.RuleJson, new JsonSerializerOptions()) ?? new CopilotNormalizedRulesDto()
         });
+
+        // Reload of a persisted ranking session (GET /api/copilot/ranking-sessions/{id}). Without these
+        // maps AutoMapper threw "Missing type map configuration" -> 500 when the UI restored a job that
+        // had already been ranked. The persisted columns are reversed here: NormalizedRulesJson,
+        // Strengths/Weaknesses JSON arrays, and the {Summary, IsAiGenerated} ExplanationJson payload.
+        CreateMap<CopilotRankingResult, CopilotRankingResultDto>().ConvertUsing(src => MapRankingResult(src));
+
+        CreateMap<CopilotRankingSession, CopilotRankingSessionDetailDto>().ConvertUsing(src => new CopilotRankingSessionDetailDto
+        {
+            RankingSessionId = src.Id,
+            ConversationId = src.ConversationId,
+            JobId = src.JobId,
+            UserPrompt = src.UserPrompt,
+            ModelName = src.ModelName,
+            TotalCandidates = src.TotalCandidates,
+            PromptTokens = src.PromptTokens,
+            CompletionTokens = src.CompletionTokens,
+            CreatedAt = src.CreatedAt,
+            NormalizedRules = DeserializeRules(src.NormalizedRulesJson),
+            Results = src.Results
+                .OrderBy(result => result.IsAutoRejected)
+                .ThenBy(result => result.RankPosition)
+                .Select(result => MapRankingResult(result))
+                .ToList()
+        });
+    }
+
+    private static CopilotNormalizedRulesDto DeserializeRules(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return new CopilotNormalizedRulesDto();
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<CopilotNormalizedRulesDto>(json, JsonReadOptions)
+                ?? new CopilotNormalizedRulesDto();
+        }
+        catch (JsonException)
+        {
+            return new CopilotNormalizedRulesDto();
+        }
+    }
+
+    private static List<string> DeserializeStringList(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return [];
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<List<string>>(json, JsonReadOptions) ?? [];
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
+    }
+
+    private static CopilotRankingResultDto MapRankingResult(CopilotRankingResult src)
+    {
+        RankingExplanation explanation = DeserializeExplanation(src.ExplanationJson);
+        return new CopilotRankingResultDto
+        {
+            CandidateUserId = src.CandidateUserId,
+            ApplicationId = src.ApplicationId,
+            FullName = src.Application?.User?.FullName ?? string.Empty,
+            RankPosition = src.RankPosition,
+            TotalScore = src.TotalScore,
+            SkillScore = src.SkillScore,
+            ExperienceScore = src.ExperienceScore,
+            EducationScore = src.EducationScore,
+            ProjectScore = src.ProjectScore,
+            Recommendation = src.Recommendation,
+            IsAutoRejected = src.IsAutoRejected,
+            RejectReason = src.RejectReason,
+            Strengths = DeserializeStringList(src.StrengthsJson),
+            Weaknesses = DeserializeStringList(src.WeaknessesJson),
+            FitLabel = explanation.FitLabel,
+            ConfidenceScore = explanation.ConfidenceScore,
+            Evidence = explanation.Evidence,
+            Summary = explanation.Summary,
+            IsAiGenerated = explanation.IsAiGenerated
+        };
+    }
+
+    private static RankingExplanation DeserializeExplanation(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return new RankingExplanation();
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<RankingExplanation>(json, JsonReadOptions) ?? new RankingExplanation();
+        }
+        catch (JsonException)
+        {
+            return new RankingExplanation();
+        }
+    }
+
+    private static readonly JsonSerializerOptions JsonReadOptions = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
+
+    private sealed class RankingExplanation
+    {
+        public string Summary { get; set; } = string.Empty;
+        public bool IsAiGenerated { get; set; }
+        // v2: fit-style evaluation persisted alongside the ranking result so a reload shows the same
+        // fit label / confidence / Vietnamese evidence without re-running ranking.
+        public string FitLabel { get; set; } = string.Empty;
+        public decimal ConfidenceScore { get; set; }
+        public List<string> Evidence { get; set; } = [];
     }
 }

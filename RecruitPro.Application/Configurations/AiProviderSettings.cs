@@ -11,4 +11,9 @@ public class AiProviderSettings
     public int MaxResumeParseChars { get; set; } = 12000;
     public int RequestTimeoutSeconds { get; set; } = 180;
     public bool Enabled { get; set; } = true;
+
+    // v2: deterministic ranking is the source of truth for candidate ORDER. By default the provider
+    // may only enrich the Vietnamese explanation (summary/evidence/strengths/gaps) — it must not
+    // reorder candidates. Set true only if the business explicitly wants provider-driven ordering.
+    public bool AllowProviderReordering { get; set; } = false;
 }

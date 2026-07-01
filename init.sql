@@ -1357,6 +1357,7 @@ CREATE TABLE IF NOT EXISTS public.copilot_ranking_sessions (
     user_id uuid NOT NULL,
     user_prompt text NOT NULL,
     normalized_rules_json jsonb NOT NULL,
+    input_hash character varying(64),
     total_candidates integer NOT NULL,
     model_name character varying(100),
     prompt_tokens integer,
@@ -1443,6 +1444,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_copilot_conversations_active_job_user ON pu
 CREATE INDEX IF NOT EXISTS ix_copilot_messages_conversation_sequence ON public.copilot_messages USING btree (conversation_id, sequence_no);
 CREATE INDEX IF NOT EXISTS ix_copilot_ranking_sessions_conversation_created_at ON public.copilot_ranking_sessions USING btree (conversation_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS ix_copilot_ranking_sessions_job_created_at ON public.copilot_ranking_sessions USING btree (job_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS ix_copilot_ranking_sessions_job_user_input_hash ON public.copilot_ranking_sessions USING btree (job_id, user_id, input_hash);
 CREATE INDEX IF NOT EXISTS ix_copilot_ranking_results_session_rank ON public.copilot_ranking_results USING btree (ranking_session_id, rank_position);
 CREATE INDEX IF NOT EXISTS ix_copilot_ranking_results_session_reject_score ON public.copilot_ranking_results USING btree (ranking_session_id, is_auto_rejected, total_score DESC);
 CREATE INDEX IF NOT EXISTS ix_copilot_saved_rules_job_active ON public.copilot_saved_rules USING btree (job_id, is_active);
@@ -1500,40 +1502,30 @@ CREATE TABLE IF NOT EXISTS public.copilot_generated_artifacts (
     created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
-DO $$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'copilot_prompt_templates_pkey') THEN
-        ALTER TABLE ONLY public.copilot_prompt_templates ADD CONSTRAINT copilot_prompt_templates_pkey PRIMARY KEY (id);
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'candidate_fit_analyses_pkey') THEN
-        ALTER TABLE ONLY public.candidate_fit_analyses ADD CONSTRAINT candidate_fit_analyses_pkey PRIMARY KEY (id);
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'copilot_generated_artifacts_pkey') THEN
-        ALTER TABLE ONLY public.copilot_generated_artifacts ADD CONSTRAINT copilot_generated_artifacts_pkey PRIMARY KEY (id);
-    END IF;
+-- NOTE: no PL/pgSQL DO blocks here on purpose. Some SQL runners split scripts on ";" and choke on
+-- dollar-quoted bodies ("unterminated dollar-quoted string"). Postgres has no ADD CONSTRAINT IF NOT
+-- EXISTS, so each constraint is made idempotent with DROP CONSTRAINT IF EXISTS + ADD CONSTRAINT.
+ALTER TABLE ONLY public.copilot_prompt_templates DROP CONSTRAINT IF EXISTS copilot_prompt_templates_pkey;
+ALTER TABLE ONLY public.copilot_prompt_templates ADD CONSTRAINT copilot_prompt_templates_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.candidate_fit_analyses DROP CONSTRAINT IF EXISTS candidate_fit_analyses_pkey;
+ALTER TABLE ONLY public.candidate_fit_analyses ADD CONSTRAINT candidate_fit_analyses_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.copilot_generated_artifacts DROP CONSTRAINT IF EXISTS copilot_generated_artifacts_pkey;
+ALTER TABLE ONLY public.copilot_generated_artifacts ADD CONSTRAINT copilot_generated_artifacts_pkey PRIMARY KEY (id);
 
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'copilot_prompt_templates_owner_user_id_fkey') THEN
-        ALTER TABLE ONLY public.copilot_prompt_templates ADD CONSTRAINT copilot_prompt_templates_owner_user_id_fkey FOREIGN KEY (owner_user_id) REFERENCES public.users(id) ON DELETE CASCADE;
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'candidate_fit_analyses_job_id_fkey') THEN
-        ALTER TABLE ONLY public.candidate_fit_analyses ADD CONSTRAINT candidate_fit_analyses_job_id_fkey FOREIGN KEY (job_id) REFERENCES public.jobs(id) ON DELETE CASCADE;
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'candidate_fit_analyses_candidate_user_id_fkey') THEN
-        ALTER TABLE ONLY public.candidate_fit_analyses ADD CONSTRAINT candidate_fit_analyses_candidate_user_id_fkey FOREIGN KEY (candidate_user_id) REFERENCES public.users(id) ON DELETE CASCADE;
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'candidate_fit_analyses_application_id_fkey') THEN
-        ALTER TABLE ONLY public.candidate_fit_analyses ADD CONSTRAINT candidate_fit_analyses_application_id_fkey FOREIGN KEY (application_id) REFERENCES public.applications(id) ON DELETE CASCADE;
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'copilot_generated_artifacts_owner_user_id_fkey') THEN
-        ALTER TABLE ONLY public.copilot_generated_artifacts ADD CONSTRAINT copilot_generated_artifacts_owner_user_id_fkey FOREIGN KEY (owner_user_id) REFERENCES public.users(id) ON DELETE CASCADE;
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'copilot_generated_artifacts_job_id_fkey') THEN
-        ALTER TABLE ONLY public.copilot_generated_artifacts ADD CONSTRAINT copilot_generated_artifacts_job_id_fkey FOREIGN KEY (job_id) REFERENCES public.jobs(id) ON DELETE SET NULL;
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'copilot_generated_artifacts_application_id_fkey') THEN
-        ALTER TABLE ONLY public.copilot_generated_artifacts ADD CONSTRAINT copilot_generated_artifacts_application_id_fkey FOREIGN KEY (application_id) REFERENCES public.applications(id) ON DELETE SET NULL;
-    END IF;
-END $$;
+ALTER TABLE ONLY public.copilot_prompt_templates DROP CONSTRAINT IF EXISTS copilot_prompt_templates_owner_user_id_fkey;
+ALTER TABLE ONLY public.copilot_prompt_templates ADD CONSTRAINT copilot_prompt_templates_owner_user_id_fkey FOREIGN KEY (owner_user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.candidate_fit_analyses DROP CONSTRAINT IF EXISTS candidate_fit_analyses_job_id_fkey;
+ALTER TABLE ONLY public.candidate_fit_analyses ADD CONSTRAINT candidate_fit_analyses_job_id_fkey FOREIGN KEY (job_id) REFERENCES public.jobs(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.candidate_fit_analyses DROP CONSTRAINT IF EXISTS candidate_fit_analyses_candidate_user_id_fkey;
+ALTER TABLE ONLY public.candidate_fit_analyses ADD CONSTRAINT candidate_fit_analyses_candidate_user_id_fkey FOREIGN KEY (candidate_user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.candidate_fit_analyses DROP CONSTRAINT IF EXISTS candidate_fit_analyses_application_id_fkey;
+ALTER TABLE ONLY public.candidate_fit_analyses ADD CONSTRAINT candidate_fit_analyses_application_id_fkey FOREIGN KEY (application_id) REFERENCES public.applications(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.copilot_generated_artifacts DROP CONSTRAINT IF EXISTS copilot_generated_artifacts_owner_user_id_fkey;
+ALTER TABLE ONLY public.copilot_generated_artifacts ADD CONSTRAINT copilot_generated_artifacts_owner_user_id_fkey FOREIGN KEY (owner_user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.copilot_generated_artifacts DROP CONSTRAINT IF EXISTS copilot_generated_artifacts_job_id_fkey;
+ALTER TABLE ONLY public.copilot_generated_artifacts ADD CONSTRAINT copilot_generated_artifacts_job_id_fkey FOREIGN KEY (job_id) REFERENCES public.jobs(id) ON DELETE SET NULL;
+ALTER TABLE ONLY public.copilot_generated_artifacts DROP CONSTRAINT IF EXISTS copilot_generated_artifacts_application_id_fkey;
+ALTER TABLE ONLY public.copilot_generated_artifacts ADD CONSTRAINT copilot_generated_artifacts_application_id_fkey FOREIGN KEY (application_id) REFERENCES public.applications(id) ON DELETE SET NULL;
 
 CREATE INDEX IF NOT EXISTS ix_copilot_prompt_templates_owner_type_active ON public.copilot_prompt_templates USING btree (owner_user_id, template_type, is_active);
 CREATE INDEX IF NOT EXISTS ix_candidate_fit_analyses_job_candidate_created ON public.candidate_fit_analyses USING btree (job_id, candidate_user_id, created_at);
@@ -2277,29 +2269,15 @@ ALTER TABLE public.applications ADD COLUMN IF NOT EXISTS assigned_department_hea
 
 -- 2. Foreign keys to users — RESTRICT/NO ACTION (matching jobs_created_by_fkey etc.); deleting a user
 --    must never cascade-delete a department/job/application.
-DO $$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'departments_head_user_id_fkey') THEN
-        ALTER TABLE ONLY public.departments
-            ADD CONSTRAINT departments_head_user_id_fkey
-            FOREIGN KEY (head_user_id) REFERENCES public.users(id);
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'jobs_recruiter_id_fkey') THEN
-        ALTER TABLE ONLY public.jobs
-            ADD CONSTRAINT jobs_recruiter_id_fkey
-            FOREIGN KEY (recruiter_id) REFERENCES public.users(id);
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'applications_assigned_recruiter_id_fkey') THEN
-        ALTER TABLE ONLY public.applications
-            ADD CONSTRAINT applications_assigned_recruiter_id_fkey
-            FOREIGN KEY (assigned_recruiter_id) REFERENCES public.users(id);
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'applications_assigned_department_head_id_fkey') THEN
-        ALTER TABLE ONLY public.applications
-            ADD CONSTRAINT applications_assigned_department_head_id_fkey
-            FOREIGN KEY (assigned_department_head_id) REFERENCES public.users(id);
-    END IF;
-END $$;
+-- Idempotent without a PL/pgSQL DO block (see note above): DROP CONSTRAINT IF EXISTS + ADD CONSTRAINT.
+ALTER TABLE ONLY public.departments DROP CONSTRAINT IF EXISTS departments_head_user_id_fkey;
+ALTER TABLE ONLY public.departments ADD CONSTRAINT departments_head_user_id_fkey FOREIGN KEY (head_user_id) REFERENCES public.users(id);
+ALTER TABLE ONLY public.jobs DROP CONSTRAINT IF EXISTS jobs_recruiter_id_fkey;
+ALTER TABLE ONLY public.jobs ADD CONSTRAINT jobs_recruiter_id_fkey FOREIGN KEY (recruiter_id) REFERENCES public.users(id);
+ALTER TABLE ONLY public.applications DROP CONSTRAINT IF EXISTS applications_assigned_recruiter_id_fkey;
+ALTER TABLE ONLY public.applications ADD CONSTRAINT applications_assigned_recruiter_id_fkey FOREIGN KEY (assigned_recruiter_id) REFERENCES public.users(id);
+ALTER TABLE ONLY public.applications DROP CONSTRAINT IF EXISTS applications_assigned_department_head_id_fkey;
+ALTER TABLE ONLY public.applications ADD CONSTRAINT applications_assigned_department_head_id_fkey FOREIGN KEY (assigned_department_head_id) REFERENCES public.users(id);
 
 -- 3. Indexes
 CREATE INDEX IF NOT EXISTS ix_departments_head_user_id

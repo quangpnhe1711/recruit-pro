@@ -1,9 +1,12 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using AutoMapper;
 using Microsoft.Extensions.Options;
 using RecruitPro.Application.Common;
 using RecruitPro.Application.Configurations;
+using RecruitPro.Application.DTOs.Request.Applications;
 using RecruitPro.Application.DTOs.Request.Copilot;
 using RecruitPro.Application.DTOs.Response;
 using RecruitPro.Application.DTOs.Response.Copilot;
@@ -11,15 +14,24 @@ using RecruitPro.Application.Interfaces;
 using RecruitPro.Application.Interfaces.IRepositories;
 using RecruitPro.Application.Interfaces.IServices;
 using RecruitPro.Domain.Entities;
+using RecruitPro.Domain.Enums;
 
 namespace RecruitPro.Application.Services;
 
 public class CopilotService : ICopilotService
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
+    // v2: only applications in the CV-screening stage are rank-eligible. The ATS enum name is
+    // "Screening" (see ApplicationStatus / ApplicationStatusWorkflow). Candidates already at
+    // ManagerReview (Head Review), Interview, Offer, Hired, Rejected, OfferDeclined or Withdrawn are
+    // excluded from default ranking.
+    private static readonly string ScreeningStatus = ApplicationStatus.Screening.ToString();
+
     private readonly ICopilotRepository _copilotRepository;
     private readonly IJobRepository _jobRepository;
     private readonly IApplicationRepository _applicationRepository;
+    private readonly IApplicationService _applicationService;
     private readonly IFileStorageService _fileStorageService;
     private readonly IResumeTextExtractor _resumeTextExtractor;
     private readonly IAiCopilotProvider _aiCopilotProvider;
@@ -41,6 +53,7 @@ public class CopilotService : ICopilotService
         ICopilotRepository copilotRepository,
         IJobRepository jobRepository,
         IApplicationRepository applicationRepository,
+        IApplicationService applicationService,
         IFileStorageService fileStorageService,
         IResumeTextExtractor resumeTextExtractor,
         IAiCopilotProvider aiCopilotProvider,
@@ -51,6 +64,7 @@ public class CopilotService : ICopilotService
         _copilotRepository = copilotRepository;
         _jobRepository = jobRepository;
         _applicationRepository = applicationRepository;
+        _applicationService = applicationService;
         _fileStorageService = fileStorageService;
         _resumeTextExtractor = resumeTextExtractor;
         _aiCopilotProvider = aiCopilotProvider;
@@ -151,15 +165,20 @@ public class CopilotService : ICopilotService
             return ApiResponse<NaturalLanguageCandidateSearchResponseDto>.BadRequest("Search query is required.");
         }
 
+        // v2 §1 — candidate search is no longer a first-class active flow. Ranking is the single
+        // source of truth for screening evaluation. This endpoint is soft-deprecated: it returns a
+        // deterministic view of the screening pool only, never calls the AI provider, and never
+        // persists a new artifact. The frontend no longer surfaces it.
         ApiResponse<CopilotCandidatePoolDto> poolResponse = await GetCandidatePoolAsync(request.JobId, callerUserId, callerRoles);
         if (!poolResponse.Success || poolResponse.Data is null)
         {
             return MirrorFailure<NaturalLanguageCandidateSearchResponseDto>(poolResponse.StatusCode, poolResponse.Message, poolResponse.ErrorCode);
         }
 
-        CopilotCandidatePoolDto pool = poolResponse.Data;
+        CopilotCandidatePoolDto pool = FilterToScreeningPool(poolResponse.Data);
         CopilotNormalizedRulesDto rules = BuildRules(request.Query, pool.Job.RequiredSkills, [], [], []);
         List<CopilotRankingResultDto> ranked = RankCandidates(pool.Candidates, rules);
+        ApplyVietnameseFitEvaluation(ranked, rules);
         int maxResults = Math.Clamp(request.MaxResults <= 0 ? 10 : request.MaxResults, 1, 25);
 
         IReadOnlyList<CopilotCandidateSearchResultDto> results = ranked
@@ -172,54 +191,9 @@ public class CopilotService : ICopilotService
             Query = request.Query.Trim(),
             ExtractedFilters = rules,
             Results = results,
-            Ai = BuildDeterministicMetadata("Natural language extraction uses deterministic keyword/rule parsing in this v2 foundation slice.")
+            Ai = BuildDeterministicMetadata(
+                "candidate-search:deprecated — tính năng tìm ứng viên bằng ngôn ngữ tự nhiên đã ngừng hoạt động trong luồng v2; hãy dùng chức năng xếp hạng ứng viên.")
         };
-
-        response = await TryGenerateStructuredResponseAsync(
-            "candidate_search",
-            "candidate_search",
-            callerUserId,
-            SearchInstructions(maxResults),
-            new Dictionary<string, string>
-            {
-                ["query"] = request.Query.Trim(),
-                ["jobTitle"] = pool.Job.Title
-            },
-            new
-            {
-                job = pool.Job,
-                query = request.Query.Trim(),
-                maxResults,
-                deterministicFilters = rules,
-                deterministicResults = results
-            },
-            response,
-            ValidateSearchResponse,
-            generated =>
-            {
-                generated.NormalizedIntent = string.IsNullOrWhiteSpace(generated.NormalizedIntent)
-                    ? "candidate_search"
-                    : generated.NormalizedIntent.Trim();
-                generated.Query = string.IsNullOrWhiteSpace(generated.Query) ? request.Query.Trim() : generated.Query.Trim();
-                generated.ExtractedFilters ??= rules;
-                generated.Results = generated.Results
-                    .Where(result => pool.Candidates.Any(candidate =>
-                        candidate.CandidateUserId == result.CandidateUserId
-                        && candidate.ApplicationId == result.ApplicationId))
-                    .Take(maxResults)
-                    .ToList();
-            },
-            generated => generated.Ai,
-            (generated, metadata) => generated.Ai = metadata);
-
-        await PersistArtifactAsync(
-            callerUserId,
-            request.JobId,
-            null,
-            "candidate_search",
-            request.Query,
-            response,
-            response.Ai);
 
         return ApiResponse<NaturalLanguageCandidateSearchResponseDto>.Ok(response);
     }
@@ -230,89 +204,49 @@ public class CopilotService : ICopilotService
         Guid? callerUserId,
         IReadOnlyCollection<string> callerRoles)
     {
+        // v2 §9 — fit analysis DERIVES FROM the latest ranking result. It never re-ranks, never
+        // reorders and never makes an independent provider call: the detailed Vietnamese fit
+        // evaluation is produced at ranking time and simply read back here.
         ApiResponse<CopilotCandidatePoolDto> poolResponse = await GetCandidatePoolAsync(jobId, callerUserId, callerRoles);
         if (!poolResponse.Success || poolResponse.Data is null)
         {
             return MirrorFailure<CandidateFitAnalysisResponseDto>(poolResponse.StatusCode, poolResponse.Message, poolResponse.ErrorCode);
         }
 
-        CopilotCandidatePoolDto pool = poolResponse.Data;
-        CopilotNormalizedRulesDto rules = BuildRules(request.Prompt, pool.Job.RequiredSkills, [], [], []);
+        CopilotRankingSession? session = callerUserId.HasValue
+            ? await _copilotRepository.GetLatestRankingSessionForJobAsync(jobId, callerUserId.Value)
+            : null;
+
+        if (session is null)
+        {
+            return ApiResponse<CandidateFitAnalysisResponseDto>.Ok(new CandidateFitAnalysisResponseDto
+            {
+                JobId = jobId,
+                Analyses = [],
+                Ai = BuildDeterministicMetadata(
+                    "Chưa có kết quả xếp hạng cho vị trí này. Hãy chạy xếp hạng ứng viên trước để có phân tích độ phù hợp.")
+            });
+        }
+
+        CopilotRankingSessionDetailDto detail = _mapper.Map<CopilotRankingSessionDetailDto>(session);
         HashSet<Guid> candidateFilter = request.CandidateUserIds.Where(id => id != Guid.Empty).ToHashSet();
         HashSet<Guid> applicationFilter = request.ApplicationIds.Where(id => id != Guid.Empty).ToHashSet();
 
-        List<CopilotRankingResultDto> ranked = RankCandidates(pool.Candidates, rules)
+        List<CandidateFitAnalysisDto> analyses = detail.Results
             .Where(result =>
                 candidateFilter.Count == 0 && applicationFilter.Count == 0
                 || candidateFilter.Contains(result.CandidateUserId)
                 || applicationFilter.Contains(result.ApplicationId))
+            .Select(BuildFitAnalysis)
             .ToList();
 
         CandidateFitAnalysisResponseDto response = new()
         {
             JobId = jobId,
-            Analyses = ranked.Select(BuildFitAnalysis).ToList(),
-            Ai = BuildDeterministicMetadata("Fit analysis uses deterministic scoring and ATS evidence; no provider call is required.")
+            Analyses = analyses,
+            Ai = BuildDeterministicMetadata(
+                "fit-analysis:derived-from-ranking — độ phù hợp được suy ra từ kết quả xếp hạng gần nhất, không chấm lại.")
         };
-
-        response = await TryGenerateStructuredResponseAsync(
-            "fit_analysis",
-            "fit_analysis",
-            callerUserId,
-            FitAnalysisInstructions(),
-            new Dictionary<string, string>
-            {
-                ["jobTitle"] = pool.Job.Title,
-                ["prompt"] = request.Prompt ?? string.Empty
-            },
-            new
-            {
-                job = pool.Job,
-                prompt = request.Prompt,
-                candidateUserIds = request.CandidateUserIds,
-                applicationIds = request.ApplicationIds,
-                deterministicAnalyses = response.Analyses,
-                candidates = ranked
-            },
-            response,
-            ValidateFitAnalysisResponse,
-            generated =>
-            {
-                generated.JobId = jobId;
-                generated.Analyses = generated.Analyses
-                    .Where(analysis => ranked.Any(candidate =>
-                        candidate.CandidateUserId == analysis.CandidateUserId
-                        && candidate.ApplicationId == analysis.ApplicationId))
-                    .ToList();
-            },
-            generated => generated.Ai,
-            (generated, metadata) => generated.Ai = metadata);
-
-        foreach (CandidateFitAnalysisDto analysis in response.Analyses)
-        {
-            await _copilotRepository.AddFitAnalysisAsync(new CandidateFitAnalysis
-            {
-                AuditId = response.Ai.AuditId,
-                JobId = jobId,
-                CandidateUserId = analysis.CandidateUserId,
-                ApplicationId = analysis.ApplicationId,
-                FitLabel = analysis.FitLabel,
-                ConfidenceScore = analysis.ConfidenceScore,
-                TotalScore = analysis.TotalScore,
-                StrengthsJson = JsonSerializer.Serialize(analysis.Strengths),
-                GapsJson = JsonSerializer.Serialize(analysis.Gaps),
-                EvidenceJson = JsonSerializer.Serialize(analysis.Evidence),
-                Summary = analysis.Summary,
-                ProviderName = response.Ai.ProviderName,
-                ModelName = response.Ai.ModelName,
-                FallbackUsed = response.Ai.FallbackUsed
-            });
-        }
-
-        if (response.Analyses.Count > 0)
-        {
-            await _unitOfWork.SaveChangesAsync();
-        }
 
         return ApiResponse<CandidateFitAnalysisResponseDto>.Ok(response);
     }
@@ -396,17 +330,35 @@ public class CopilotService : ICopilotService
         Guid? callerUserId,
         IReadOnlyCollection<string> callerRoles)
     {
+        // v2 §10 — shortlist DERIVES FROM the latest ranking result. It takes the top-N non-rejected
+        // screening candidates in the exact order ranking produced them; it never re-ranks, never
+        // reorders and never makes an independent provider call.
         ApiResponse<CopilotCandidatePoolDto> poolResponse = await GetCandidatePoolAsync(jobId, callerUserId, callerRoles);
         if (!poolResponse.Success || poolResponse.Data is null)
         {
             return MirrorFailure<ShortlistSuggestionResponseDto>(poolResponse.StatusCode, poolResponse.Message, poolResponse.ErrorCode);
         }
 
-        CopilotCandidatePoolDto pool = poolResponse.Data;
-        CopilotNormalizedRulesDto rules = BuildRules(request.Prompt, pool.Job.RequiredSkills, [], [], []);
         int maxCandidates = Math.Clamp(request.MaxCandidates <= 0 ? 5 : request.MaxCandidates, 1, 10);
-        IReadOnlyList<ShortlistSuggestionDto> suggestions = RankCandidates(pool.Candidates, rules)
+        CopilotRankingSession? session = callerUserId.HasValue
+            ? await _copilotRepository.GetLatestRankingSessionForJobAsync(jobId, callerUserId.Value)
+            : null;
+
+        if (session is null)
+        {
+            return ApiResponse<ShortlistSuggestionResponseDto>.Ok(new ShortlistSuggestionResponseDto
+            {
+                JobId = jobId,
+                Suggestions = [],
+                Ai = BuildDeterministicMetadata(
+                    "Chưa có kết quả xếp hạng cho vị trí này. Hãy chạy xếp hạng ứng viên trước để tạo shortlist.")
+            });
+        }
+
+        CopilotRankingSessionDetailDto detail = _mapper.Map<CopilotRankingSessionDetailDto>(session);
+        IReadOnlyList<ShortlistSuggestionDto> suggestions = detail.Results
             .Where(result => !result.IsAutoRejected)
+            .OrderBy(result => result.RankPosition)
             .Take(maxCandidates)
             .Select(result => new ShortlistSuggestionDto
             {
@@ -416,7 +368,7 @@ public class CopilotService : ICopilotService
                 RankPosition = result.RankPosition,
                 Score = result.TotalScore,
                 Recommendation = result.Recommendation,
-                Rationale = BuildRationale(result)
+                Rationale = result.Evidence.Count > 0 ? result.Evidence : BuildRationale(result)
             })
             .ToList();
 
@@ -424,50 +376,9 @@ public class CopilotService : ICopilotService
         {
             JobId = jobId,
             Suggestions = suggestions,
-            Ai = BuildDeterministicMetadata("Shortlist suggestions use deterministic ranking; shortlist publishing remains a separate HR action.")
+            Ai = BuildDeterministicMetadata(
+                "shortlist:derived-from-ranking — shortlist lấy top ứng viên từ kết quả xếp hạng gần nhất; việc chuyển hồ sơ vẫn là thao tác riêng của HR.")
         };
-
-        response = await TryGenerateStructuredResponseAsync(
-            "shortlist_suggestion",
-            "shortlist_suggestion",
-            callerUserId,
-            ShortlistInstructions(maxCandidates),
-            new Dictionary<string, string>
-            {
-                ["jobTitle"] = pool.Job.Title,
-                ["prompt"] = request.Prompt ?? string.Empty
-            },
-            new
-            {
-                job = pool.Job,
-                prompt = request.Prompt,
-                maxCandidates,
-                deterministicSuggestions = suggestions,
-                candidates = pool.Candidates
-            },
-            response,
-            ValidateShortlist,
-            generated =>
-            {
-                generated.JobId = jobId;
-                generated.Suggestions = generated.Suggestions
-                    .Where(suggestion => pool.Candidates.Any(candidate =>
-                        candidate.CandidateUserId == suggestion.CandidateUserId
-                        && candidate.ApplicationId == suggestion.ApplicationId))
-                    .Take(maxCandidates)
-                    .ToList();
-            },
-            generated => generated.Ai,
-            (generated, metadata) => generated.Ai = metadata);
-
-        await PersistArtifactAsync(
-            callerUserId,
-            jobId,
-            null,
-            "shortlist_suggestion",
-            request.Prompt,
-            response,
-            response.Ai);
 
         return ApiResponse<ShortlistSuggestionResponseDto>.Ok(response);
     }
@@ -494,6 +405,8 @@ public class CopilotService : ICopilotService
         string templateType = string.IsNullOrWhiteSpace(request.TemplateType) ? "screening_follow_up" : request.TemplateType.Trim();
         string tone = string.IsNullOrWhiteSpace(request.Tone) ? "professional" : request.Tone.Trim();
 
+        // v2 §2 — AI email drafting is removed from the active flow. This endpoint no longer calls the
+        // AI provider and no longer persists a new artifact; it returns a deterministic template only.
         (string subject, string body) = BuildEmailDraft(candidateName, jobTitle, templateType, tone, request.AdditionalInstruction);
 
         HrEmailDraftResponseDto response = new()
@@ -504,56 +417,13 @@ public class CopilotService : ICopilotService
             Body = body,
             Evidence =
             [
-                $"Candidate: {candidateName}",
-                $"Job: {jobTitle}",
-                $"Current status: {application.Status}"
+                $"Ứng viên: {candidateName}",
+                $"Vị trí: {jobTitle}",
+                $"Trạng thái hiện tại: {application.Status}"
             ],
-            Ai = BuildDeterministicMetadata("Email draft uses approved deterministic templates; sending remains a separate endpoint.")
+            Ai = BuildDeterministicMetadata(
+                "email-draft:deprecated — soạn email bằng AI đã ngừng trong luồng v2; nội dung dưới đây chỉ là mẫu tất định.")
         };
-
-        response = await TryGenerateStructuredResponseAsync(
-            "email_draft",
-            "email_draft",
-            callerUserId,
-            EmailInstructions(),
-            new Dictionary<string, string>
-            {
-                ["candidateName"] = candidateName,
-                ["jobTitle"] = jobTitle,
-                ["templateType"] = templateType,
-                ["tone"] = tone
-            },
-            new
-            {
-                applicationId,
-                candidateName,
-                jobTitle,
-                currentStatus = application.Status.ToString(),
-                templateType,
-                tone,
-                request.AdditionalInstruction,
-                deterministicDraft = response
-            },
-            response,
-            ValidateEmailDraft,
-            generated =>
-            {
-                generated.ApplicationId = applicationId;
-                generated.TemplateType = string.IsNullOrWhiteSpace(generated.TemplateType)
-                    ? templateType
-                    : generated.TemplateType.Trim();
-            },
-            generated => generated.Ai,
-            (generated, metadata) => generated.Ai = metadata);
-
-        await PersistArtifactAsync(
-            callerUserId,
-            application.JobId,
-            applicationId,
-            "email_draft",
-            request.AdditionalInstruction,
-            response,
-            response.Ai);
 
         return ApiResponse<HrEmailDraftResponseDto>.Ok(response);
     }
@@ -649,97 +519,89 @@ public class CopilotService : ICopilotService
             return ApiResponse<CopilotPromptResponseDto>.NotFound("Conversation not found");
         }
 
-        CopilotCandidatePoolDto? pool = await _copilotRepository.GetCandidatePoolAsync(request.JobId);
-        if (pool is null)
-        {
-            return ApiResponse<CopilotPromptResponseDto>.NotFound("Job not found");
-        }
-
         bool shouldRunRanking = request.ForceRanking
             && (!string.IsNullOrWhiteSpace(request.Prompt)
                 || request.PriorityCriteria.Count > 0
                 || request.NegativeCriteria.Count > 0);
 
+        // Chat path (not a ranking run). The scope guard runs BEFORE any candidate-pool load, resume
+        // enrichment, provider call or persistence: an unrelated question is refused immediately in
+        // Vietnamese without touching data or AI (v2 §14).
         if (!shouldRunRanking)
         {
-            pool = await EnrichPoolWithResumeTextAsync(pool);
-            string assistantReply = await _aiCopilotProvider.TryCreateChatReplyAsync(pool, request.Prompt, conversationId)
-                ?? "AI copilot returned an empty response.";
+            return await HandleChatReplyAsync(conversation, conversationId, request, userId);
+        }
 
-            int replySequence = await _copilotRepository.GetNextMessageSequenceAsync(conversationId);
-            await _copilotRepository.AddMessageAsync(new CopilotMessage
-            {
-                ConversationId = conversationId,
-                Role = "User",
-                Content = request.Prompt,
-                SequenceNo = replySequence
-            });
-            await _copilotRepository.AddMessageAsync(new CopilotMessage
-            {
-                ConversationId = conversationId,
-                Role = "Assistant",
-                Content = assistantReply,
-                SequenceNo = replySequence + 1
-            });
-
-            conversation.UpdatedAt = DbDateTime.Now;
-            await _unitOfWork.SaveChangesAsync();
-
-            return ApiResponse<CopilotPromptResponseDto>.Ok(new CopilotPromptResponseDto
-            {
-                ConversationId = conversationId,
-                DidRank = false,
-                AssistantMessage = assistantReply,
-                NormalizedRules = new CopilotNormalizedRulesDto(),
-                Results = []
-            });
+        CopilotCandidatePoolDto? fullPool = await _copilotRepository.GetCandidatePoolAsync(request.JobId);
+        if (fullPool is null)
+        {
+            return ApiResponse<CopilotPromptResponseDto>.NotFound("Job not found");
         }
 
         IReadOnlyList<CopilotSavedRule> savedRules = await _copilotRepository.GetSavedRulesAsync(request.JobId, userId);
-        CopilotNormalizedRulesDto rules = BuildRules(
-            request.Prompt,
-            pool.Job.RequiredSkills,
-            request.PriorityCriteria,
-            request.NegativeCriteria,
-            savedRules.Where(rule => rule.IsActive).ToList());
+        IReadOnlyList<CopilotSavedRule> activeSavedRules = savedRules.Where(rule => rule.IsActive).ToList();
 
+        // Merge the latest ranking context, if requested, so the effective rules match what will run.
+        CopilotNormalizedRulesDto? latestContextRules = null;
         if (request.UseLatestRankingContext && conversation.LatestRankingSessionId.HasValue)
         {
             CopilotRankingSession? latestSession = await _copilotRepository.GetRankingSessionAsync(conversation.LatestRankingSessionId.Value);
             if (latestSession is not null)
             {
-                CopilotNormalizedRulesDto latestRules = DeserializeRules(latestSession.NormalizedRulesJson);
-                rules = MergeRules(latestRules, rules);
+                latestContextRules = DeserializeRules(latestSession.NormalizedRulesJson);
             }
         }
 
-        List<CopilotRankingResultDto> results = RankCandidates(pool.Candidates, rules);
-        CopilotPromptResponseDto? aiResponse = await _aiCopilotProvider.TryCreateRankingAsync(
-            pool,
-            rules,
-            results,
+        // v2 §8 — idempotency: fingerprint the EFFECTIVE ranking input. We hash the effective merged
+        // rules (prompt/criteria/saved-rules/latest-context all fold into these) plus the screening
+        // pool evidence, NOT the raw latest-context blob. This keeps the fingerprint stable across an
+        // identical re-click: after the first run the latest session already stores these merged rules,
+        // so merging them back in produces the same rules and therefore the same hash. If a completed
+        // session with the same fingerprint exists, return it WITHOUT calling the AI provider or
+        // creating a duplicate.
+        CopilotCandidatePoolDto screeningPool = FilterToScreeningPool(fullPool);
+        CopilotNormalizedRulesDto effectiveRules = BuildRules(
             request.Prompt,
-            conversationId);
-
-        if (aiResponse is not null && aiResponse.Results.Count > 0)
+            screeningPool.Job.RequiredSkills,
+            request.PriorityCriteria,
+            request.NegativeCriteria,
+            activeSavedRules);
+        if (latestContextRules is not null)
         {
-            rules = aiResponse.NormalizedRules;
-            results = NormalizeRankingResults(aiResponse.Results, pool.Candidates)
-                .Select(result =>
-                {
-                    result.IsAiGenerated = !string.IsNullOrWhiteSpace(result.Summary);
-                    return result;
-                })
-                .OrderBy(result => result.IsAutoRejected)
-                .ThenBy(result => result.RankPosition)
-                .ThenByDescending(result => result.TotalScore)
-                .ToList();
-
-            for (int i = 0; i < results.Count; i += 1)
-            {
-                results[i].RankPosition = i + 1;
-            }
+            effectiveRules = MergeRules(latestContextRules, effectiveRules);
         }
+
+        string inputHash = ComputeRankingInputHash(request.JobId, userId, effectiveRules, screeningPool);
+
+        CopilotRankingSession? matching = await _copilotRepository.GetLatestMatchingRankingSessionAsync(request.JobId, userId, inputHash);
+        if (matching is not null)
+        {
+            CopilotRankingSessionDetailDto detail = _mapper.Map<CopilotRankingSessionDetailDto>(matching);
+            return ApiResponse<CopilotPromptResponseDto>.Ok(new CopilotPromptResponseDto
+            {
+                ConversationId = conversationId,
+                RankingSessionId = matching.Id,
+                DidRank = true,
+                ReusedRankingSession = true,
+                AssistantMessage = "Tiêu chí chưa thay đổi nên hệ thống đang hiển thị lại kết quả xếp hạng mới nhất.",
+                NormalizedRules = detail.NormalizedRules,
+                Results = detail.Results,
+                Warnings = ["ranking-session:reused"]
+            });
+        }
+
+        CopilotRankingCoreResult core = await RunRankingCoreAsync(
+            screeningPool,
+            callerUserId: userId,
+            prompt: request.Prompt,
+            priorityCriteria: request.PriorityCriteria,
+            negativeCriteria: request.NegativeCriteria,
+            savedRules: activeSavedRules,
+            latestContextRules: latestContextRules,
+            conversationId: conversationId);
+
+        List<CopilotRankingResultDto> results = core.Results.ToList();
+        CopilotNormalizedRulesDto rules = core.Rules;
 
         CopilotRankingSession session = new()
         {
@@ -748,11 +610,12 @@ public class CopilotService : ICopilotService
             UserId = userId,
             UserPrompt = request.Prompt,
             NormalizedRulesJson = JsonSerializer.Serialize(rules),
-            TotalCandidates = pool.Candidates.Count,
+            InputHash = inputHash,
+            TotalCandidates = screeningPool.Candidates.Count,
             ModelName = results.Any(result => result.IsAiGenerated)
                 ? _aiProviderSettings.Model
-                : "deterministic-copilot-v1",
-            Results = NormalizeRankingResults(results, pool.Candidates).Select(result => new CopilotRankingResult
+                : "deterministic-copilot-v2",
+            Results = results.Select(result => new CopilotRankingResult
             {
                 CandidateUserId = result.CandidateUserId,
                 ApplicationId = result.ApplicationId,
@@ -767,7 +630,14 @@ public class CopilotService : ICopilotService
                 IsAutoRejected = result.IsAutoRejected,
                 StrengthsJson = JsonSerializer.Serialize(result.Strengths),
                 WeaknessesJson = JsonSerializer.Serialize(result.Weaknesses),
-                ExplanationJson = JsonSerializer.Serialize(new { result.Summary, result.IsAiGenerated })
+                ExplanationJson = JsonSerializer.Serialize(new
+                {
+                    result.Summary,
+                    result.IsAiGenerated,
+                    result.FitLabel,
+                    result.ConfidenceScore,
+                    result.Evidence
+                })
             }).ToList()
         };
 
@@ -783,13 +653,17 @@ public class CopilotService : ICopilotService
         {
             ConversationId = conversationId,
             Role = "Assistant",
-            Content = $"Ranked {results.Count} candidates. {results.Count(result => result.IsAutoRejected)} auto rejected.",
+            Content = BuildRankingAssistantMessage(results),
             MetadataJson = JsonSerializer.Serialize(new { rules, resultCount = results.Count }),
             SequenceNo = nextSequence + 1
         });
 
         await _copilotRepository.AddRankingSessionAsync(session);
         await _unitOfWork.SaveChangesAsync();
+
+        // v2 §4/§9 — fit-style evaluation is created during ranking and persisted so the candidate
+        // review-detail screen and the (now read-only) fit endpoint can read it without re-ranking.
+        await PersistFitSnapshotsAsync(request.JobId, core.Ai.AuditId, core.Ai, results);
 
         conversation.LatestRankingSessionId = session.Id;
         conversation.UpdatedAt = DbDateTime.Now;
@@ -802,8 +676,565 @@ public class CopilotService : ICopilotService
             DidRank = true,
             AssistantMessage = BuildRankingAssistantMessage(results),
             NormalizedRules = rules,
-            Results = results
+            Results = results,
+            Warnings = core.Ai.Warnings
         });
+    }
+
+    /// <summary>
+    /// Non-ranking chat reply. Enforces the recruitment scope guard (v2 §14) before loading the
+    /// candidate pool, enriching resume text, or calling the AI provider: an unrelated prompt gets an
+    /// immediate Vietnamese refusal with no data access, no AI call, and no artifacts/ranking session.
+    /// </summary>
+    private async Task<ApiResponse<CopilotPromptResponseDto>> HandleChatReplyAsync(
+        CopilotConversation conversation,
+        Guid conversationId,
+        CopilotPromptRequest request,
+        Guid userId)
+    {
+        int replySequence = await _copilotRepository.GetNextMessageSequenceAsync(conversationId);
+        await _copilotRepository.AddMessageAsync(new CopilotMessage
+        {
+            ConversationId = conversationId,
+            Role = "User",
+            Content = request.Prompt,
+            SequenceNo = replySequence
+        });
+
+        if (!IsRecruitmentCopilotQuery(request.Prompt))
+        {
+            const string refusal = "Đây không phải nhiệm vụ của tôi. Tôi chỉ hỗ trợ các tác vụ liên quan đến "
+                + "tuyển dụng trong RecruitPro như xếp hạng ứng viên, phân tích CV, giải thích độ phù hợp, "
+                + "chuẩn bị phỏng vấn và chuyển hồ sơ sang Head Review.";
+            await _copilotRepository.AddMessageAsync(new CopilotMessage
+            {
+                ConversationId = conversationId,
+                Role = "Assistant",
+                Content = refusal,
+                SequenceNo = replySequence + 1
+            });
+            conversation.UpdatedAt = DbDateTime.Now;
+            await _unitOfWork.SaveChangesAsync();
+
+            return ApiResponse<CopilotPromptResponseDto>.Ok(new CopilotPromptResponseDto
+            {
+                ConversationId = conversationId,
+                DidRank = false,
+                AssistantMessage = refusal,
+                NormalizedRules = new CopilotNormalizedRulesDto(),
+                Results = [],
+                Warnings = ["copilot-chat:out-of-scope"]
+            });
+        }
+
+        CopilotCandidatePoolDto? pool = await _copilotRepository.GetCandidatePoolAsync(request.JobId);
+        if (pool is null)
+        {
+            return ApiResponse<CopilotPromptResponseDto>.NotFound("Job not found");
+        }
+
+        pool = await EnrichPoolWithResumeTextAsync(pool);
+        string assistantReply = await _aiCopilotProvider.TryCreateChatReplyAsync(pool, request.Prompt, conversationId)
+            ?? "Hiện chưa thể tạo phản hồi. Vui lòng thử lại hoặc chạy xếp hạng ứng viên để nhận đánh giá chi tiết.";
+
+        await _copilotRepository.AddMessageAsync(new CopilotMessage
+        {
+            ConversationId = conversationId,
+            Role = "Assistant",
+            Content = assistantReply,
+            SequenceNo = replySequence + 1
+        });
+
+        conversation.UpdatedAt = DbDateTime.Now;
+        await _unitOfWork.SaveChangesAsync();
+
+        return ApiResponse<CopilotPromptResponseDto>.Ok(new CopilotPromptResponseDto
+        {
+            ConversationId = conversationId,
+            DidRank = false,
+            AssistantMessage = assistantReply,
+            NormalizedRules = new CopilotNormalizedRulesDto(),
+            Results = []
+        });
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // v2 shared ranking core. Ranking is the single source of truth for CV-screening evaluation:
+    // search, fit-analysis and shortlist no longer run their own ranking pipeline (v2 §3).
+    // ---------------------------------------------------------------------------------------------
+
+    private sealed record CopilotRankingCoreResult(
+        CopilotCandidatePoolDto Pool,
+        CopilotNormalizedRulesDto Rules,
+        IReadOnlyList<CopilotRankingResultDto> Results,
+        CopilotAiMetadataDto Ai);
+
+    /// <summary>
+    /// Runs the deterministic ranking pipeline over the (already screening-filtered) pool: builds
+    /// normalized rules once, ranks once, attaches Vietnamese fit-style evaluation, and optionally
+    /// makes a single structured provider call to enrich the explanation. Deterministic ranking stays
+    /// the source of truth; provider candidates are validated against the current screening pool.
+    /// </summary>
+    private async Task<CopilotRankingCoreResult> RunRankingCoreAsync(
+        CopilotCandidatePoolDto screeningPool,
+        Guid? callerUserId,
+        string? prompt,
+        IReadOnlyList<CopilotRuleCriterionRequestDto> priorityCriteria,
+        IReadOnlyList<CopilotRuleCriterionRequestDto> negativeCriteria,
+        IReadOnlyList<CopilotSavedRule> savedRules,
+        CopilotNormalizedRulesDto? latestContextRules,
+        Guid conversationId)
+    {
+        CopilotNormalizedRulesDto rules = BuildRules(
+            prompt ?? string.Empty,
+            screeningPool.Job.RequiredSkills,
+            priorityCriteria,
+            negativeCriteria,
+            savedRules);
+
+        if (latestContextRules is not null)
+        {
+            rules = MergeRules(latestContextRules, rules);
+        }
+
+        List<CopilotRankingResultDto> results = RankCandidates(screeningPool.Candidates, rules);
+        ApplyVietnameseFitEvaluation(results, rules);
+
+        CopilotAiMetadataDto ai = BuildDeterministicMetadata(
+            "Xếp hạng sử dụng thuật toán chấm điểm tất định dựa trên bằng chứng hồ sơ; không bắt buộc gọi AI.");
+
+        // At most one structured provider call per ranking run (v2 §13). Provider may ENRICH the
+        // Vietnamese explanation (summary/evidence/strengths/gaps) only — deterministic ranking stays
+        // the source of truth for candidate ORDER and scores. Provider candidates are validated
+        // against the current screening pool (unknown ids ignored). On any failure the deterministic
+        // ranking + Vietnamese fallback still stands.
+        if (ShouldAttemptStructuredProvider() && screeningPool.Candidates.Count > 0)
+        {
+            CopilotPromptResponseDto? aiResponse = null;
+            try
+            {
+                aiResponse = await _aiCopilotProvider.TryCreateRankingAsync(
+                    screeningPool, rules, results, prompt ?? string.Empty, conversationId);
+            }
+            catch (Exception ex)
+            {
+                AddWarning(ai, $"Provider fallback: {ex.Message}");
+            }
+
+            if (aiResponse is not null && aiResponse.Results.Count > 0)
+            {
+                results = MergeProviderEnrichment(results, aiResponse, ref ai);
+            }
+            else if (aiResponse is null)
+            {
+                AddWarning(ai, "Provider fallback: no structured ranking returned.");
+            }
+        }
+
+        return new CopilotRankingCoreResult(screeningPool, rules, results, ai);
+    }
+
+    /// <summary>
+    /// Merges provider enrichment into the deterministic ranking. By default deterministic ORDER and
+    /// scores are preserved and only Vietnamese prose (summary/evidence/strengths/gaps) is merged for
+    /// candidates the provider references AND that exist in the screening pool. Provider reordering is
+    /// applied only when <see cref="AiProviderSettings.AllowProviderReordering"/> is true; otherwise a
+    /// differing provider order is ignored with a "provider-order:ignored" warning. Unknown provider
+    /// candidate ids are ignored with a "provider-candidate:unknown" warning.
+    /// </summary>
+    private List<CopilotRankingResultDto> MergeProviderEnrichment(
+        List<CopilotRankingResultDto> deterministic,
+        CopilotPromptResponseDto aiResponse,
+        ref CopilotAiMetadataDto ai)
+    {
+        List<string> warnings = ["provider-json:valid"];
+
+        HashSet<Guid> knownCandidateIds = deterministic.Select(result => result.CandidateUserId).ToHashSet();
+        List<CopilotRankingResultDto> providerResults = aiResponse.Results.ToList();
+        List<CopilotRankingResultDto> knownProvider = providerResults
+            .Where(provider => knownCandidateIds.Contains(provider.CandidateUserId))
+            .ToList();
+
+        if (knownProvider.Count != providerResults.Count)
+        {
+            // Provider tried to introduce candidates/applications outside the screening pool.
+            warnings.Add("provider-candidate:unknown");
+        }
+
+        // Merge Vietnamese prose per validated candidate. Machine values (scores, rank position,
+        // recommendation, fit label, confidence) always stay deterministic.
+        Dictionary<Guid, CopilotRankingResultDto> providerByCandidate = knownProvider
+            .GroupBy(provider => provider.CandidateUserId)
+            .ToDictionary(group => group.Key, group => group.First());
+
+        foreach (CopilotRankingResultDto result in deterministic)
+        {
+            if (!providerByCandidate.TryGetValue(result.CandidateUserId, out CopilotRankingResultDto? provider))
+            {
+                continue;
+            }
+
+            if (!string.IsNullOrWhiteSpace(provider.Summary))
+            {
+                result.Summary = provider.Summary.Trim();
+                result.IsAiGenerated = true;
+            }
+            if (provider.Strengths.Count > 0) result.Strengths = provider.Strengths;
+            if (provider.Weaknesses.Count > 0) result.Weaknesses = provider.Weaknesses;
+            if (provider.Evidence.Count > 0) result.Evidence = provider.Evidence;
+        }
+
+        // Ordering decision — deterministic by default.
+        List<Guid> deterministicOrder = deterministic.Select(result => result.CandidateUserId).ToList();
+        List<Guid> providerOrder = knownProvider.Select(provider => provider.CandidateUserId).Distinct().ToList();
+        bool orderDiffers = !providerOrder.SequenceEqual(deterministicOrder.Where(providerOrder.Contains).ToList());
+
+        List<CopilotRankingResultDto> ordered = deterministic;
+        if (_aiProviderSettings.AllowProviderReordering && orderDiffers && providerOrder.Count > 0)
+        {
+            Dictionary<Guid, int> providerRank = providerOrder
+                .Select((id, index) => (id, index))
+                .ToDictionary(pair => pair.id, pair => pair.index);
+            ordered = deterministic
+                .OrderBy(result => result.IsAutoRejected)
+                .ThenBy(result => providerRank.TryGetValue(result.CandidateUserId, out int idx) ? idx : int.MaxValue)
+                .ThenBy(result => result.RankPosition)
+                .ToList();
+            for (int i = 0; i < ordered.Count; i += 1)
+            {
+                ordered[i].RankPosition = i + 1;
+            }
+            warnings.Add("provider-order:applied");
+        }
+        else if (orderDiffers)
+        {
+            warnings.Add("provider-order:ignored");
+        }
+
+        ai = new CopilotAiMetadataDto
+        {
+            AuditId = Guid.NewGuid(),
+            FallbackUsed = false,
+            ProviderName = "configured-ai-provider",
+            ModelName = _aiProviderSettings.Model,
+            Warnings = warnings
+        };
+
+        return ordered;
+    }
+
+    /// <summary>
+    /// v2 §6 — restricts the candidate pool to applications currently in the CV-screening stage.
+    /// Everything already at Head Review (ManagerReview), Interview, Offer, Hired, Rejected,
+    /// OfferDeclined or Withdrawn is excluded from default ranking.
+    /// </summary>
+    private static CopilotCandidatePoolDto FilterToScreeningPool(CopilotCandidatePoolDto pool)
+    {
+        return new CopilotCandidatePoolDto
+        {
+            Job = pool.Job,
+            Candidates = pool.Candidates
+                .Where(candidate => string.Equals(candidate.Status, ScreeningStatus, StringComparison.OrdinalIgnoreCase))
+                .ToList()
+        };
+    }
+
+    /// <summary>
+    /// v2 §8 — stable SHA-256 fingerprint of the effective ranking input. Any change to the job,
+    /// prompt, criteria, active saved rules, latest-context flag, or the screening pool's candidates
+    /// and their ranking-relevant evidence produces a different hash and forces a fresh ranking run.
+    /// </summary>
+    private static string ComputeRankingInputHash(
+        Guid jobId,
+        Guid userId,
+        CopilotNormalizedRulesDto effectiveRules,
+        CopilotCandidatePoolDto screeningPool)
+    {
+        var payload = new
+        {
+            jobId,
+            userId,
+            // The effective merged rules already encode prompt + criteria + saved rules + latest
+            // context, so hashing them keeps the fingerprint stable across identical re-clicks.
+            effectiveRules = JsonSerializer.Serialize(effectiveRules, JsonOptions),
+            requiredSkills = screeningPool.Job.RequiredSkills.OrderBy(s => s, StringComparer.Ordinal).ToList(),
+            candidates = screeningPool.Candidates
+                .OrderBy(candidate => candidate.ApplicationId)
+                .Select(candidate => new
+                {
+                    candidate.ApplicationId,
+                    candidate.CandidateUserId,
+                    candidate.Status,
+                    candidate.ExperienceYears,
+                    education = candidate.Education ?? string.Empty,
+                    skills = candidate.Skills.OrderBy(s => s, StringComparer.Ordinal).ToList(),
+                    cvSummary = candidate.CvSummary ?? string.Empty
+                })
+                .ToList()
+        };
+
+        string serialized = JsonSerializer.Serialize(payload, JsonOptions);
+        byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(serialized));
+        return Convert.ToHexString(hash).ToLowerInvariant();
+    }
+
+    /// <summary>
+    /// v2 §14 — recruitment scope guard. Returns true only for prompts that relate to RecruitPro
+    /// recruitment work. Runs before any data load or AI call so unrelated questions are refused
+    /// immediately.
+    /// </summary>
+    private static bool IsRecruitmentCopilotQuery(string? prompt)
+    {
+        if (string.IsNullOrWhiteSpace(prompt))
+        {
+            return false;
+        }
+
+        string lowered = prompt.ToLowerInvariant();
+        string[] allowedKeywords =
+        [
+            "job", "candidate", "application", "applicant", "resume", "cv", "screening",
+            "ranking", "rank", "shortlist", "interview", "offer", "hire", "recruit",
+            "head review", "department head", "fit", "skill", "experience", "pass cv",
+            "ứng viên", "hồ sơ", "công việc", "vị trí", "ứng tuyển", "tuyển dụng",
+            "xếp hạng", "chấm", "đánh giá", "phỏng vấn", "trưởng bộ phận", "lọc hồ sơ",
+            "kỹ năng", "kinh nghiệm", "phù hợp", "shortlist", "head review", "offer"
+        ];
+
+        return allowedKeywords.Any(keyword => lowered.Contains(keyword));
+    }
+
+    /// <summary>
+    /// Attaches Vietnamese fit-style evaluation (fit label, confidence, evidence and a detailed
+    /// Vietnamese summary) to each ranking result. Machine-readable values (StrongFit/PotentialFit/
+    /// RiskFit/NotRecommended, Interview/Consider/Hold/Reject) are kept unchanged.
+    /// </summary>
+    private static void ApplyVietnameseFitEvaluation(
+        IReadOnlyList<CopilotRankingResultDto> results,
+        CopilotNormalizedRulesDto rules,
+        bool preserveSummary = false)
+    {
+        foreach (CopilotRankingResultDto result in results)
+        {
+            string fitLabel = ResolveFitLabel(result);
+            result.FitLabel = fitLabel;
+            result.ConfidenceScore = result.IsAutoRejected
+                ? Math.Min(40, Math.Max(20, result.TotalScore))
+                : Math.Min(100, Math.Max(35, result.TotalScore));
+            result.Evidence = BuildVietnameseEvidence(result, rules);
+
+            if (!preserveSummary || string.IsNullOrWhiteSpace(result.Summary))
+            {
+                result.Summary = BuildVietnameseFitSummary(result, fitLabel);
+            }
+        }
+    }
+
+    private static string ResolveFitLabel(CopilotRankingResultDto result)
+    {
+        if (result.IsAutoRejected)
+        {
+            return "NotRecommended";
+        }
+
+        return result.TotalScore >= 80
+            ? "StrongFit"
+            : result.TotalScore >= 60
+                ? "PotentialFit"
+                : "RiskFit";
+    }
+
+    private static IReadOnlyList<string> BuildVietnameseEvidence(CopilotRankingResultDto result, CopilotNormalizedRulesDto rules)
+    {
+        List<string> evidence = [];
+
+        if (result.Strengths.Count > 0)
+        {
+            evidence.Add($"Điểm mạnh: {string.Join(", ", result.Strengths.Take(4))}.");
+        }
+
+        if (result.Weaknesses.Count > 0)
+        {
+            evidence.Add($"Khoảng trống cần lưu ý: {string.Join(", ", result.Weaknesses.Take(3))}.");
+        }
+
+        if (rules.MinExperienceYears.HasValue)
+        {
+            evidence.Add($"Kỳ vọng kinh nghiệm tối thiểu {rules.MinExperienceYears.Value} năm.");
+        }
+
+        evidence.Add($"Điểm tổng {result.TotalScore:0.#}/100 (kỹ năng {result.SkillScore:0.#}, kinh nghiệm {result.ExperienceScore:0.#}, học vấn {result.EducationScore:0.#}).");
+
+        if (result.IsAutoRejected && !string.IsNullOrWhiteSpace(result.RejectReason))
+        {
+            evidence.Add($"Lý do tự động loại: {result.RejectReason}.");
+        }
+
+        return evidence;
+    }
+
+    private static string BuildVietnameseFitSummary(CopilotRankingResultDto result, string fitLabel)
+    {
+        if (result.IsAutoRejected)
+        {
+            string reason = string.IsNullOrWhiteSpace(result.RejectReason)
+                ? "khớp một tiêu chí loại trừ đang bật"
+                : result.RejectReason;
+            return $"Ứng viên {result.FullName} không được đề xuất theo tiêu chí hiện tại vì {reason}. "
+                + "Nên giữ ở vòng CV screening và không chuyển tiếp.";
+        }
+
+        string strengths = result.Strengths.Count > 0
+            ? string.Join(", ", result.Strengths.Take(4))
+            : "các bằng chứng hiện có trong hồ sơ";
+        string gaps = result.Weaknesses.Count > 0
+            ? $" Điểm cần xác minh thêm ở vòng Head Review: {string.Join(", ", result.Weaknesses.Take(3))}."
+            : string.Empty;
+
+        string fitPhrase = fitLabel switch
+        {
+            "StrongFit" => "được đánh giá là StrongFit — phù hợp mạnh với vị trí",
+            "PotentialFit" => "được đánh giá là PotentialFit — có tiềm năng phù hợp",
+            _ => "được đánh giá là RiskFit — còn nhiều rủi ro về độ phù hợp"
+        };
+
+        string recommendation = result.Recommendation switch
+        {
+            "Interview" => " Nên ưu tiên chuyển sang vòng Head Review.",
+            "Consider" => " Có thể cân nhắc chuyển sang vòng Head Review sau khi rà soát thêm.",
+            _ => " Nên rà soát kỹ trước khi quyết định chuyển tiếp.",
+        };
+
+        return $"Ứng viên {result.FullName} {fitPhrase} với điểm tổng {result.TotalScore:0.#}/100, "
+            + $"dựa trên {strengths}.{gaps}{recommendation}";
+    }
+
+    /// <summary>
+    /// Persists a <see cref="CandidateFitAnalysis"/> snapshot per ranking result so the candidate
+    /// review-detail screen and the read-only fit endpoint can read fit data created during ranking.
+    /// </summary>
+    private async Task PersistFitSnapshotsAsync(
+        Guid jobId,
+        Guid auditId,
+        CopilotAiMetadataDto ai,
+        IReadOnlyList<CopilotRankingResultDto> results)
+    {
+        if (results.Count == 0)
+        {
+            return;
+        }
+
+        foreach (CopilotRankingResultDto result in results)
+        {
+            await _copilotRepository.AddFitAnalysisAsync(new CandidateFitAnalysis
+            {
+                AuditId = auditId,
+                JobId = jobId,
+                CandidateUserId = result.CandidateUserId,
+                ApplicationId = result.ApplicationId,
+                FitLabel = string.IsNullOrWhiteSpace(result.FitLabel) ? ResolveFitLabel(result) : result.FitLabel,
+                ConfidenceScore = result.ConfidenceScore,
+                TotalScore = result.TotalScore,
+                StrengthsJson = JsonSerializer.Serialize(result.Strengths),
+                GapsJson = JsonSerializer.Serialize(result.Weaknesses),
+                EvidenceJson = JsonSerializer.Serialize(result.Evidence),
+                Summary = result.Summary,
+                ProviderName = ai.ProviderName,
+                ModelName = ai.ModelName,
+                FallbackUsed = ai.FallbackUsed
+            });
+        }
+
+        await _unitOfWork.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// v2 §7 — explicit HR action to pass selected ranked candidates from CV screening to Head Review
+    /// (Screening -> ManagerReview). AI never performs this transition; it only recommends. Each
+    /// selected application is validated (belongs to this ranking session's job, currently in
+    /// Screening) and moved by reusing the existing status-transition service so all workflow rules,
+    /// the DepartmentHeadReviewRequestedAt timestamp and the Head Review notification are honored.
+    /// </summary>
+    public async Task<ApiResponse<PassCvResultDto>> PassCvToHeadReviewAsync(
+        Guid rankingSessionId,
+        PassCvToHeadReviewRequest request,
+        Guid userId,
+        IReadOnlyCollection<string> callerRoles)
+    {
+        CopilotRankingSession? session = await _copilotRepository.GetRankingSessionAsync(rankingSessionId);
+        if (session is null || session.UserId != userId)
+        {
+            return ApiResponse<PassCvResultDto>.NotFound("Không tìm thấy phiên xếp hạng.");
+        }
+
+        List<Guid> requested = request.ApplicationIds.Where(id => id != Guid.Empty).Distinct().ToList();
+        if (requested.Count == 0)
+        {
+            return ApiResponse<PassCvResultDto>.BadRequest("Cần chọn ít nhất một ứng viên để chuyển sang Head Review.");
+        }
+
+        HashSet<Guid> sessionApplicationIds = session.Results.Select(result => result.ApplicationId).ToHashSet();
+        List<PassCvUpdatedDto> updated = [];
+        List<PassCvSkippedDto> skipped = [];
+
+        foreach (Guid applicationId in requested)
+        {
+            if (!sessionApplicationIds.Contains(applicationId))
+            {
+                skipped.Add(new PassCvSkippedDto { ApplicationId = applicationId, Reason = "Hồ sơ không thuộc phiên xếp hạng hiện tại." });
+                continue;
+            }
+
+            RecruitPro.Domain.Entities.Application? application = await _applicationRepository.GetByIdAsync(applicationId);
+            if (application is null)
+            {
+                skipped.Add(new PassCvSkippedDto { ApplicationId = applicationId, Reason = "Không tìm thấy hồ sơ ứng tuyển." });
+                continue;
+            }
+
+            if (application.JobId != session.JobId)
+            {
+                skipped.Add(new PassCvSkippedDto { ApplicationId = applicationId, Reason = "Hồ sơ không thuộc vị trí của phiên xếp hạng này." });
+                continue;
+            }
+
+            if (application.Status != ApplicationStatus.Screening)
+            {
+                skipped.Add(new PassCvSkippedDto
+                {
+                    ApplicationId = applicationId,
+                    Reason = $"Hồ sơ không ở trạng thái Screening (hiện tại: {application.Status})."
+                });
+                continue;
+            }
+
+            ApiResponse<ApplicationReviewDetailDto> transition = await _applicationService.UpdateApplicationDecisionAsync(
+                applicationId.ToString(),
+                userId,
+                new UpdateApplicationDecisionRequest { TargetStatus = ApplicationStatus.ManagerReview.ToString() });
+
+            if (transition.Success)
+            {
+                updated.Add(new PassCvUpdatedDto
+                {
+                    ApplicationId = applicationId,
+                    OldStatus = ApplicationStatus.Screening.ToString(),
+                    NewStatus = ApplicationStatus.ManagerReview.ToString()
+                });
+            }
+            else
+            {
+                skipped.Add(new PassCvSkippedDto
+                {
+                    ApplicationId = applicationId,
+                    Reason = string.IsNullOrWhiteSpace(transition.Message)
+                        ? "Không thể chuyển hồ sơ sang Head Review."
+                        : transition.Message
+                });
+            }
+        }
+
+        return ApiResponse<PassCvResultDto>.Ok(new PassCvResultDto { Updated = updated, Skipped = skipped });
     }
 
     /// <summary>
@@ -984,7 +1415,10 @@ public class CopilotService : ICopilotService
         {
             providerResult = await _aiCopilotProvider.TryCreateStructuredJsonAsync(
                 actionType,
-                "You are RecruitPro's AI Recruitment Copilot. Return only valid JSON matching the exact requested shape. Ground outputs in the provided ATS context and never mutate ATS state.",
+                "You are RecruitPro's AI Recruitment Copilot. Return valid JSON only matching the exact requested shape. "
+                + "Use Vietnamese for all human-facing prose fields (summaries, questions, evidence, rationale). "
+                + "Keep JSON keys and machine-readable enum/code values unchanged. "
+                + "Ground outputs in the provided ATS context and never mutate ATS state.",
                 userPrompt);
         }
         catch (Exception ex)
@@ -1195,6 +1629,7 @@ public class CopilotService : ICopilotService
           ]
         }
         Required: jobId, focus, exactly or up to {{questionCount}} useful questions, category, question, evidence.
+        Use Vietnamese for all human-facing prose (question, evidence, category). Keep JSON keys unchanged.
         """;
     }
 
@@ -1317,13 +1752,11 @@ public class CopilotService : ICopilotService
 
     private static CandidateFitAnalysisDto BuildFitAnalysis(CopilotRankingResultDto result)
     {
-        string fitLabel = result.IsAutoRejected
-            ? "NotRecommended"
-            : result.TotalScore >= 80
-                ? "StrongFit"
-                : result.TotalScore >= 60
-                    ? "PotentialFit"
-                    : "RiskFit";
+        // The ranking result already carries the Vietnamese fit-style evaluation (v2 §4). Reuse it
+        // so fit-analysis stays consistent with ranking and does not re-derive anything.
+        string fitLabel = string.IsNullOrWhiteSpace(result.FitLabel) ? ResolveFitLabel(result) : result.FitLabel;
+        IReadOnlyList<string> evidence = result.Evidence.Count > 0 ? result.Evidence : BuildRationale(result);
+        string summary = string.IsNullOrWhiteSpace(result.Summary) ? BuildVietnameseFitSummary(result, fitLabel) : result.Summary;
 
         return new CandidateFitAnalysisDto
         {
@@ -1331,12 +1764,12 @@ public class CopilotService : ICopilotService
             ApplicationId = result.ApplicationId,
             FullName = result.FullName,
             FitLabel = fitLabel,
-            ConfidenceScore = Math.Min(100, Math.Max(35, result.TotalScore)),
+            ConfidenceScore = result.ConfidenceScore > 0 ? result.ConfidenceScore : Math.Min(100, Math.Max(35, result.TotalScore)),
             TotalScore = result.TotalScore,
             Strengths = result.Strengths,
             Gaps = result.Weaknesses,
-            Evidence = BuildRationale(result),
-            Summary = BuildFitSummary(result, fitLabel)
+            Evidence = evidence,
+            Summary = summary
         };
     }
 
@@ -1421,36 +1854,36 @@ public class CopilotService : ICopilotService
         {
             questions.Add(new InterviewQuestionDto
             {
-                Category = "Technical",
-                Question = $"Describe a recent project where you used {skill}. What trade-offs did you make?",
-                Evidence = $"Job requires {skill}."
+                Category = "Kỹ thuật",
+                Question = $"Hãy mô tả một dự án gần đây bạn sử dụng {skill}. Bạn đã đánh đổi những gì khi ra quyết định?",
+                Evidence = $"Vị trí yêu cầu {skill}."
             });
         }
 
         questions.Add(new InterviewQuestionDto
         {
-            Category = "Role Fit",
-            Question = $"Which part of the {job.Title} role do you think would be the hardest for you in the first 60 days?",
-            Evidence = $"Job context: {job.Title}."
+            Category = "Độ phù hợp vai trò",
+            Question = $"Theo bạn, phần khó nhất của vị trí {job.Title} trong 60 ngày đầu là gì?",
+            Evidence = $"Bối cảnh vị trí: {job.Title}."
         });
 
         questions.Add(new InterviewQuestionDto
         {
-            Category = "Problem Solving",
-            Question = "Tell us about a production issue you investigated from symptom to root cause. What did you measure first?",
-            Evidence = "General engineering signal for structured debugging."
+            Category = "Giải quyết vấn đề",
+            Question = "Hãy kể về một sự cố production bạn đã điều tra từ triệu chứng đến nguyên nhân gốc. Bạn đo lường điều gì đầu tiên?",
+            Evidence = "Tín hiệu chung về năng lực gỡ lỗi có cấu trúc."
         });
 
         if (candidate is not null)
         {
             string candidateSkills = candidate.Skills.Count > 0
                 ? string.Join(", ", candidate.Skills.Take(4))
-                : "their listed experience";
+                : "kinh nghiệm đã liệt kê";
             questions.Add(new InterviewQuestionDto
             {
-                Category = "Candidate Evidence",
-                Question = $"Your profile highlights {candidateSkills}. Which item best proves readiness for this role, and why?",
-                Evidence = $"Candidate profile: {candidateSkills}."
+                Category = "Bằng chứng ứng viên",
+                Question = $"Hồ sơ của bạn nổi bật ở {candidateSkills}. Đâu là điểm chứng minh rõ nhất sự sẵn sàng cho vị trí này, và vì sao?",
+                Evidence = $"Hồ sơ ứng viên: {candidateSkills}."
             });
         }
 
@@ -1458,9 +1891,9 @@ public class CopilotService : ICopilotService
         {
             questions.Add(new InterviewQuestionDto
             {
-                Category = "Custom Focus",
-                Question = $"For the focus area \"{focus}\", what concrete evidence should we look for in this interview?",
-                Evidence = "Recruiter-provided interview focus."
+                Category = "Trọng tâm tùy chỉnh",
+                Question = $"Với trọng tâm \"{focus}\", chúng ta nên tìm bằng chứng cụ thể nào trong buổi phỏng vấn này?",
+                Evidence = "Trọng tâm phỏng vấn do nhà tuyển dụng cung cấp."
             });
         }
 
@@ -1921,9 +2354,9 @@ public class CopilotService : ICopilotService
             {
                 string reason = !string.IsNullOrWhiteSpace(result.Summary)
                     ? result.Summary.Trim()
-                    : result.RejectReason ?? "Did not meet the active criteria.";
+                    : result.RejectReason ?? "Không đáp ứng các tiêu chí hiện tại.";
                 string prefix = result.IsAutoRejected
-                    ? $"Rejected - {result.FullName}:"
+                    ? $"Đã loại - {result.FullName}:"
                     : $"{result.RankPosition}. {result.FullName}:";
                 return $"{prefix} {reason}";
             })
@@ -1931,7 +2364,7 @@ public class CopilotService : ICopilotService
 
         return lines.Count > 0
             ? string.Join("\n", lines)
-            : "Ranking completed.";
+            : "Đã hoàn tất xếp hạng ứng viên trong vòng CV screening.";
     }
 
     /// <summary>

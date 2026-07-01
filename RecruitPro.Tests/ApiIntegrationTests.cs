@@ -396,6 +396,147 @@ public sealed class ApiIntegrationTests : IClassFixture<PostgresTestFixture>, IA
         (await _client.GetAsync("/api/copilot/jobs")).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 
+    [Fact]
+    public async Task CopilotRanking_Screening_Idempotency_And_PassCv_Flow()
+    {
+        Guid screeningAppId = await SeedScreeningApplicationAsync();
+        PostgresTestFixture.SetBearerToken(_client, _factory.Fixture.CreateJwt(TestDataSeeder.HrUserId.ToString(), "HR"));
+
+        // Create (or reuse) the conversation for the approved job.
+        var convResponse = await _client.PostAsJsonAsync("/api/copilot/conversations", new { jobId = TestDataSeeder.ApprovedJobId });
+        var convJson = await ApiResponseAssertions.AssertNo500AndEnvelopeAsync(convResponse);
+        Guid conversationId = convJson.RootElement.GetProperty("data").GetProperty("conversationId").GetGuid();
+
+        // Run ranking — only Screening applications are eligible; the seeded ManagerReview application is excluded.
+        object rankRequest = new { jobId = TestDataSeeder.ApprovedJobId, prompt = "Xếp hạng ứng viên .NET và SQL", forceRanking = true };
+        var rankJson = await ApiResponseAssertions.AssertNo500AndEnvelopeAsync(
+            await _client.PostAsJsonAsync($"/api/copilot/conversations/{conversationId}/rankings", rankRequest));
+        JsonElement rankData = rankJson.RootElement.GetProperty("data");
+        rankData.GetProperty("didRank").GetBoolean().Should().BeTrue();
+        Guid rankingSessionId = rankData.GetProperty("rankingSessionId").GetGuid();
+
+        List<Guid> rankedAppIds = rankData.GetProperty("results").EnumerateArray()
+            .Select(result => result.GetProperty("applicationId").GetGuid())
+            .ToList();
+        rankedAppIds.Should().Contain(screeningAppId);
+        rankedAppIds.Should().NotContain(TestDataSeeder.ApplicationId); // seeded app is ManagerReview → excluded
+
+        // Idempotency: identical input returns the latest matching session, no duplicate/no provider.
+        var rerunJson = await ApiResponseAssertions.AssertNo500AndEnvelopeAsync(
+            await _client.PostAsJsonAsync($"/api/copilot/conversations/{conversationId}/rankings", rankRequest));
+        JsonElement rerunData = rerunJson.RootElement.GetProperty("data");
+        rerunData.GetProperty("reusedRankingSession").GetBoolean().Should().BeTrue();
+        rerunData.GetProperty("warnings").EnumerateArray().Select(w => w.GetString()).Should().Contain("ranking-session:reused");
+
+        // Pass CV: move the screening candidate to Head Review (ManagerReview).
+        var passJson = await ApiResponseAssertions.AssertNo500AndEnvelopeAsync(
+            await _client.PostAsJsonAsync($"/api/copilot/ranking-sessions/{rankingSessionId}/pass-cv",
+                new { applicationIds = new[] { screeningAppId } }));
+        JsonElement passData = passJson.RootElement.GetProperty("data");
+        passData.GetProperty("updated").GetArrayLength().Should().Be(1);
+        passData.GetProperty("updated")[0].GetProperty("newStatus").GetString().Should().Be("ManagerReview");
+
+        (await _factory.Fixture.GetApplicationStatusRawAsync(screeningAppId)).Should().Be("ManagerReview");
+    }
+
+    [Fact]
+    public async Task CopilotChat_UnrelatedPrompt_Refuses_WithoutRanking()
+    {
+        PostgresTestFixture.SetBearerToken(_client, _factory.Fixture.CreateJwt(TestDataSeeder.HrUserId.ToString(), "HR"));
+        var convJson = await ApiResponseAssertions.AssertNo500AndEnvelopeAsync(
+            await _client.PostAsJsonAsync("/api/copilot/conversations", new { jobId = TestDataSeeder.ApprovedJobId }));
+        Guid conversationId = convJson.RootElement.GetProperty("data").GetProperty("conversationId").GetGuid();
+
+        var replyJson = await ApiResponseAssertions.AssertNo500AndEnvelopeAsync(
+            await _client.PostAsJsonAsync($"/api/copilot/conversations/{conversationId}/rankings",
+                new { jobId = TestDataSeeder.ApprovedJobId, prompt = "Thời tiết hôm nay thế nào?", forceRanking = false }));
+        JsonElement data = replyJson.RootElement.GetProperty("data");
+        data.GetProperty("didRank").GetBoolean().Should().BeFalse();
+        data.GetProperty("assistantMessage").GetString().Should().Contain("Đây không phải nhiệm vụ");
+        data.GetProperty("rankingSessionId").ValueKind.Should().Be(JsonValueKind.Null);
+    }
+
+    [Fact]
+    public async Task CopilotDeprecatedEndpoints_ReturnDeprecationWarning_NoProvider()
+    {
+        PostgresTestFixture.SetBearerToken(_client, _factory.Fixture.CreateJwt(TestDataSeeder.HrUserId.ToString(), "HR"));
+
+        var searchJson = await ApiResponseAssertions.AssertNo500AndEnvelopeAsync(
+            await _client.PostAsJsonAsync("/api/copilot/candidate-search",
+                new { jobId = TestDataSeeder.ApprovedJobId, query = "Tìm ứng viên .NET", maxResults = 5 }));
+        searchJson.RootElement.GetProperty("data").GetProperty("ai").GetProperty("warnings")
+            .EnumerateArray().Select(w => w.GetString())
+            .Should().Contain(w => w!.StartsWith("candidate-search:deprecated", StringComparison.Ordinal));
+
+        var emailJson = await ApiResponseAssertions.AssertNo500AndEnvelopeAsync(
+            await _client.PostAsJsonAsync($"/api/copilot/applications/{TestDataSeeder.ApplicationId}/emails/draft",
+                new { templateType = "interview_invite", tone = "warm" }));
+        emailJson.RootElement.GetProperty("data").GetProperty("ai").GetProperty("warnings")
+            .EnumerateArray().Select(w => w.GetString())
+            .Should().Contain(w => w!.StartsWith("email-draft:deprecated", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task CopilotPassCv_EnforcesAuthAndOwnership()
+    {
+        string url = $"/api/copilot/ranking-sessions/{Guid.NewGuid()}/pass-cv";
+        object body = new { applicationIds = new[] { TestDataSeeder.ApplicationId } };
+
+        // Anonymous → 401.
+        (await _client.PostAsJsonAsync(url, body)).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+
+        // Candidate role is blocked at the [Authorize(Roles="HR,Manager")] layer → 403.
+        PostgresTestFixture.SetBearerToken(_client, _factory.Fixture.CreateJwt(TestDataSeeder.CandidateUserId.ToString(), "Candidate"));
+        (await _client.PostAsJsonAsync(url, body)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+
+        // HR but the ranking session does not belong to them (or does not exist) → 404, never a silent move.
+        PostgresTestFixture.SetBearerToken(_client, _factory.Fixture.CreateJwt(TestDataSeeder.HrUserId.ToString(), "HR"));
+        (await _client.PostAsJsonAsync(url, body)).StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    /// <summary>
+    /// Seeds a second candidate with a Screening application on the approved job so the ranking pool
+    /// has a rank-eligible candidate (the pre-seeded application is ManagerReview and thus excluded).
+    /// </summary>
+    private async Task<Guid> SeedScreeningApplicationAsync()
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        AppDbContext db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        DateTime now = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
+
+        Guid userId = Guid.Parse("21000000-0000-0000-0000-000000000009");
+        Guid applicationId = Guid.Parse("71000000-0000-0000-0000-000000000009");
+
+        db.Users.Add(new User
+        {
+            Id = userId,
+            Username = "screening.candidate",
+            Email = "screening@recruitpro.test",
+            FullName = "Screening Candidate",
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword("Pass@123"),
+            Phone = "0900009009",
+            CreatedAt = now,
+            UpdatedAt = now
+        });
+        db.UserRoles.Add(new UserRole { UserId = userId, RoleId = TestDataSeeder.CandidateRoleId, AssignedAt = now });
+        db.Applications.Add(new Domain.Entities.Application
+        {
+            Id = applicationId,
+            UserId = userId,
+            JobId = TestDataSeeder.ApprovedJobId,
+            AssignedRecruiterId = TestDataSeeder.HrUserId,
+            AssignedDepartmentHeadId = TestDataSeeder.ManagerUserId,
+            Status = RecruitPro.Domain.Enums.ApplicationStatus.Screening,
+            AppliedAt = now,
+            RuleScore = 70,
+            FinalScore = 70,
+            ScoreStatus = "Completed",
+            ScoredAt = now
+        });
+        await db.SaveChangesAsync();
+        return applicationId;
+    }
+
     private async Task SeedFitAnalysesAsync()
     {
         using IServiceScope scope = _factory.Services.CreateScope();

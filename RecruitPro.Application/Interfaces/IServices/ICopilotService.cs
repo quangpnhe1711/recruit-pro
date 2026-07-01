@@ -20,6 +20,7 @@ public interface ICopilotService
     Task<ApiResponse<CandidateFitAnalysisSnapshotDto>> GetLatestFitAnalysisForApplicationAsync(Guid applicationId, Guid? callerUserId, IReadOnlyCollection<string> callerRoles);
     Task<ApiResponse<IReadOnlyList<CopilotGeneratedArtifactDto>>> GetGeneratedArtifactsAsync(Guid ownerUserId, Guid? jobId, Guid? applicationId, string? artifactType, int take);
     Task<ApiResponse<CopilotPromptResponseDto>> CreateRankingAsync(Guid conversationId, CopilotPromptRequest request, Guid userId);
+    Task<ApiResponse<PassCvResultDto>> PassCvToHeadReviewAsync(Guid rankingSessionId, PassCvToHeadReviewRequest request, Guid userId, IReadOnlyCollection<string> callerRoles);
     Task<ApiResponse<CopilotRankingSessionDetailDto>> GetRankingSessionAsync(Guid rankingSessionId, Guid userId);
     Task<ApiResponse<IReadOnlyList<CopilotSavedRuleDto>>> GetSavedRulesAsync(Guid jobId, Guid userId);
     Task<ApiResponse<CopilotSavedRuleDto>> CreateSavedRuleAsync(CreateCopilotSavedRuleRequest request, Guid userId);

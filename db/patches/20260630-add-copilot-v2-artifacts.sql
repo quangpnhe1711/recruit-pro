@@ -71,42 +71,29 @@ CREATE TABLE IF NOT EXISTS public.copilot_generated_artifacts (
     created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
--- Primary keys and foreign keys — guarded so the patch is safe to re-run against
--- a DB whose schema was already built from init.sql.
-DO $$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'copilot_prompt_templates_pkey') THEN
-        ALTER TABLE ONLY public.copilot_prompt_templates ADD CONSTRAINT copilot_prompt_templates_pkey PRIMARY KEY (id);
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'candidate_fit_analyses_pkey') THEN
-        ALTER TABLE ONLY public.candidate_fit_analyses ADD CONSTRAINT candidate_fit_analyses_pkey PRIMARY KEY (id);
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'copilot_generated_artifacts_pkey') THEN
-        ALTER TABLE ONLY public.copilot_generated_artifacts ADD CONSTRAINT copilot_generated_artifacts_pkey PRIMARY KEY (id);
-    END IF;
+-- Primary keys and foreign keys — idempotent via DROP CONSTRAINT IF EXISTS + ADD CONSTRAINT.
+-- (No PL/pgSQL DO block: some SQL runners split on ";" and fail on dollar-quoted bodies.)
+ALTER TABLE ONLY public.copilot_prompt_templates DROP CONSTRAINT IF EXISTS copilot_prompt_templates_pkey;
+ALTER TABLE ONLY public.copilot_prompt_templates ADD CONSTRAINT copilot_prompt_templates_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.candidate_fit_analyses DROP CONSTRAINT IF EXISTS candidate_fit_analyses_pkey;
+ALTER TABLE ONLY public.candidate_fit_analyses ADD CONSTRAINT candidate_fit_analyses_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.copilot_generated_artifacts DROP CONSTRAINT IF EXISTS copilot_generated_artifacts_pkey;
+ALTER TABLE ONLY public.copilot_generated_artifacts ADD CONSTRAINT copilot_generated_artifacts_pkey PRIMARY KEY (id);
 
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'copilot_prompt_templates_owner_user_id_fkey') THEN
-        ALTER TABLE ONLY public.copilot_prompt_templates ADD CONSTRAINT copilot_prompt_templates_owner_user_id_fkey FOREIGN KEY (owner_user_id) REFERENCES public.users(id) ON DELETE CASCADE;
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'candidate_fit_analyses_job_id_fkey') THEN
-        ALTER TABLE ONLY public.candidate_fit_analyses ADD CONSTRAINT candidate_fit_analyses_job_id_fkey FOREIGN KEY (job_id) REFERENCES public.jobs(id) ON DELETE CASCADE;
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'candidate_fit_analyses_candidate_user_id_fkey') THEN
-        ALTER TABLE ONLY public.candidate_fit_analyses ADD CONSTRAINT candidate_fit_analyses_candidate_user_id_fkey FOREIGN KEY (candidate_user_id) REFERENCES public.users(id) ON DELETE CASCADE;
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'candidate_fit_analyses_application_id_fkey') THEN
-        ALTER TABLE ONLY public.candidate_fit_analyses ADD CONSTRAINT candidate_fit_analyses_application_id_fkey FOREIGN KEY (application_id) REFERENCES public.applications(id) ON DELETE CASCADE;
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'copilot_generated_artifacts_owner_user_id_fkey') THEN
-        ALTER TABLE ONLY public.copilot_generated_artifacts ADD CONSTRAINT copilot_generated_artifacts_owner_user_id_fkey FOREIGN KEY (owner_user_id) REFERENCES public.users(id) ON DELETE CASCADE;
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'copilot_generated_artifacts_job_id_fkey') THEN
-        ALTER TABLE ONLY public.copilot_generated_artifacts ADD CONSTRAINT copilot_generated_artifacts_job_id_fkey FOREIGN KEY (job_id) REFERENCES public.jobs(id) ON DELETE SET NULL;
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'copilot_generated_artifacts_application_id_fkey') THEN
-        ALTER TABLE ONLY public.copilot_generated_artifacts ADD CONSTRAINT copilot_generated_artifacts_application_id_fkey FOREIGN KEY (application_id) REFERENCES public.applications(id) ON DELETE SET NULL;
-    END IF;
-END $$;
+ALTER TABLE ONLY public.copilot_prompt_templates DROP CONSTRAINT IF EXISTS copilot_prompt_templates_owner_user_id_fkey;
+ALTER TABLE ONLY public.copilot_prompt_templates ADD CONSTRAINT copilot_prompt_templates_owner_user_id_fkey FOREIGN KEY (owner_user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.candidate_fit_analyses DROP CONSTRAINT IF EXISTS candidate_fit_analyses_job_id_fkey;
+ALTER TABLE ONLY public.candidate_fit_analyses ADD CONSTRAINT candidate_fit_analyses_job_id_fkey FOREIGN KEY (job_id) REFERENCES public.jobs(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.candidate_fit_analyses DROP CONSTRAINT IF EXISTS candidate_fit_analyses_candidate_user_id_fkey;
+ALTER TABLE ONLY public.candidate_fit_analyses ADD CONSTRAINT candidate_fit_analyses_candidate_user_id_fkey FOREIGN KEY (candidate_user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.candidate_fit_analyses DROP CONSTRAINT IF EXISTS candidate_fit_analyses_application_id_fkey;
+ALTER TABLE ONLY public.candidate_fit_analyses ADD CONSTRAINT candidate_fit_analyses_application_id_fkey FOREIGN KEY (application_id) REFERENCES public.applications(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.copilot_generated_artifacts DROP CONSTRAINT IF EXISTS copilot_generated_artifacts_owner_user_id_fkey;
+ALTER TABLE ONLY public.copilot_generated_artifacts ADD CONSTRAINT copilot_generated_artifacts_owner_user_id_fkey FOREIGN KEY (owner_user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.copilot_generated_artifacts DROP CONSTRAINT IF EXISTS copilot_generated_artifacts_job_id_fkey;
+ALTER TABLE ONLY public.copilot_generated_artifacts ADD CONSTRAINT copilot_generated_artifacts_job_id_fkey FOREIGN KEY (job_id) REFERENCES public.jobs(id) ON DELETE SET NULL;
+ALTER TABLE ONLY public.copilot_generated_artifacts DROP CONSTRAINT IF EXISTS copilot_generated_artifacts_application_id_fkey;
+ALTER TABLE ONLY public.copilot_generated_artifacts ADD CONSTRAINT copilot_generated_artifacts_application_id_fkey FOREIGN KEY (application_id) REFERENCES public.applications(id) ON DELETE SET NULL;
 
 CREATE INDEX IF NOT EXISTS ix_copilot_prompt_templates_owner_type_active ON public.copilot_prompt_templates USING btree (owner_user_id, template_type, is_active);
 CREATE INDEX IF NOT EXISTS ix_candidate_fit_analyses_job_candidate_created ON public.candidate_fit_analyses USING btree (job_id, candidate_user_id, created_at);

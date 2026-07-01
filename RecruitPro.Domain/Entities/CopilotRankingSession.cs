@@ -8,6 +8,12 @@ public partial class CopilotRankingSession
     public Guid UserId { get; set; }
     public string UserPrompt { get; set; } = null!;
     public string NormalizedRulesJson { get; set; } = "{}";
+
+    // v2 idempotency fingerprint (SHA-256 hex) over the effective ranking input: job, user,
+    // normalized prompt/criteria/rules and the screening candidate evidence. A repeated rank with an
+    // unchanged fingerprint returns this session instead of re-running the AI provider.
+    public string? InputHash { get; set; }
+
     public int TotalCandidates { get; set; }
     public string? ModelName { get; set; }
     public int? PromptTokens { get; set; }

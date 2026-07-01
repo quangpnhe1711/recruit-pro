@@ -128,7 +128,7 @@ public class AiCopilotProvider : IAiCopilotProvider
         };
 
         object requestBody = BuildRequestBody(
-            systemPrompt: "You are an ATS recruitment copilot. Return only valid JSON matching the requested schema. Keep auto rejected candidates at the end. Every candidate result must include a concrete summary/match reason grounded in the CV, skills, experience, and active criteria.",
+            systemPrompt: "You are an ATS recruitment copilot. Return valid JSON only matching the requested schema. Keep auto rejected candidates at the end. Every candidate result must include a concrete summary/match reason grounded in the CV, skills, experience, and active criteria. Use Vietnamese for all human-facing prose fields (summary). Keep JSON keys and machine-readable enum/code values (recommendation, fitLabel) unchanged.",
             userPrompt: BuildPrompt(payload),
             requireJson: true);
 
@@ -214,7 +214,7 @@ public class AiCopilotProvider : IAiCopilotProvider
         };
 
         object requestBody = BuildRequestBody(
-            systemPrompt: "You are an ATS recruitment copilot. Answer the recruiter naturally in the same language as the user's question when possible. Base every answer on the provided job and CV evidence. Do not rank candidates unless the user explicitly asks for ranking, scoring, screening, shortlist, top candidates, or evaluation.",
+            systemPrompt: "You are RecruitPro's ATS recruitment copilot. Answer the recruiter in Vietnamese. Base every answer on the provided job and CV evidence. Only answer questions related to RecruitPro recruitment work; do not rank candidates unless the user explicitly asks for ranking, scoring, screening, shortlist, top candidates, or evaluation.",
             userPrompt: $$"""
                 Answer the recruiter's question using the job details and CV evidence below.
                 Keep it concise and useful.
@@ -279,6 +279,7 @@ public class AiCopilotProvider : IAiCopilotProvider
         - Return exactly one result per candidateUserId.
         - Always fill summary with a concrete match reason.
         - Summary must explain why the candidate is ranked there, mentioning matched strengths, missing requirements, and any penalty-only criteria impact when relevant.
+        - Write summary in Vietnamese (human-facing prose). Keep JSON keys and machine-readable code values (recommendation) unchanged.
         - If the candidate is auto rejected, summary must still explain the rejection.
         Required output JSON shape:
         {

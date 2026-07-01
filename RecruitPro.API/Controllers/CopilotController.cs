@@ -132,6 +132,15 @@ public class CopilotController : ControllerBase
         return StatusCode(result.StatusCode, result);
     }
 
+    // v2 §7: explicit HR action — pass selected ranked candidates from CV screening to Head Review
+    // (Screening -> ManagerReview). AI never triggers this transition.
+    [HttpPost("api/copilot/ranking-sessions/{rankingSessionId:guid}/pass-cv")]
+    public async Task<IActionResult> PassCvToHeadReview(Guid rankingSessionId, [FromBody] PassCvToHeadReviewRequest request)
+    {
+        var result = await _copilotService.PassCvToHeadReviewAsync(rankingSessionId, request, User.GetCurrentUserId(), User.GetRoles());
+        return StatusCode(result.StatusCode, result);
+    }
+
     [HttpGet("api/copilot/jobs/{jobId:guid}/rules")]
     public async Task<IActionResult> GetSavedRules(Guid jobId)
     {

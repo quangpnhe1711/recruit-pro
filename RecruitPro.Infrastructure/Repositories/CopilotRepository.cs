@@ -104,7 +104,8 @@ public class CopilotRepository : ICopilotRepository
                     .OrderBy(name => name)
                     .ToList() ?? [],
                 CvSummary = profile == null ? string.Empty : CandidateProfileSectionHelper.BuildStructuredNarrative(profile),
-                ResumeUrl = currentResume?.StorageKey
+                ResumeUrl = currentResume?.StorageKey,
+                Status = application.Status.ToString()
             };
         }).ToList();
 
@@ -144,6 +145,35 @@ public class CopilotRepository : ICopilotRepository
                 .ThenInclude(result => result.Application)
                     .ThenInclude(application => application.User)
             .FirstOrDefaultAsync(session => session.Id == rankingSessionId);
+    }
+
+    public Task<CopilotRankingSession?> GetLatestMatchingRankingSessionAsync(Guid jobId, Guid userId, string effectivePayloadHash)
+    {
+        if (string.IsNullOrWhiteSpace(effectivePayloadHash))
+        {
+            return Task.FromResult<CopilotRankingSession?>(null);
+        }
+
+        return _context.CopilotRankingSessions
+            .Include(session => session.Results)
+                .ThenInclude(result => result.Application)
+                    .ThenInclude(application => application.User)
+            .Where(session => session.JobId == jobId
+                && session.UserId == userId
+                && session.InputHash == effectivePayloadHash)
+            .OrderByDescending(session => session.CreatedAt)
+            .FirstOrDefaultAsync();
+    }
+
+    public Task<CopilotRankingSession?> GetLatestRankingSessionForJobAsync(Guid jobId, Guid userId)
+    {
+        return _context.CopilotRankingSessions
+            .Include(session => session.Results)
+                .ThenInclude(result => result.Application)
+                    .ThenInclude(application => application.User)
+            .Where(session => session.JobId == jobId && session.UserId == userId)
+            .OrderByDescending(session => session.CreatedAt)
+            .FirstOrDefaultAsync();
     }
 
     public async Task<IReadOnlyList<CopilotSavedRule>> GetSavedRulesAsync(Guid jobId, Guid userId)

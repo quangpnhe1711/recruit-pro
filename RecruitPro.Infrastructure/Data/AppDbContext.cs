@@ -569,6 +569,7 @@ public partial class AppDbContext : DbContext
             entity.Property(e => e.UserId).HasColumnName("user_id");
             entity.Property(e => e.UserPrompt).HasColumnName("user_prompt");
             entity.Property(e => e.NormalizedRulesJson).HasColumnType("jsonb").HasColumnName("normalized_rules_json");
+            entity.Property(e => e.InputHash).HasMaxLength(64).HasColumnName("input_hash");
             entity.Property(e => e.TotalCandidates).HasColumnName("total_candidates");
             entity.Property(e => e.ModelName).HasMaxLength(100).HasColumnName("model_name");
             entity.Property(e => e.PromptTokens).HasColumnName("prompt_tokens");
@@ -577,6 +578,8 @@ public partial class AppDbContext : DbContext
 
             entity.HasIndex(e => new { e.ConversationId, e.CreatedAt }, "ix_copilot_ranking_sessions_conversation_created_at");
             entity.HasIndex(e => new { e.JobId, e.CreatedAt }, "ix_copilot_ranking_sessions_job_created_at");
+            // v2 idempotency lookup: latest matching session for (job, user, input hash).
+            entity.HasIndex(e => new { e.JobId, e.UserId, e.InputHash }, "ix_copilot_ranking_sessions_job_user_input_hash");
             entity.HasOne(e => e.Job).WithMany().HasForeignKey(e => e.JobId).HasConstraintName("copilot_ranking_sessions_job_id_fkey");
             entity.HasOne(e => e.User).WithMany().HasForeignKey(e => e.UserId).HasConstraintName("copilot_ranking_sessions_user_id_fkey");
             entity.HasOne(e => e.Conversation).WithMany(e => e.RankingSessions).HasForeignKey(e => e.ConversationId).HasConstraintName("copilot_ranking_sessions_conversation_id_fkey");

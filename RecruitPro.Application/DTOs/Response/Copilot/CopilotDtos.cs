@@ -50,6 +50,10 @@ public class CopilotCandidateDto
     public IReadOnlyList<string> Skills { get; set; } = [];
     public string CvSummary { get; set; } = string.Empty;
     public string? ResumeUrl { get; set; }
+
+    // v2: the application's ATS status (e.g. "Screening", "ManagerReview"). Ranking only evaluates
+    // Screening/CV-screening candidates; the frontend uses this to gate the "Pass CV" action.
+    public string Status { get; set; } = string.Empty;
 }
 
 public class CopilotCandidatePoolDto
@@ -103,6 +107,14 @@ public class CopilotRankingResultDto
     public string? RejectReason { get; set; }
     public IReadOnlyList<string> Strengths { get; set; } = [];
     public IReadOnlyList<string> Weaknesses { get; set; } = [];
+
+    // v2: fit-style evaluation is generated at ranking time so HR does not need a separate
+    // fit-analysis click. Machine-readable values (StrongFit/PotentialFit/RiskFit/NotRecommended)
+    // are kept in English; Summary/Evidence prose is Vietnamese.
+    public string FitLabel { get; set; } = string.Empty;
+    public decimal ConfidenceScore { get; set; }
+    public IReadOnlyList<string> Evidence { get; set; } = [];
+
     public string Summary { get; set; } = string.Empty;
     public bool IsAiGenerated { get; set; }
 }
@@ -115,6 +127,12 @@ public class CopilotPromptResponseDto
     public string AssistantMessage { get; set; } = string.Empty;
     public CopilotNormalizedRulesDto NormalizedRules { get; set; } = new();
     public IReadOnlyList<CopilotRankingResultDto> Results { get; set; } = [];
+
+    // v2 idempotency: true when the effective ranking input was unchanged and the latest matching
+    // session was returned instead of running a new AI ranking. Warnings surface metadata such as
+    // "ranking-session:reused".
+    public bool ReusedRankingSession { get; set; }
+    public IReadOnlyList<string> Warnings { get; set; } = [];
 }
 
 public class CopilotRankingSessionDetailDto
@@ -273,6 +291,28 @@ public class ShortlistSuggestionDto
     public decimal Score { get; set; }
     public string Recommendation { get; set; } = string.Empty;
     public IReadOnlyList<string> Rationale { get; set; } = [];
+}
+
+// v2: result of the explicit HR "Pass CV / Send to Head Review" action. AI never performs this
+// transition — it only recommends. Moved applications go Screening -> ManagerReview (the
+// Head/Department-Head review stage).
+public class PassCvResultDto
+{
+    public IReadOnlyList<PassCvUpdatedDto> Updated { get; set; } = [];
+    public IReadOnlyList<PassCvSkippedDto> Skipped { get; set; } = [];
+}
+
+public class PassCvUpdatedDto
+{
+    public Guid ApplicationId { get; set; }
+    public string OldStatus { get; set; } = string.Empty;
+    public string NewStatus { get; set; } = string.Empty;
+}
+
+public class PassCvSkippedDto
+{
+    public Guid ApplicationId { get; set; }
+    public string Reason { get; set; } = string.Empty;
 }
 
 public class HrEmailDraftResponseDto

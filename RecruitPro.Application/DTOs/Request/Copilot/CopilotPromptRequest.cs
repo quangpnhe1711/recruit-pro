@@ -45,6 +45,14 @@ public class HrEmailDraftRequest
     public string AdditionalInstruction { get; set; } = string.Empty;
 }
 
+// v2: explicit HR action to pass selected ranked candidates from Screening to Head Review
+// (ManagerReview). Requires an authenticated HR/Manager caller; AI cannot trigger it.
+public class PassCvToHeadReviewRequest
+{
+    public IReadOnlyList<Guid> ApplicationIds { get; set; } = [];
+    public string? Note { get; set; }
+}
+
 public class CreateCopilotPromptTemplateRequest
 {
     public string Name { get; set; } = string.Empty;
