@@ -1,5 +1,11 @@
 # v2 Hardening Report - 2026-06-30
 
+> **Historical.** Superseded by the final phase-2 refactor (ranking = single source of truth). See
+> `03-v2-ai-recruitment-copilot.md` → "Current State (final)". Notably, the artifact-history and
+> prompt-template panels described below were later removed from the UI, and the shortlist feature was
+> deleted; candidate search and email draft are deprecated (no AI). The final flow is screening-only
+> ranking → explicit Pass CV → Head Review.
+
 ## Executive Summary
 
 This hardening pass cleaned up the two build warnings called out by the user, continued v2 roadmap implementation, added read/admin surfaces for persisted AI artifacts and prompt templates, wired provider-backed structured JSON generation behind deterministic fallback, and added frontend acceptance E2E coverage. RecruitPro can now show the latest saved AI fit-analysis snapshot on the application review detail screen, expose generated artifact history in AI Copilot, manage prompt templates from the same Copilot workspace, safely use an enabled provider for the existing v2 Copilot actions, and verify those user workflows through deterministic Playwright tests.

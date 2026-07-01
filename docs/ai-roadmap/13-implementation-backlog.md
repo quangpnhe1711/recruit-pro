@@ -10,6 +10,13 @@
 
 ## v2 Backlog
 
+> **Phase 2 closed — final scope differs from the P0 list below.** Ranking is the single source of
+> truth (screening-only, Vietnamese fit, idempotent via `input_hash`). A **Pass CV → Head Review**
+> action was added. **Candidate search** and **email draft** are deprecated (no AI); **shortlist** was
+> **removed**; interview questions are cached after first generation. The **artifact-history** and
+> **prompt-template** UI panels were removed (endpoints remain, unused). See
+> `03-v2-ai-recruitment-copilot.md` → "Current State (final)". The items below are historical.
+
 ### P0
 
 - extend copilot endpoints for NL search, fit analysis, interview questions, shortlist, email draft — **foundation slice implemented with deterministic fallback**

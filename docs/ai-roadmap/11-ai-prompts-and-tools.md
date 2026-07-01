@@ -12,12 +12,18 @@
 
 ## v2
 
-- recruiter search intent extraction
-- candidate-job fit analysis
+> **Final scope:** the only AI prompts actually used in shipped v2 are the **explainable ranking summary**
+> (Vietnamese, one structured provider call per ranking run, deterministic fallback) and **interview
+> question generation** (cached after first use). Search-intent, shortlist-recommendation and HR
+> email-drafting prompts are **not** used: search/email are deprecated (deterministic only) and shortlist
+> was removed. All human-facing prose is Vietnamese; JSON keys and enum/code values stay unchanged.
+
+- recruiter search intent extraction *(unused — deprecated)*
+- candidate-job fit analysis *(folded into the ranking summary at ranking time)*
 - explainable ranking summary
-- shortlist recommendation
+- shortlist recommendation *(removed)*
 - interview question generation
-- HR email drafting
+- HR email drafting *(unused — deprecated)*
 
 ## v3
 

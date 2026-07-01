@@ -1,28 +1,66 @@
 # v2 - AI Recruitment Copilot
 
-## Implementation Status
+> **Phase 2 is CLOSED.** This document is the source of truth for what actually shipped. Sections 3–14
+> below are the original planning notes kept for history; where they disagree with the "Current State
+> (final)" section, the current state wins.
 
-Started on 2026-06-30 with a v2 P0 foundation slice:
+## Current State (final — matches shipped code)
 
-- added structured backend endpoints for natural-language candidate search, fit analysis, interview questions, shortlist suggestions, and HR email draft
-- all new outputs include `auditId`, `fallbackUsed`, provider/model metadata, and warnings
-- the first slice uses deterministic ATS evidence and existing copilot ranking logic as the fallback path; no ATS state is mutated
-- added persistence for prompt templates, generated artifacts, and per-candidate fit-analysis snapshots
-- generated artifacts now expose `artifactId` in AI metadata when the output is persisted
-- HR `AiCopilotScreen` now exposes a compact v2 tools panel for demoing the endpoints from the existing copilot UI
-- review detail screens can now read the latest persisted fit-analysis snapshot for an application
-- copilot generated artifacts can now be queried for the current user with optional job/application/type filters
-- `AiCopilotScreen` now includes artifact history and prompt-template management panels
-- provider-backed structured JSON generation is wired for search, fit analysis, interview questions, shortlist suggestions, and email drafts behind deterministic fallback
-- prompt templates are reused by provider calls when an active template exists for the current user and template type
-- Playwright acceptance E2E covers latest fit-analysis cards, artifact history, prompt-template create/detail, provider metadata, and fallback metadata with deterministic API mocks
-- frontend routes are lazy-loaded to keep production chunks below the Vite warning threshold
-- AutoMapper package warning was resolved by upgrading to `AutoMapper` 15.1.3 and removing the deprecated DI extension package
+The v2 Copilot is refactored so that **candidate ranking is the single source of truth for CV-screening
+evaluation**. The end-to-end flow is:
 
-Still pending for later v2 hardening:
+1. HR opens a job → the Copilot candidate pool contains **only applications in `Screening`** (the job
+   picker badge and the empty-state message also reflect the Screening count).
+2. HR runs AI-assisted ranking once → each ranked candidate already includes a detailed **Vietnamese**
+   fit explanation (fit label, confidence, strengths, gaps, evidence, summary).
+3. HR selects candidate(s) and clicks **"Chuyển sang Head Review" (Pass CV)** → the selected
+   applications move `Screening → ManagerReview` (the Head/Department-Head review stage) via the existing
+   application status-transition service. **AI never mutates ATS state** — this is an explicit HR action.
 
-- richer artifact history drill-down/editing, if new backend APIs are added
-- prompt-template edit/delete/versioning, if new backend APIs are added
+Key implemented behaviors:
+
+- **Screening-only pool:** `CopilotRepository.GetCandidatePoolAsync` filters `Status == Screening`;
+  `GetJobOptionsAsync` counts only Screening applications. New applications are created as
+  `Applied` (there is no `Pending` status); the CV-screening stage is `Screening`; Head Review is
+  `ManagerReview`.
+- **Fit explanation lives in ranking:** deterministic Vietnamese fit evaluation is generated at ranking
+  time and persisted (in `copilot_ranking_results.explanation_json` and as `candidate_fit_analyses`
+  snapshots). Machine values (`StrongFit/PotentialFit/RiskFit/NotRecommended`, `Interview/Consider/
+  Hold/Reject`) stay in English; all human-facing prose is Vietnamese.
+- **Duplicate-ranking prevention:** `copilot_ranking_sessions.input_hash` (SHA-256 of the effective
+  merged rules + screening-pool evidence). An unchanged re-click returns the latest matching session
+  with warning `ranking-session:reused` and message "Tiêu chí chưa thay đổi…" — no new AI call, no
+  duplicate session.
+- **Provider ordering locked:** deterministic ranking is the source of truth for order/scores. The
+  provider may only enrich Vietnamese prose for validated candidate ids; unknown ids are ignored
+  (`provider-candidate:unknown`) and a differing order is ignored (`provider-order:ignored`) unless
+  `AiProviderSettings.AllowProviderReordering` is true (default false).
+- **Chatbot scope guard:** unrelated prompts are refused in Vietnamese **before** loading the pool or
+  calling AI (`IsRecruitmentCopilotQuery`), with no ranking session / artifact created.
+- **Interview questions:** generated once per candidate and cached (artifact reuse, warning
+  `interview-questions:cached`); repeated clicks do not call the provider again.
+- **Deprecated (no AI, no new artifacts):** natural-language **candidate search** and **AI email draft**
+  are removed from the active flow. Their endpoints still exist but return deterministic output with a
+  `candidate-search:deprecated` / `email-draft:deprecated` warning. Old historical artifacts remain
+  readable.
+- **Removed entirely:** the **shortlist** feature (endpoint `POST /api/copilot/jobs/{id}/shortlists`,
+  service method, DTOs, and UI) has been deleted.
+- **Fit-analysis endpoint** (`.../fit-analysis`, `.../fit-analysis/latest`) is read/derive-only — it
+  reads the latest ranking session and never re-ranks or calls the provider.
+- **UI:** `AiCopilotScreen` is a table-first screen; ranking is the primary action; per-row tools are
+  fit + interview-questions only (candidate-search and email-draft tools removed). Popups
+  (`CriteriaBuilderModal`, `ToolResultModal`) are rendered via `createPortal(document.body)` at
+  `z-[100]` so they float above the sticky header/nav. The artifact-history browser and prompt-template
+  manager panels are **not** present in the UI (their backend endpoints still exist but are unused by
+  the screen).
+
+Deployment note (no EF migrations by project policy): the `input_hash` column ships in `init.sql`
+(fresh DB) and the idempotent patch `db/patches/20260701-add-copilot-ranking-input-hash.sql` (existing
+DB). The v2 artifact tables ship in `init.sql` + `db/patches/20260630-add-copilot-v2-artifacts.sql`.
+
+Tests: `RecruitPro.Tests` covers the Copilot service (unit) and API/RBAC (integration, Testcontainers);
+`recruit-pro-internal/e2e/ai-copilot-ranking.e2e.ts` covers the ranking table + Pass CV + deprecated-tool
+absence. `dotnet test --filter "FullyQualifiedName~Copilot"` is green.
 
 ## 1. Goal
 
@@ -37,6 +75,12 @@ Still pending for later v2 hardening:
 - keep AI calls optional and recoverable with deterministic behavior
 
 ## 2. Features
+
+> Shipped scope (see "Current State" above): the active P0 features are the **job-scoped copilot chat**
+> (scope-guarded), **explainable screening-only ranking with Vietnamese fit analysis**, the
+> **interview-question generator** (cached once), and the **Pass CV → Head Review** action. The
+> **shortlist assistant was removed**; **candidate search** and the **AI email assistant** were
+> deprecated (no AI). The list below is the original P0 plan.
 
 ### P0
 
@@ -162,17 +206,24 @@ Recommended services:
 
 ## 6. API Changes
 
-| Method | Route | Purpose | Authorization |
+Endpoints as shipped (all under `[Authorize(Roles = "HR,Manager")]`):
+
+| Method | Route | Purpose | Status |
 |---|---|---|---|
-| `POST` | `/api/copilot/candidate-search` | natural language recruiter search | HR, Manager |
-| `POST` | `/api/copilot/jobs/{jobId}/fit-analysis` | analyze fit for one or many candidates | HR, Manager |
-| `POST` | `/api/copilot/jobs/{jobId}/interview-questions` | generate structured interview questions | HR, Interviewer |
-| `POST` | `/api/copilot/jobs/{jobId}/shortlists` | create shortlist suggestions | HR |
-| `POST` | `/api/copilot/applications/{applicationId}/emails/draft` | generate recruiter email draft | HR |
-| `GET` | `/api/copilot/prompt-templates` | list saved prompt templates | HR, Manager |
-| `POST` | `/api/copilot/prompt-templates` | save prompt template | HR, Manager |
-| `GET` | `/api/copilot/applications/{applicationId}/fit-analysis/latest` | latest persisted fit-analysis snapshot | HR, Manager |
-| `GET` | `/api/copilot/artifacts` | current user's generated artifact history | HR, Manager |
+| `POST` | `/api/copilot/conversations/{conversationId}/rankings` | run ranking (screening-only, Vietnamese fit, idempotent) or chat reply (scope-guarded) | **active — primary** |
+| `POST` | `/api/copilot/ranking-sessions/{rankingSessionId}/pass-cv` | HR moves selected Screening candidates to Head Review (`Screening → ManagerReview`) | **active (v2)** |
+| `GET` | `/api/copilot/ranking-sessions/{rankingSessionId}` | reload a persisted ranking session | active |
+| `GET` | `/api/copilot/jobs/{jobId}/candidates` | screening-only candidate pool | active |
+| `POST` | `/api/copilot/jobs/{jobId}/fit-analysis` | fit analysis derived from latest ranking (no re-rank, no provider) | active (derived) |
+| `GET` | `/api/copilot/applications/{applicationId}/fit-analysis/latest` | latest persisted fit-analysis snapshot | active |
+| `POST` | `/api/copilot/jobs/{jobId}/interview-questions` | interview questions — generated once per candidate then cached | active |
+| `POST` | `/api/copilot/candidate-search` | natural-language search | **deprecated** — no AI, no artifact, warning `candidate-search:deprecated` |
+| `POST` | `/api/copilot/applications/{applicationId}/emails/draft` | HR email draft | **deprecated** — no AI, no artifact, warning `email-draft:deprecated` |
+| `GET` | `/api/copilot/prompt-templates` · `POST` same | list/create prompt templates | backend only (no UI) |
+| `GET` | `/api/copilot/artifacts` | generated-artifact history | backend only (no UI) |
+| `POST` | `/api/copilot/jobs/{jobId}/shortlists` | shortlist | **REMOVED** |
+
+Plus the existing conversation / saved-rule endpoints (`/api/copilot/conversations`, `/api/copilot/jobs/{jobId}/rules`, …) are unchanged.
 
 Request/response should follow the current API envelope style and include:
 
@@ -185,7 +236,14 @@ Request/response should follow the current API envelope style and include:
 
 ### HR Side
 
-- upgrade [AiCopilotScreen](/D:/FPT_HocTap/Semester%208/PRN232/recuit-pro/recruit-pro-fe/recruit-pro-fe/src/pages/hr/AiCopilotScreen.tsx)
+> Shipped: `recruit-pro-internal/src/pages/hr/AiCopilotScreen.tsx` is a table-first screen. Ranking is
+> the primary action; the ranking table shows Vietnamese summary, fit label, confidence, evidence,
+> strengths/gaps and provider/fallback metadata, plus per-row checkboxes and a **"Chuyển sang Head
+> Review"** button. Per-row AI tools are fit + interview-questions only. The assistant drawer holds the
+> scope-guarded chat. The candidate-search panel, shortlist review modal, and email draft editor are
+> **not** shipped (search/email deprecated, shortlist removed). Below is the original plan.
+
+- upgrade `AiCopilotScreen`
 - add candidate search panel with natural language query and chips for extracted filters
 - add ranking explanation drawer
 - add shortlist review modal

@@ -1,5 +1,13 @@
 # v2 Implementation Report - 2026-06-30
 
+> **Historical.** This report describes the initial 2026-06-30 foundation slice. Phase 2 was later
+> refactored to make **ranking the single source of truth** and is now closed. For the shipped final
+> state see `03-v2-ai-recruitment-copilot.md` → "Current State (final)". Key deltas since this report:
+> ranking is screening-only with Vietnamese fit built in; duplicate ranking is suppressed via
+> `input_hash`; a **Pass CV → Head Review** action was added; **candidate search** and **email draft**
+> were deprecated (no AI); the **shortlist** feature was **removed**; interview questions are cached
+> after first generation; and the artifact-history / prompt-template panels are no longer in the UI.
+
 ## Summary
 
 The v2 AI Recruitment Copilot foundation is now implemented as a deterministic, auditable slice. It adds structured copilot tools for HR/Manager users, persists generated outputs where appropriate, and keeps the main ATS workflow unchanged.

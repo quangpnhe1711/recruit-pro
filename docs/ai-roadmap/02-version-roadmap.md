@@ -90,6 +90,9 @@ This creates a strong AI-native story without overbuilding enterprise governance
 - build `v2` P0 endpoints and schemas
 - upgrade AI copilot UI
 - add explainable fit analysis, shortlist assistant, interview questions, email draft
+  - *Delivered scope (phase 2 closed):* explainable **ranking with Vietnamese fit built in** + **Pass CV
+    → Head Review** + interview questions (cached). Shortlist assistant was **removed**; candidate
+    search and email draft were **deprecated** (no AI). See `03-v2-ai-recruitment-copilot.md`.
 
 ### Weeks 4-5
 

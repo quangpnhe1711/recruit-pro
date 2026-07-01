@@ -7,19 +7,26 @@
 - protect all AI routes with JWT + permission checks
 - return structured AI metadata: `auditId`, optional `artifactId`, `fallbackUsed`, `provider`, `model`, `warnings`
 
-## v2 Endpoints
+## v2 Endpoints (as shipped)
 
-| Method | Route | Purpose |
-|---|---|---|
-| `POST` | `/api/copilot/candidate-search` | recruiter natural language search |
-| `POST` | `/api/copilot/jobs/{jobId}/fit-analysis` | candidate-job fit analysis |
-| `POST` | `/api/copilot/jobs/{jobId}/interview-questions` | generate interview question pack |
-| `POST` | `/api/copilot/jobs/{jobId}/shortlists` | suggest shortlist |
-| `POST` | `/api/copilot/applications/{applicationId}/emails/draft` | draft HR email |
-| `GET` | `/api/copilot/prompt-templates` | list templates |
-| `POST` | `/api/copilot/prompt-templates` | create template |
-| `GET` | `/api/copilot/applications/{applicationId}/fit-analysis/latest` | latest persisted fit-analysis snapshot |
-| `GET` | `/api/copilot/artifacts` | current user's generated artifacts |
+| Method | Route | Purpose | Status |
+|---|---|---|---|
+| `POST` | `/api/copilot/conversations/{conversationId}/rankings` | run ranking (screening-only, Vietnamese fit, idempotent via `input_hash`) or scope-guarded chat reply | active — primary |
+| `POST` | `/api/copilot/ranking-sessions/{rankingSessionId}/pass-cv` | HR moves selected Screening candidates to Head Review (`Screening → ManagerReview`); AI never mutates state | active (v2) |
+| `GET` | `/api/copilot/ranking-sessions/{rankingSessionId}` | reload persisted ranking session | active |
+| `GET` | `/api/copilot/jobs/{jobId}/candidates` | screening-only candidate pool | active |
+| `POST` | `/api/copilot/jobs/{jobId}/fit-analysis` | fit analysis derived from latest ranking (no re-rank/provider) | active (derived) |
+| `GET` | `/api/copilot/applications/{applicationId}/fit-analysis/latest` | latest persisted fit-analysis snapshot | active |
+| `POST` | `/api/copilot/jobs/{jobId}/interview-questions` | interview question pack — generated once per candidate then cached | active |
+| `POST` | `/api/copilot/candidate-search` | recruiter natural language search | deprecated (no AI/artifact) |
+| `POST` | `/api/copilot/applications/{applicationId}/emails/draft` | draft HR email | deprecated (no AI/artifact) |
+| `GET` · `POST` | `/api/copilot/prompt-templates` | list/create templates | backend only (no UI) |
+| `GET` | `/api/copilot/artifacts` | current user's generated artifacts | backend only (no UI) |
+| `POST` | `/api/copilot/jobs/{jobId}/shortlists` | suggest shortlist | REMOVED |
+
+AI metadata note: responses carry `warnings[]` markers such as `ranking-session:reused`,
+`provider-order:ignored`, `provider-candidate:unknown`, `interview-questions:cached`,
+`candidate-search:deprecated`, `email-draft:deprecated`.
 
 ## v3 Endpoints
 
