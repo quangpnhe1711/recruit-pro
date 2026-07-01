@@ -82,7 +82,7 @@ namespace RecruitPro.API.Middlewares
                 response = ApiResponse<object>.Error(
                     isDevelopment
                         ? exception.Message
-                        : "Đã xảy ra lỗi không mong muốn. Vui lòng thử lại sau.",
+                        : exception.Message,
                     isDevelopment
                         ? new
                         {
