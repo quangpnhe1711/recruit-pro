@@ -664,6 +664,10 @@ INSERT INTO public.users VALUES ('4071353e-5816-4746-a8b6-c0bc3113c44d', 'nhatqu
 INSERT INTO public.users VALUES ('e781ccd9-e6f8-4ce1-b15d-e142f8977a4e', 'thucuyen', 'thucuyen.nguyen@recruitpro.vn', '$2a$06$CTRpfzxL3P9C3r9yf7VxDOJC5N/0zHkJyb9UXUFID9WqDVJb/Xevm', 'Nguyễn Thục Uyên', '0900000002', NULL, 'Active', '2026-05-27 09:23:08.229887', '2026-05-27 09:23:08.229887');
 INSERT INTO public.users VALUES ('721b1851-349a-48aa-acae-feed1c1843ed', 'tiendat', 'tiendat.tran@recruitpro.vn', '$2a$06$XAl77ynjzT2/NgvgpqOIhuQZFPWF2OD62LwHiarMb0tsteso4xUe.', 'Trần Trọng Tiến Đạt', '0900000003', NULL, 'Active', '2026-05-27 09:23:08.229887', '2026-05-27 09:23:08.229887');
 INSERT INTO public.users VALUES ('92e1a5c1-d3bd-4512-b1df-c6d69d4a41e0', 'minhkhoi.vo@recruitpro.vn', 'minhkhoi.vo@recruitpro.vn', '$2a$06$ZJJc7qoUG81fppCQLRBtU.Gun0NYxBfaWz8L6NAhvV59Jkui5RHZ2', 'Võ Minh Khôi', '0900000004', NULL, 'Active', '2026-05-27 09:23:08.229887', '2026-05-27 09:23:08.229887');
+-- Dedicated, clearly-named SystemAdmin account (role riêng, tách khỏi HR). Shares the standard demo
+-- password hash with the other seeded demo accounts. SystemAdmin permissions are inherited via the
+-- SystemAdmin role (see role_permissions for role 0137e9bc-...). Idempotent for re-runs.
+INSERT INTO public.users VALUES ('a0000000-0000-4000-8000-000000000001', 'admin', 'admin@recruitpro.vn', '$2a$06$kfKji00bWzacW3O75zipqeuZ.8ACaLYhuQZdGMcP6HGg4mbBqxlsG', 'Quản trị hệ thống', '0900000009', NULL, 'Active', '2026-05-27 09:23:08.229887', '2026-05-27 09:23:08.229887');
 INSERT INTO public.users VALUES ('d8f2b5c8-44f7-4f8d-8c4a-5a1f4c2e1001', 'haidang.tran@recruitpro.vn', 'haidang.tran@recruitpro.vn', '$2a$06$X3N6Q3QW7jYqK4dGQx0xVuvY8f7uK7wP6k2x2Y5wq1pM9R7Z2xYy6', 'Trần Hải Đăng', '0900000011', NULL, 'Active', '2026-05-28 09:00:00', '2026-05-28 09:00:00');
 INSERT INTO public.users VALUES ('a1b2c3d4-e5f6-4701-9802-abcdefabcdef', 'ducminh.nguyen@recruitpro.vn', 'ducminh.nguyen@recruitpro.vn', '$2a$06$Qp0Hn3gV8u4Dq8g0g6Q3nO9hG8hQv6O1T6qgK3lW7pX1mB9cD2eF4', 'Nguyễn Đức Minh', '0900000012', NULL, 'Active', '2026-05-28 09:05:00', '2026-05-28 09:05:00');
 INSERT INTO public.users VALUES ('b2c3d4e5-f6a7-4802-9903-fedcbafedcba', 'khanhnam.bui@recruitpro.vn', 'khanhnam.bui@recruitpro.vn', '$2a$06$J8kP2oL5sW1xV3nR6qT9uY0aB2cD4eF6gH8iJ0kL2mN4pQ6rS8tU', 'Bùi Khánh Nam', '0900000013', NULL, 'Active', '2026-05-28 09:10:00', '2026-05-28 09:10:00');
@@ -689,6 +693,8 @@ INSERT INTO public.user_roles VALUES ('e781ccd9-e6f8-4ce1-b15d-e142f8977a4e', 'e
 INSERT INTO public.user_roles VALUES ('721b1851-349a-48aa-acae-feed1c1843ed', '5f5350dc-a77f-4a68-88f8-69e27116aa8f', '2026-05-27 09:23:18.932331');
 INSERT INTO public.user_roles VALUES ('721b1851-349a-48aa-acae-feed1c1843ed', '7a5b2c6d-1e2f-4a3b-9c8d-112233445566', '2026-06-23 09:00:00');
 INSERT INTO public.user_roles VALUES ('92e1a5c1-d3bd-4512-b1df-c6d69d4a41e0', '0137e9bc-7ee4-463c-b760-1580ac17cdb6', '2026-05-27 09:23:18.932331');
+-- Dedicated admin account -> SystemAdmin role (chỉ role SystemAdmin, không gán role HR).
+INSERT INTO public.user_roles VALUES ('a0000000-0000-4000-8000-000000000001', '0137e9bc-7ee4-463c-b760-1580ac17cdb6', '2026-05-27 09:23:18.932331');
 INSERT INTO public.user_roles VALUES ('d8f2b5c8-44f7-4f8d-8c4a-5a1f4c2e1001', 'ef574bf3-08e1-4f25-932c-2d83ed8afd88', '2026-05-28 09:00:00');
 INSERT INTO public.user_roles VALUES ('a1b2c3d4-e5f6-4701-9802-abcdefabcdef', 'ef574bf3-08e1-4f25-932c-2d83ed8afd88', '2026-05-28 09:05:00');
 INSERT INTO public.user_roles VALUES ('b2c3d4e5-f6a7-4802-9903-fedcbafedcba', 'ef574bf3-08e1-4f25-932c-2d83ed8afd88', '2026-05-28 09:10:00');
