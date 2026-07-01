@@ -72,13 +72,6 @@ public class CopilotController : ControllerBase
         return StatusCode(result.StatusCode, result);
     }
 
-    [HttpPost("api/copilot/jobs/{jobId:guid}/shortlists")]
-    public async Task<IActionResult> GenerateShortlist(Guid jobId, [FromBody] ShortlistRequest request)
-    {
-        var result = await _copilotService.GenerateShortlistAsync(jobId, request, User.TryGetCurrentUserId(), User.GetRoles());
-        return StatusCode(result.StatusCode, result);
-    }
-
     [HttpPost("api/copilot/applications/{applicationId:guid}/emails/draft")]
     public async Task<IActionResult> DraftApplicationEmail(Guid applicationId, [FromBody] HrEmailDraftRequest request)
     {

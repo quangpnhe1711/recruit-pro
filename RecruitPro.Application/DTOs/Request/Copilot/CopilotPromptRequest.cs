@@ -32,12 +32,6 @@ public class InterviewQuestionRequest
     public int QuestionCount { get; set; } = 8;
 }
 
-public class ShortlistRequest
-{
-    public string Prompt { get; set; } = string.Empty;
-    public int MaxCandidates { get; set; } = 5;
-}
-
 public class HrEmailDraftRequest
 {
     public string TemplateType { get; set; } = "screening_follow_up";

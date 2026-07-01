@@ -13,7 +13,6 @@ public interface ICopilotService
     Task<ApiResponse<NaturalLanguageCandidateSearchResponseDto>> SearchCandidatesAsync(NaturalLanguageCandidateSearchRequest request, Guid? callerUserId, IReadOnlyCollection<string> callerRoles);
     Task<ApiResponse<CandidateFitAnalysisResponseDto>> AnalyzeCandidateFitAsync(Guid jobId, CandidateFitAnalysisRequest request, Guid? callerUserId, IReadOnlyCollection<string> callerRoles);
     Task<ApiResponse<InterviewQuestionSetDto>> GenerateInterviewQuestionsAsync(Guid jobId, InterviewQuestionRequest request, Guid? callerUserId, IReadOnlyCollection<string> callerRoles);
-    Task<ApiResponse<ShortlistSuggestionResponseDto>> GenerateShortlistAsync(Guid jobId, ShortlistRequest request, Guid? callerUserId, IReadOnlyCollection<string> callerRoles);
     Task<ApiResponse<HrEmailDraftResponseDto>> DraftApplicationEmailAsync(Guid applicationId, HrEmailDraftRequest request, Guid? callerUserId, IReadOnlyCollection<string> callerRoles);
     Task<ApiResponse<IReadOnlyList<CopilotPromptTemplateDto>>> GetPromptTemplatesAsync(Guid userId);
     Task<ApiResponse<CopilotPromptTemplateDto>> CreatePromptTemplateAsync(CreateCopilotPromptTemplateRequest request, Guid userId);

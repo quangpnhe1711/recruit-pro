@@ -352,65 +352,6 @@ public class CopilotService : ICopilotService
         return ApiResponse<InterviewQuestionSetDto>.Ok(response);
     }
 
-    public async Task<ApiResponse<ShortlistSuggestionResponseDto>> GenerateShortlistAsync(
-        Guid jobId,
-        ShortlistRequest request,
-        Guid? callerUserId,
-        IReadOnlyCollection<string> callerRoles)
-    {
-        // v2 §10 — shortlist DERIVES FROM the latest ranking result. It takes the top-N non-rejected
-        // screening candidates in the exact order ranking produced them; it never re-ranks, never
-        // reorders and never makes an independent provider call.
-        ApiResponse<CopilotCandidatePoolDto> poolResponse = await GetCandidatePoolAsync(jobId, callerUserId, callerRoles);
-        if (!poolResponse.Success || poolResponse.Data is null)
-        {
-            return MirrorFailure<ShortlistSuggestionResponseDto>(poolResponse.StatusCode, poolResponse.Message, poolResponse.ErrorCode);
-        }
-
-        int maxCandidates = Math.Clamp(request.MaxCandidates <= 0 ? 5 : request.MaxCandidates, 1, 10);
-        CopilotRankingSession? session = callerUserId.HasValue
-            ? await _copilotRepository.GetLatestRankingSessionForJobAsync(jobId, callerUserId.Value)
-            : null;
-
-        if (session is null)
-        {
-            return ApiResponse<ShortlistSuggestionResponseDto>.Ok(new ShortlistSuggestionResponseDto
-            {
-                JobId = jobId,
-                Suggestions = [],
-                Ai = BuildDeterministicMetadata(
-                    "Chưa có kết quả xếp hạng cho vị trí này. Hãy chạy xếp hạng ứng viên trước để tạo shortlist.")
-            });
-        }
-
-        CopilotRankingSessionDetailDto detail = _mapper.Map<CopilotRankingSessionDetailDto>(session);
-        IReadOnlyList<ShortlistSuggestionDto> suggestions = detail.Results
-            .Where(result => !result.IsAutoRejected)
-            .OrderBy(result => result.RankPosition)
-            .Take(maxCandidates)
-            .Select(result => new ShortlistSuggestionDto
-            {
-                CandidateUserId = result.CandidateUserId,
-                ApplicationId = result.ApplicationId,
-                FullName = result.FullName,
-                RankPosition = result.RankPosition,
-                Score = result.TotalScore,
-                Recommendation = result.Recommendation,
-                Rationale = result.Evidence.Count > 0 ? result.Evidence : BuildRationale(result)
-            })
-            .ToList();
-
-        ShortlistSuggestionResponseDto response = new()
-        {
-            JobId = jobId,
-            Suggestions = suggestions,
-            Ai = BuildDeterministicMetadata(
-                "shortlist:derived-from-ranking — shortlist lấy top ứng viên từ kết quả xếp hạng gần nhất; việc chuyển hồ sơ vẫn là thao tác riêng của HR.")
-        };
-
-        return ApiResponse<ShortlistSuggestionResponseDto>.Ok(response);
-    }
-
     public async Task<ApiResponse<HrEmailDraftResponseDto>> DraftApplicationEmailAsync(
         Guid applicationId,
         HrEmailDraftRequest request,
@@ -1592,17 +1533,6 @@ public class CopilotService : ICopilotService
                 && !string.IsNullOrWhiteSpace(question.Evidence));
     }
 
-    private static bool ValidateShortlist(ShortlistSuggestionResponseDto response)
-    {
-        return response.JobId != Guid.Empty
-            && response.Suggestions.Count > 0
-            && response.Suggestions.All(suggestion =>
-                suggestion.CandidateUserId != Guid.Empty
-                && suggestion.ApplicationId != Guid.Empty
-                && !string.IsNullOrWhiteSpace(suggestion.FullName)
-                && !string.IsNullOrWhiteSpace(suggestion.Recommendation));
-    }
-
     private static bool ValidateEmailDraft(HrEmailDraftResponseDto response)
     {
         return response.ApplicationId != Guid.Empty
@@ -1658,21 +1588,6 @@ public class CopilotService : ICopilotService
         }
         Required: jobId, focus, exactly or up to {{questionCount}} useful questions, category, question, evidence.
         Use Vietnamese for all human-facing prose (question, evidence, category). Keep JSON keys unchanged.
-        """;
-    }
-
-    private static string ShortlistInstructions(int maxCandidates)
-    {
-        return $$"""
-        Generate shortlist suggestions using only the provided deterministic ranking and ATS evidence.
-        Return this JSON shape:
-        {
-          "jobId": "uuid",
-          "suggestions": [
-            { "candidateUserId": "uuid", "applicationId": "uuid", "fullName": "name", "rankPosition": 1, "score": 0, "recommendation": "string", "rationale": [] }
-          ]
-        }
-        Required: jobId, 1..{{maxCandidates}} suggestions, candidate/application ids, fullName, recommendation.
         """;
     }
 

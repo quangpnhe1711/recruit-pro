@@ -742,69 +742,6 @@ public sealed class CopilotServiceUnitTests
     }
 
     [Fact]
-    public async Task GenerateShortlistAsync_DerivesTopNFromLatestRanking_NoProviderCall()
-    {
-        // v2 §10 — shortlist takes the top-N non-rejected candidates from the latest ranking result in
-        // ranking order. It does not call the provider or persist an artifact.
-        var repository = new Mock<ICopilotRepository>();
-        var jobRepository = new Mock<IJobRepository>();
-        var aiProvider = new Mock<IAiCopilotProvider>();
-        Guid jobId = Guid.NewGuid();
-        Guid ownerId = Guid.NewGuid();
-
-        jobRepository.Setup(value => value.GetByIdAsync(jobId)).ReturnsAsync(new Job { Id = jobId, CreatedBy = ownerId, Title = "Senior .NET Engineer" });
-        repository.Setup(value => value.GetCandidatePoolAsync(jobId)).ReturnsAsync(BuildCopilotPool(jobId));
-        repository.Setup(value => value.GetLatestRankingSessionForJobAsync(jobId, ownerId)).ReturnsAsync(new CopilotRankingSession
-        {
-            Id = Guid.NewGuid(),
-            JobId = jobId,
-            UserId = ownerId,
-            NormalizedRulesJson = "{}",
-            Results =
-            [
-                new CopilotRankingResult
-                {
-                    CandidateUserId = Guid.NewGuid(),
-                    ApplicationId = Guid.NewGuid(),
-                    RankPosition = 1,
-                    TotalScore = 90,
-                    Recommendation = "Interview",
-                    StrengthsJson = "[\".NET\"]",
-                    WeaknessesJson = "[]",
-                    ExplanationJson = JsonSerializer.Serialize(new { Summary = "Phù hợp mạnh.", IsAiGenerated = false, FitLabel = "StrongFit", ConfidenceScore = 90m, Evidence = new[] { "Điểm mạnh: .NET." } }),
-                    Application = new Domain.Entities.Application { Id = Guid.NewGuid(), User = new User { FullName = "Strong Candidate" } }
-                },
-                new CopilotRankingResult
-                {
-                    CandidateUserId = Guid.NewGuid(),
-                    ApplicationId = Guid.NewGuid(),
-                    RankPosition = 2,
-                    TotalScore = 20,
-                    Recommendation = "Reject",
-                    IsAutoRejected = true,
-                    StrengthsJson = "[]",
-                    WeaknessesJson = "[\"Thiếu .NET\"]",
-                    ExplanationJson = JsonSerializer.Serialize(new { Summary = "Không được đề xuất.", IsAiGenerated = false, FitLabel = "NotRecommended", ConfidenceScore = 25m, Evidence = new[] { "Lý do tự động loại." } }),
-                    Application = new Domain.Entities.Application { Id = Guid.NewGuid(), User = new User { FullName = "Rejected Candidate" } }
-                }
-            ]
-        });
-
-        CopilotService service = CreateService(repository.Object, jobRepository.Object, aiProvider: aiProvider.Object,
-            aiSettings: new AiProviderSettings { Enabled = true, ApiKey = "test-key", Model = "shortlist-model" });
-
-        var response = await service.GenerateShortlistAsync(jobId, new ShortlistRequest { MaxCandidates = 3 }, ownerId, ["HR"]);
-
-        response.Success.Should().BeTrue();
-        // The auto-rejected candidate is excluded; only the ranked-1 non-rejected candidate remains.
-        response.Data!.Suggestions.Should().ContainSingle();
-        response.Data.Suggestions[0].FullName.Should().Be("Strong Candidate");
-        response.Data.Suggestions[0].RankPosition.Should().Be(1);
-        aiProvider.Verify(value => value.TryCreateStructuredJsonAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
-        repository.Verify(value => value.AddGeneratedArtifactAsync(It.IsAny<CopilotGeneratedArtifact>()), Times.Never);
-    }
-
-    [Fact]
     public async Task DraftApplicationEmailAsync_IsDeprecated_NoProviderCallNoArtifact()
     {
         // v2 §2 — AI email drafting is removed from the active flow: deterministic template only,

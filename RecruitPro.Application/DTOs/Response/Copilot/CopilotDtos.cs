@@ -275,24 +275,6 @@ public class InterviewQuestionDto
     public string Evidence { get; set; } = string.Empty;
 }
 
-public class ShortlistSuggestionResponseDto
-{
-    public Guid JobId { get; set; }
-    public IReadOnlyList<ShortlistSuggestionDto> Suggestions { get; set; } = [];
-    public CopilotAiMetadataDto Ai { get; set; } = new();
-}
-
-public class ShortlistSuggestionDto
-{
-    public Guid CandidateUserId { get; set; }
-    public Guid ApplicationId { get; set; }
-    public string FullName { get; set; } = string.Empty;
-    public int RankPosition { get; set; }
-    public decimal Score { get; set; }
-    public string Recommendation { get; set; } = string.Empty;
-    public IReadOnlyList<string> Rationale { get; set; } = [];
-}
-
 // v2: result of the explicit HR "Pass CV / Send to Head Review" action. AI never performs this
 // transition — it only recommends. Moved applications go Screening -> ManagerReview (the
 // Head/Department-Head review stage).
