@@ -23,7 +23,10 @@ public class CopilotController : ControllerBase
     [HttpGet("api/copilot/jobs")]
     public async Task<IActionResult> GetJobs()
     {
-        var result = await _copilotService.GetJobsAsync();
+        // Scope the job picker to jobs the caller actually owns (creator / recruiter / department head).
+        // Without this the dropdown lists every job and selecting one the caller cannot access returns a
+        // 403 from the candidate-pool endpoint's ownership check.
+        var result = await _copilotService.GetJobsAsync(User.GetCurrentUserId());
         return StatusCode(result.StatusCode, result);
     }
 

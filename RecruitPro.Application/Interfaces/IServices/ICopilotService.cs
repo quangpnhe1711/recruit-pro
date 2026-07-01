@@ -6,7 +6,7 @@ namespace RecruitPro.Application.Interfaces.IServices;
 
 public interface ICopilotService
 {
-    Task<ApiResponse<IReadOnlyList<CopilotJobOptionDto>>> GetJobsAsync();
+    Task<ApiResponse<IReadOnlyList<CopilotJobOptionDto>>> GetJobsAsync(Guid callerUserId);
     Task<ApiResponse<CopilotConversationDto>> CreateConversationAsync(CreateCopilotConversationRequest request, Guid userId);
     Task<ApiResponse<CopilotConversationDetailDto>> GetConversationAsync(Guid conversationId, Guid userId);
     Task<ApiResponse<CopilotCandidatePoolDto>> GetCandidatePoolAsync(Guid jobId, Guid? callerUserId, IReadOnlyCollection<string> callerRoles);

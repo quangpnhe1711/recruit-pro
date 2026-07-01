@@ -5,7 +5,7 @@ namespace RecruitPro.Application.Interfaces.IRepositories;
 
 public interface ICopilotRepository
 {
-    Task<IReadOnlyList<CopilotJobOptionDto>> GetJobOptionsAsync();
+    Task<IReadOnlyList<CopilotJobOptionDto>> GetJobOptionsAsync(Guid callerUserId);
     Task<CopilotCandidatePoolDto?> GetCandidatePoolAsync(Guid jobId);
     Task<CopilotConversation?> GetConversationAsync(Guid conversationId);
     Task<CopilotConversation?> GetConversationWithDetailsAsync(Guid conversationId);

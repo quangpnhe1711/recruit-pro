@@ -17,11 +17,18 @@ public class CopilotRepository : ICopilotRepository
         _context = context;
     }
 
-    public async Task<IReadOnlyList<CopilotJobOptionDto>> GetJobOptionsAsync()
+    public async Task<IReadOnlyList<CopilotJobOptionDto>> GetJobOptionsAsync(Guid callerUserId)
     {
         return await _context.Jobs
             .AsNoTracking()
             .Where(job => !Constants.NOT_SHOW_JOB_STATUS.Contains(job.Status))
+            // Ownership scope (mirrors OwnershipScope.CanAccessJob / JobRepository.GetPagedAsync): the
+            // caller only sees jobs they created, recruit, or head the department of. Keeps the picker in
+            // sync with the candidate-pool endpoint so a listed job never 403s when opened.
+            .Where(job =>
+                job.CreatedBy == callerUserId
+                || job.RecruiterId == callerUserId
+                || (job.Department != null && job.Department.HeadUserId == callerUserId))
             .OrderByDescending(job => job.CreatedAt)
             .Select(job => new CopilotJobOptionDto
             {

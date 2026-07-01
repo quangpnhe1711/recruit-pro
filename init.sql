@@ -1451,6 +1451,97 @@ CREATE INDEX IF NOT EXISTS ix_copilot_saved_rules_job_user_deleted ON public.cop
 CREATE INDEX IF NOT EXISTS ix_copilot_candidate_tags_job_tag ON public.copilot_candidate_tags USING btree (job_id, tag_name);
 
 --
+-- Copilot v2 artifacts (migration 20260630000000_AddCopilotV2Artifacts)
+-- Prompt templates, per-candidate fit analyses, and persisted generated artifacts.
+-- Keep in sync with RecruitPro.Infrastructure/Migrations/20260630000000_AddCopilotV2Artifacts.cs.
+--
+
+CREATE TABLE IF NOT EXISTS public.copilot_prompt_templates (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    owner_user_id uuid NOT NULL,
+    name character varying(200) NOT NULL,
+    template_type character varying(60) NOT NULL,
+    prompt text NOT NULL,
+    is_active boolean DEFAULT true NOT NULL,
+    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS public.candidate_fit_analyses (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    audit_id uuid NOT NULL,
+    job_id uuid NOT NULL,
+    candidate_user_id uuid NOT NULL,
+    application_id uuid NOT NULL,
+    fit_label character varying(40) NOT NULL,
+    confidence_score numeric(5,2) NOT NULL,
+    total_score numeric(5,2) NOT NULL,
+    strengths_json jsonb DEFAULT '[]'::jsonb NOT NULL,
+    gaps_json jsonb DEFAULT '[]'::jsonb NOT NULL,
+    evidence_json jsonb DEFAULT '[]'::jsonb NOT NULL,
+    summary text NOT NULL,
+    provider_name character varying(100) NOT NULL,
+    model_name character varying(100) NOT NULL,
+    fallback_used boolean DEFAULT false NOT NULL,
+    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS public.copilot_generated_artifacts (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    owner_user_id uuid NOT NULL,
+    job_id uuid,
+    application_id uuid,
+    artifact_type character varying(60) NOT NULL,
+    prompt text DEFAULT ''::text NOT NULL,
+    payload_json jsonb DEFAULT '{}'::jsonb NOT NULL,
+    provider_name character varying(100) NOT NULL,
+    model_name character varying(100) NOT NULL,
+    fallback_used boolean DEFAULT false NOT NULL,
+    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'copilot_prompt_templates_pkey') THEN
+        ALTER TABLE ONLY public.copilot_prompt_templates ADD CONSTRAINT copilot_prompt_templates_pkey PRIMARY KEY (id);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'candidate_fit_analyses_pkey') THEN
+        ALTER TABLE ONLY public.candidate_fit_analyses ADD CONSTRAINT candidate_fit_analyses_pkey PRIMARY KEY (id);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'copilot_generated_artifacts_pkey') THEN
+        ALTER TABLE ONLY public.copilot_generated_artifacts ADD CONSTRAINT copilot_generated_artifacts_pkey PRIMARY KEY (id);
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'copilot_prompt_templates_owner_user_id_fkey') THEN
+        ALTER TABLE ONLY public.copilot_prompt_templates ADD CONSTRAINT copilot_prompt_templates_owner_user_id_fkey FOREIGN KEY (owner_user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'candidate_fit_analyses_job_id_fkey') THEN
+        ALTER TABLE ONLY public.candidate_fit_analyses ADD CONSTRAINT candidate_fit_analyses_job_id_fkey FOREIGN KEY (job_id) REFERENCES public.jobs(id) ON DELETE CASCADE;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'candidate_fit_analyses_candidate_user_id_fkey') THEN
+        ALTER TABLE ONLY public.candidate_fit_analyses ADD CONSTRAINT candidate_fit_analyses_candidate_user_id_fkey FOREIGN KEY (candidate_user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'candidate_fit_analyses_application_id_fkey') THEN
+        ALTER TABLE ONLY public.candidate_fit_analyses ADD CONSTRAINT candidate_fit_analyses_application_id_fkey FOREIGN KEY (application_id) REFERENCES public.applications(id) ON DELETE CASCADE;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'copilot_generated_artifacts_owner_user_id_fkey') THEN
+        ALTER TABLE ONLY public.copilot_generated_artifacts ADD CONSTRAINT copilot_generated_artifacts_owner_user_id_fkey FOREIGN KEY (owner_user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'copilot_generated_artifacts_job_id_fkey') THEN
+        ALTER TABLE ONLY public.copilot_generated_artifacts ADD CONSTRAINT copilot_generated_artifacts_job_id_fkey FOREIGN KEY (job_id) REFERENCES public.jobs(id) ON DELETE SET NULL;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'copilot_generated_artifacts_application_id_fkey') THEN
+        ALTER TABLE ONLY public.copilot_generated_artifacts ADD CONSTRAINT copilot_generated_artifacts_application_id_fkey FOREIGN KEY (application_id) REFERENCES public.applications(id) ON DELETE SET NULL;
+    END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS ix_copilot_prompt_templates_owner_type_active ON public.copilot_prompt_templates USING btree (owner_user_id, template_type, is_active);
+CREATE INDEX IF NOT EXISTS ix_candidate_fit_analyses_job_candidate_created ON public.candidate_fit_analyses USING btree (job_id, candidate_user_id, created_at);
+CREATE INDEX IF NOT EXISTS ix_candidate_fit_analyses_audit_id ON public.candidate_fit_analyses USING btree (audit_id);
+CREATE INDEX IF NOT EXISTS ix_copilot_generated_artifacts_owner_type_created ON public.copilot_generated_artifacts USING btree (owner_user_id, artifact_type, created_at);
+CREATE INDEX IF NOT EXISTS ix_copilot_generated_artifacts_job_created ON public.copilot_generated_artifacts USING btree (job_id, created_at);
+
+--
 -- Candidate profile / job skill redesign patch
 -- Keeps init.sql aligned with the newer structured profile model.
 --

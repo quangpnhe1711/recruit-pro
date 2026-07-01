@@ -445,8 +445,9 @@ public sealed class CopilotServiceUnitTests
     [Fact]
     public async Task GetJobsAsync_ReturnsRepositoryJobOptions()
     {
+        var callerUserId = Guid.NewGuid();
         var repository = new Mock<ICopilotRepository>();
-        repository.Setup(value => value.GetJobOptionsAsync())
+        repository.Setup(value => value.GetJobOptionsAsync(callerUserId))
             .ReturnsAsync([new CopilotJobOptionDto { JobId = Guid.NewGuid(), Title = "Senior .NET" }]);
 
         var service = new CopilotService(
@@ -460,7 +461,7 @@ public sealed class CopilotServiceUnitTests
             Options.Create(new AiProviderSettings()),
             TestMapperFactory.Create());
 
-        var response = await service.GetJobsAsync();
+        var response = await service.GetJobsAsync(callerUserId);
 
         response.Success.Should().BeTrue();
         response.Data.Should().HaveCount(1);

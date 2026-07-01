@@ -63,9 +63,11 @@ public class CopilotService : ICopilotService
     /// Retrieves jobs.
     /// </summary>
     /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
-    public async Task<ApiResponse<IReadOnlyList<CopilotJobOptionDto>>> GetJobsAsync()
+    public async Task<ApiResponse<IReadOnlyList<CopilotJobOptionDto>>> GetJobsAsync(Guid callerUserId)
     {
-        IReadOnlyList<CopilotJobOptionDto> jobs = await _copilotRepository.GetJobOptionsAsync();
+        // Only surface jobs the caller owns so the picker never offers a job whose candidate pool the
+        // caller would be forbidden from opening (mirrors OwnershipScope.CanAccessJob).
+        IReadOnlyList<CopilotJobOptionDto> jobs = await _copilotRepository.GetJobOptionsAsync(callerUserId);
         return ApiResponse<IReadOnlyList<CopilotJobOptionDto>>.Ok(jobs);
     }
 
