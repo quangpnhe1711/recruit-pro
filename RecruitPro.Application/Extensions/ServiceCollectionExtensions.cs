@@ -1,7 +1,11 @@
 using Microsoft.Extensions.DependencyInjection;
 using RecruitPro.Application.Interfaces;
 using RecruitPro.Application.Interfaces.IServices;
+using RecruitPro.Application.Interfaces.IServices.Automation;
 using RecruitPro.Application.Services;
+using RecruitPro.Application.Services.Automation;
+using RecruitPro.Application.Services.Automation.Handlers;
+using RecruitPro.Application.Services.Automation.Mcp;
 
 namespace RecruitPro.Application.Extensions;
 
@@ -25,6 +29,43 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IUserService, UserService>();
         services.AddScoped<IApplicationOwnershipResolver, ApplicationOwnershipResolver>();
 
+        AddWorkflowAutomationServices(services);
+
         return services;
+    }
+
+    /// <summary>v4 Workflow Automation + MCP services (deterministic-first; AI optional).</summary>
+    private static void AddWorkflowAutomationServices(IServiceCollection services)
+    {
+        // Event bus + engine
+        services.AddScoped<IRecruitProEventBus, RecruitProEventBus>();
+        services.AddScoped<IWorkflowConditionEvaluator, WorkflowConditionEvaluator>();
+        services.AddScoped<IWorkflowActionRegistry, WorkflowActionRegistry>();
+        services.AddScoped<IWorkflowNotificationDispatcher, WorkflowNotificationDispatcher>();
+        services.AddScoped<IWorkflowEngine, WorkflowEngine>();
+        services.AddScoped<IWorkflowRetryService, WorkflowRetryService>();
+        services.AddScoped<IWorkflowTemplateSeeder, WorkflowTemplateSeeder>();
+
+        // Action handlers (deterministic, safe)
+        services.AddScoped<IWorkflowActionHandler, NotifyUserActionHandler>();
+        services.AddScoped<IWorkflowActionHandler, NotifyRoleActionHandler>();
+        services.AddScoped<IWorkflowActionHandler, SendReminderActionHandler>();
+        services.AddScoped<IWorkflowActionHandler, RuleBasedNextStepSuggestionActionHandler>();
+        services.AddScoped<IWorkflowActionHandler, ShadowLogActionHandler>();
+
+        // SystemAdmin-facing services
+        services.AddScoped<IWorkflowDefinitionService, WorkflowDefinitionService>();
+        services.AddScoped<IWorkflowExecutionService, WorkflowExecutionService>();
+
+        // MCP tools + registry + services
+        services.AddScoped<IMcpTool, JobsSearchTool>();
+        services.AddScoped<IMcpTool, JobsGetTool>();
+        services.AddScoped<IMcpTool, ApplicationsGetTool>();
+        services.AddScoped<IMcpTool, ApplicationsGetFitAnalysisTool>();
+        services.AddScoped<IMcpTool, InterviewsGetScheduleTool>();
+        services.AddScoped<IMcpTool, AnalyticsGetFunnelSummaryTool>();
+        services.AddScoped<IMcpToolRegistry, McpToolRegistry>();
+        services.AddScoped<IMcpToolService, McpToolService>();
+        services.AddScoped<IMcpToolAuditService, McpToolAuditService>();
     }
 }

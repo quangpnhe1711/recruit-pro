@@ -25,6 +25,13 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ISkillRepository, SkillRepository>();
         services.AddScoped<ICopilotRepository, CopilotRepository>();
 
+        // v4 Workflow Automation + MCP
+        services.AddScoped<IEventOutboxRepository, EventOutboxRepository>();
+        services.AddScoped<IWorkflowRepository, WorkflowRepository>();
+        services.AddScoped<IMcpToolAuditRepository, McpToolAuditRepository>();
+        services.AddScoped<RecruitPro.Application.Interfaces.IServices.Automation.IHeadReviewOverdueScanner,
+            RecruitPro.Infrastructure.Service.Automation.HeadReviewOverdueScanner>();
+
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<IJwtService, JwtService>();
         services.AddSingleton<IResumeTextExtractor, PdfResumeTextExtractor>();

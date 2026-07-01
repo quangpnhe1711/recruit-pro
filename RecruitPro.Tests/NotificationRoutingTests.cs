@@ -38,7 +38,8 @@ public sealed class NotificationRoutingTests
             repository.Object,
             userRepository.Object,
             Mock.Of<INotificationRealtimeSender>(),
-            Mock.Of<IUnitOfWork>());
+            Mock.Of<IUnitOfWork>(),
+            Mock.Of<RecruitPro.Application.Interfaces.IServices.Automation.IRecruitProEventBus>());
 
         return (service, captured);
     }

@@ -1441,7 +1441,8 @@ public sealed class NotificationEventServiceUnitTests
             notificationRepository.Object,
             Mock.Of<IUserRepository>(),
             realtimeSender.Object,
-            unitOfWork.Object);
+            unitOfWork.Object,
+            Mock.Of<RecruitPro.Application.Interfaces.IServices.Automation.IRecruitProEventBus>());
         var application = new Domain.Entities.Application
         {
             Id = Guid.NewGuid(),

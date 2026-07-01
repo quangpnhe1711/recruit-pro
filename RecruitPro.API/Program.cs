@@ -84,6 +84,9 @@ builder.Services.Configure<MinioSettings>(builder.Configuration.GetSection("Mini
 // config AI provider settings
 builder.Services.Configure<AiProviderSettings>(builder.Configuration.GetSection("AiProvider"));
 
+// config v4 Workflow Automation cutover settings
+builder.Services.Configure<WorkflowAutomationSettings>(builder.Configuration.GetSection("WorkflowAutomation"));
+
 // cors config
 string[] allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
     ?? ["http://localhost:5173"];
@@ -107,6 +110,16 @@ builder.Services.AddInfrastructureServices();
 //register services
 builder.Services.AddApplicationBusinessLogicServices();
 builder.Services.AddHostedService<SemanticScoringBackgroundService>();
+
+// v4 Workflow Automation background workers. Disabled under the "Testing" environment so integration
+// tests drive the engine/scanner/retry deterministically via DI instead of racing the loops.
+if (!builder.Environment.IsEnvironment("Testing"))
+{
+    builder.Services.AddHostedService<RecruitPro.API.Automation.WorkflowSeederHostedService>();
+    builder.Services.AddHostedService<RecruitPro.API.Automation.WorkflowDispatcherBackgroundService>();
+    builder.Services.AddHostedService<RecruitPro.API.Automation.WorkflowRetryBackgroundService>();
+    builder.Services.AddHostedService<RecruitPro.API.Automation.HeadReviewOverdueSchedulerBackgroundService>();
+}
 
 //register auto mapper
 builder.Services.AddAutoMapper(_ => { }, AppDomain.CurrentDomain.GetAssemblies());

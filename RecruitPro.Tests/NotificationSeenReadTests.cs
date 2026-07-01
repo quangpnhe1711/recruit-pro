@@ -154,7 +154,8 @@ public sealed class NotificationSeenReadTests
             .Returns(Task.CompletedTask);
 
         var eventService = new NotificationEventService(
-            repo.Object, userRepo.Object, realtimeSender.Object, Mock.Of<IUnitOfWork>());
+            repo.Object, userRepo.Object, realtimeSender.Object, Mock.Of<IUnitOfWork>(),
+            Mock.Of<RecruitPro.Application.Interfaces.IServices.Automation.IRecruitProEventBus>());
 
         var job = new Job { Id = Guid.NewGuid(), Title = "Dev" };
         var app = new Domain.Entities.Application

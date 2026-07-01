@@ -1,9 +1,14 @@
+using Microsoft.Extensions.Options;
+using RecruitPro.Application.Automation;
 using RecruitPro.Application.Common;
+using RecruitPro.Application.Configurations;
 using RecruitPro.Application.DTOs.Response;
 using RecruitPro.Application.Interfaces;
 using RecruitPro.Application.Interfaces.IRepositories;
 using RecruitPro.Application.Interfaces.IServices;
+using RecruitPro.Application.Interfaces.IServices.Automation;
 using RecruitPro.Application.Notifications;
+using RecruitPro.Domain.Automation;
 using RecruitPro.Domain.Constants;
 using RecruitPro.Domain.Entities;
 using RecruitPro.Domain.Enums;
@@ -28,17 +33,20 @@ public class NotificationEventService : INotificationEventService
     private readonly IUserRepository _userRepository;
     private readonly INotificationRealtimeSender _notificationRealtimeSender;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IRecruitProEventBus _eventBus;
 
     public NotificationEventService(
         INotificationRepository notificationRepository,
         IUserRepository userRepository,
         INotificationRealtimeSender notificationRealtimeSender,
-        IUnitOfWork unitOfWork)
+        IUnitOfWork unitOfWork,
+        IRecruitProEventBus eventBus)
     {
         _notificationRepository = notificationRepository;
         _userRepository = userRepository;
         _notificationRealtimeSender = notificationRealtimeSender;
         _unitOfWork = unitOfWork;
+        _eventBus = eventBus;
     }
 
     // ============================ Job workflow ============================
@@ -66,6 +74,25 @@ public class NotificationEventService : INotificationEventService
 
     public async Task PublishJobApprovedAsync(Job job)
     {
+        // v4 cutover: JobApproved.
+        Dictionary<string, object?> jobPayload = new()
+        {
+            ["jobId"] = job.Id,
+            ["jobTitle"] = job.Title,
+            ["departmentId"] = job.DepartmentId,
+            ["recruiterId"] = job.RecruiterId ?? job.CreatedBy,
+            ["departmentHeadId"] = job.Department?.HeadUserId,
+            ["createdBy"] = job.CreatedBy,
+            ["approvedBy"] = job.ApprovedBy,
+        };
+        WorkflowMode jobMode = await _eventBus.PublishAsync(
+            WorkflowEventTypes.JobApproved, "Job", job.Id,
+            WorkflowDedup.ForTransition(WorkflowEventTypes.JobApproved, "job", job.Id), jobPayload, DbDateTime.Now);
+        if (jobMode == WorkflowMode.Live)
+        {
+            return;
+        }
+
         Guid recruiterId = job.RecruiterId ?? job.CreatedBy;
         NotificationTemplates.Message message = NotificationTemplates.JobApproved(job.Title);
 
@@ -101,6 +128,14 @@ public class NotificationEventService : INotificationEventService
     {
         // HR-first (BR-OWN-006): route to the assigned recruiter only — NOT the department head.
         ApplicationOwnership ownership = ApplicationOwnershipResolver.Resolve(application);
+
+        // v4 cutover: publish the durable event. In Live mode the workflow owns this notification, so the
+        // old direct call below is skipped (exactly one source sends). Shadow/Disabled keep the old call.
+        if (await PublishAtsEventAsync(WorkflowEventTypes.CandidateApplied, "app", application, ownership) == WorkflowMode.Live)
+        {
+            return;
+        }
+
         if (ownership.RecruiterUserId is not { } recruiterId)
         {
             return;
@@ -132,6 +167,20 @@ public class NotificationEventService : INotificationEventService
     public async Task PublishDepartmentHeadReviewRequestedAsync(RecruitPro.Domain.Entities.Application application, Guid? actorUserId)
     {
         ApplicationOwnership ownership = ApplicationOwnershipResolver.Resolve(application);
+
+        // v4 cutover: PassedToHeadReview (Screening -> ManagerReview).
+        if (await PublishAtsEventAsync(WorkflowEventTypes.PassedToHeadReview, "app", application, ownership,
+                enrich: p =>
+                {
+                    p["oldStatus"] = ApplicationStatus.Screening.ToString();
+                    p["newStatus"] = ApplicationStatus.ManagerReview.ToString();
+                    p["actorUserId"] = actorUserId;
+                    p["departmentHeadReviewRequestedAt"] = application.DepartmentHeadReviewRequestedAt;
+                }) == WorkflowMode.Live)
+        {
+            return;
+        }
+
         if (ownership.DepartmentHeadUserId is not { } headId)
         {
             return;
@@ -260,6 +309,19 @@ public class NotificationEventService : INotificationEventService
     public async Task PublishInterviewCompletedAsync(RecruitPro.Domain.Entities.Application application, Interview interview)
     {
         ApplicationOwnership ownership = ApplicationOwnershipResolver.Resolve(application);
+
+        // v4 cutover: InterviewCompleted (dedup per interview so re-completing the same interview is a no-op).
+        if (await PublishAtsEventAsync(WorkflowEventTypes.InterviewCompleted, "interview", application, ownership,
+                dedupId: interview.Id,
+                enrich: p =>
+                {
+                    p["interviewId"] = interview.Id;
+                    p["interviewStatus"] = interview.Status?.ToString();
+                }) == WorkflowMode.Live)
+        {
+            return;
+        }
+
         NotificationTemplates.Message message = NotificationTemplates.InterviewCompleted(
             CandidateName(application), JobTitle(application));
 
@@ -587,6 +649,28 @@ public class NotificationEventService : INotificationEventService
         ["recruiterId"] = ownership.RecruiterUserId,
         ["departmentHeadId"] = ownership.DepartmentHeadUserId,
     };
+
+    /// <summary>
+    /// Publishes a durable application-scoped domain event (idempotent) and returns the effective cutover
+    /// mode. Payload carries ownership + score fields so workflow conditions/recipients can resolve them.
+    /// </summary>
+    private async Task<WorkflowMode> PublishAtsEventAsync(
+        string eventType,
+        string dedupShortType,
+        RecruitPro.Domain.Entities.Application application,
+        ApplicationOwnership ownership,
+        Guid? dedupId = null,
+        Action<Dictionary<string, object?>>? enrich = null)
+    {
+        Dictionary<string, object?> payload = BuildApplicationData(application, ownership);
+        payload["finalScore"] = application.FinalScore;
+        payload["status"] = application.Status.ToString();
+        enrich?.Invoke(payload);
+
+        Guid dedupSubject = dedupId ?? application.Id;
+        string dedupKey = WorkflowDedup.ForTransition(eventType, dedupShortType, dedupSubject);
+        return await _eventBus.PublishAsync(eventType, "Application", application.Id, dedupKey, payload, DbDateTime.Now);
+    }
 
     private static Dictionary<string, object?> BuildJobData(Job job, Guid? actorUserId) => new()
     {
