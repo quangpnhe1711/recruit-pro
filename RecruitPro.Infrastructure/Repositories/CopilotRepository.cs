@@ -4,6 +4,7 @@ using RecruitPro.Application.DTOs.Response.Copilot;
 using RecruitPro.Application.Interfaces.IRepositories;
 using RecruitPro.Domain.Constants;
 using RecruitPro.Domain.Entities;
+using RecruitPro.Domain.Enums;
 using RecruitPro.Infrastructure.Data;
 
 namespace RecruitPro.Infrastructure.Repositories;
@@ -64,9 +65,13 @@ public class CopilotRepository : ICopilotRepository
             return null;
         }
 
+        // v2: the Copilot is a CV-screening tool. Its candidate pool only contains applications
+        // currently in the Screening stage — candidates already at ManagerReview (Head Review),
+        // Interview, Offer, Hired or a closed state are excluded, so passing a CV to Head Review makes
+        // that candidate leave the pool and the ranking list on refresh (v2 §6/§15).
         List<RecruitPro.Domain.Entities.Application> applications = await _context.Applications
             .AsNoTracking()
-            .Where(application => application.JobId == jobId)
+            .Where(application => application.JobId == jobId && application.Status == ApplicationStatus.Screening)
             .OrderByDescending(application => application.AppliedAt)
             .Include(application => application.User)
                 .ThenInclude(user => user.CandidateProfile!)
