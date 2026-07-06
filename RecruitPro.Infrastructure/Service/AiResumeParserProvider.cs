@@ -138,12 +138,16 @@ public class AiResumeParserProvider : IResumeParsingAiProvider
                 };
             }
 
+            (int? promptTokens, int? completionTokens, int? totalTokens) = AiCompatibleApiHelper.TryExtractUsage(raw);
             return new ResumeParsingAiResult
             {
                 UsedAi = true,
                 Provider = "AiCompatible",
                 ModelName = _settings.Model,
-                Data = parsed
+                Data = parsed,
+                PromptTokens = promptTokens,
+                CompletionTokens = completionTokens,
+                TotalTokens = totalTokens
             };
         }
         catch (TaskCanceledException exception) when (!cancellationToken.IsCancellationRequested)

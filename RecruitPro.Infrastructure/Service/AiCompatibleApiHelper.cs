@@ -104,6 +104,41 @@ internal static class AiCompatibleApiHelper
         return null;
     }
 
+    /// <summary>
+    /// Parses the OpenAI-compatible <c>usage</c> block (prompt_tokens / completion_tokens / total_tokens)
+    /// from a provider response. Embeddings return only prompt_tokens + total_tokens. Returns all-null
+    /// when absent or unparseable — token capture is best-effort and never throws. (v5.1)
+    /// </summary>
+    public static (int? PromptTokens, int? CompletionTokens, int? TotalTokens) TryExtractUsage(string rawResponse)
+    {
+        try
+        {
+            using JsonDocument document = JsonDocument.Parse(rawResponse);
+            if (!document.RootElement.TryGetProperty("usage", out JsonElement usage) || usage.ValueKind != JsonValueKind.Object)
+            {
+                return (null, null, null);
+            }
+
+            return (
+                ReadInt(usage, "prompt_tokens") ?? ReadInt(usage, "input_tokens"),
+                ReadInt(usage, "completion_tokens") ?? ReadInt(usage, "output_tokens"),
+                ReadInt(usage, "total_tokens"));
+        }
+        catch
+        {
+            return (null, null, null);
+        }
+    }
+
+    private static int? ReadInt(JsonElement element, string propertyName)
+    {
+        return element.TryGetProperty(propertyName, out JsonElement value)
+            && value.ValueKind == JsonValueKind.Number
+            && value.TryGetInt32(out int parsed)
+            ? parsed
+            : null;
+    }
+
     public static string NormalizeJsonPayload(string payload)
     {
         string trimmed = payload.Trim();

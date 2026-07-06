@@ -10,6 +10,7 @@ using RecruitPro.Application.Extensions;
 using RecruitPro.API.Filters;
 using RecruitPro.API.Middlewares;
 using RecruitPro.API.Realtime;
+using RecruitPro.API.Seeding;
 using System;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -84,6 +85,11 @@ builder.Services.Configure<MinioSettings>(builder.Configuration.GetSection("Mini
 // config AI provider settings
 builder.Services.Configure<AiProviderSettings>(builder.Configuration.GetSection("AiProvider"));
 
+// v5.1 AI telemetry settings + HttpContext access (telemetry decorators read the acting user + request
+// correlation id off the ambient HttpContext; null for background/worker AI calls).
+builder.Services.Configure<AiTelemetrySettings>(builder.Configuration.GetSection("AiTelemetry"));
+builder.Services.AddHttpContextAccessor();
+
 // config v4 Workflow Automation cutover settings
 builder.Services.Configure<WorkflowAutomationSettings>(builder.Configuration.GetSection("WorkflowAutomation"));
 
@@ -119,7 +125,15 @@ if (!builder.Environment.IsEnvironment("Testing"))
     builder.Services.AddHostedService<RecruitPro.API.Automation.WorkflowDispatcherBackgroundService>();
     builder.Services.AddHostedService<RecruitPro.API.Automation.WorkflowRetryBackgroundService>();
     builder.Services.AddHostedService<RecruitPro.API.Automation.HeadReviewOverdueSchedulerBackgroundService>();
+
+    // v5.1 AI telemetry write-behind worker. Disabled under Testing so telemetry integration tests
+    // drain the queue deterministically instead of racing the batch loop.
+    builder.Services.AddHostedService<RecruitPro.API.AiTelemetryWriteBehindBackgroundService>();
+
+    // v5 demo seeder (Development only) is registered inside AddV5DemoSeeder based on the environment.
 }
+
+builder.Services.AddV5DemoSeeder(builder.Environment);
 
 //register auto mapper
 builder.Services.AddAutoMapper(_ => { }, AppDomain.CurrentDomain.GetAssemblies());

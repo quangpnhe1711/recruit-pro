@@ -16,4 +16,9 @@ public class EmbeddingGenerationResult
     public string? TraceId { get; set; }
     public bool IsRetryable { get; set; }
     public IReadOnlyList<double> Vector { get; set; } = [];
+
+    // v5.1 — provider-reported token usage, when available (embeddings report prompt/total only).
+    public int? PromptTokens { get; set; }
+    public int? CompletionTokens { get; set; }
+    public int? TotalTokens { get; set; }
 }

@@ -107,11 +107,15 @@ public class AiEmbeddingProvider : IEmbeddingProvider
             }
 
             List<double> vector = embedding.EnumerateArray().Select(item => item.GetDouble()).ToList();
+            (int? promptTokens, int? completionTokens, int? totalTokens) = AiCompatibleApiHelper.TryExtractUsage(raw);
             return new EmbeddingGenerationResult
             {
                 Succeeded = true,
                 ModelName = _settings.EmbeddingModel,
-                Vector = vector
+                Vector = vector,
+                PromptTokens = promptTokens,
+                CompletionTokens = completionTokens,
+                TotalTokens = totalTokens
             };
         }
         catch (TaskCanceledException exception) when (!cancellationToken.IsCancellationRequested)

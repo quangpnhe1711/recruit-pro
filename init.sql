@@ -2616,6 +2616,104 @@ CREATE TABLE IF NOT EXISTS public.mcp_tool_audits (
 );
 CREATE INDEX IF NOT EXISTS ix_mcp_tool_audits_tool_created ON public.mcp_tool_audits USING btree (tool_name, created_at);
 
+-- =============================================================================
+-- v5 AI Ops + Talent Intelligence (2026-07-04). Kept in sync with
+-- db/patches/20260704-add-v5-ai-ops.sql and AppDbContext.Ai.cs.
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS public.ai_run_telemetry (
+    id uuid DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY,
+    feature character varying(100) NOT NULL,
+    provider_name character varying(100),
+    model_name character varying(150),
+    prompt_version_id uuid,
+    prompt_tokens integer,
+    completion_tokens integer,
+    total_tokens integer,
+    estimated_cost_usd numeric(18, 8),
+    is_cost_estimated boolean DEFAULT true NOT NULL,
+    latency_ms integer NOT NULL,
+    success boolean NOT NULL,
+    fallback_used boolean DEFAULT false NOT NULL,
+    schema_valid boolean,
+    error_code character varying(100),
+    error_message text,
+    correlation_id character varying(100),
+    user_id uuid,
+    workflow_execution_id uuid,
+    risk_flags_json jsonb,
+    metadata_json jsonb,
+    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_ai_run_telemetry_created_at ON public.ai_run_telemetry USING btree (created_at);
+CREATE INDEX IF NOT EXISTS idx_ai_run_telemetry_feature_created_at ON public.ai_run_telemetry USING btree (feature, created_at);
+CREATE INDEX IF NOT EXISTS idx_ai_run_telemetry_provider_model_created_at ON public.ai_run_telemetry USING btree (provider_name, model_name, created_at);
+CREATE INDEX IF NOT EXISTS idx_ai_run_telemetry_success_created_at ON public.ai_run_telemetry USING btree (success, created_at);
+CREATE INDEX IF NOT EXISTS idx_ai_run_telemetry_correlation_id ON public.ai_run_telemetry USING btree (correlation_id);
+
+CREATE TABLE IF NOT EXISTS public.prompt_template_versions (
+    id uuid DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY,
+    feature_key character varying(100) NOT NULL,
+    version_no integer NOT NULL,
+    name character varying(200) NOT NULL,
+    description text,
+    template_body text NOT NULL,
+    variables_json jsonb DEFAULT '[]'::jsonb NOT NULL,
+    is_active boolean DEFAULT false NOT NULL,
+    created_by uuid,
+    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    activated_by uuid,
+    activated_at timestamp without time zone,
+    notes text
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_prompt_template_versions_feature_version ON public.prompt_template_versions USING btree (feature_key, version_no);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_prompt_template_versions_active_feature ON public.prompt_template_versions USING btree (feature_key) WHERE is_active;
+
+CREATE TABLE IF NOT EXISTS public.provider_routing_policies (
+    id uuid DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY,
+    feature_key character varying(100) NOT NULL,
+    primary_provider character varying(100) NOT NULL,
+    primary_model character varying(150) NOT NULL,
+    fallback_provider character varying(100),
+    fallback_model character varying(150),
+    is_enabled boolean DEFAULT true NOT NULL,
+    max_latency_ms integer,
+    max_estimated_cost_usd numeric(18, 8),
+    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_by uuid
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_provider_routing_policies_feature ON public.provider_routing_policies USING btree (feature_key);
+
+CREATE TABLE IF NOT EXISTS public.ai_evaluation_cases (
+    id uuid DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY,
+    feature_key character varying(100) NOT NULL,
+    name character varying(200) NOT NULL,
+    input_json jsonb DEFAULT '{}'::jsonb NOT NULL,
+    expected_json jsonb,
+    scoring_rubric_json jsonb,
+    is_active boolean DEFAULT true NOT NULL,
+    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_ai_evaluation_cases_feature_active ON public.ai_evaluation_cases USING btree (feature_key, is_active);
+
+CREATE TABLE IF NOT EXISTS public.ai_evaluation_results (
+    id uuid DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY,
+    run_id uuid NOT NULL,
+    case_id uuid NOT NULL REFERENCES public.ai_evaluation_cases(id) ON DELETE CASCADE,
+    prompt_version_id uuid,
+    provider_name character varying(100),
+    model_name character varying(150),
+    score numeric(5, 2),
+    passed boolean,
+    output_json jsonb,
+    error_message text,
+    latency_ms integer,
+    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_ai_evaluation_results_run_created ON public.ai_evaluation_results USING btree (run_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_ai_evaluation_results_case ON public.ai_evaluation_results USING btree (case_id);
+
 
 -- ============================================================================
 -- DEMO SEED — v4 Workflow Automation (base date: 2026-07-04)

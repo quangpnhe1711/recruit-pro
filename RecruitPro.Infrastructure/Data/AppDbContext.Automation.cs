@@ -187,5 +187,9 @@ public partial class AppDbContext
             entity.Property(e => e.Detail).HasColumnName("detail");
             entity.Property(e => e.UpdatedAt).HasColumnType("timestamp without time zone").HasColumnName("updated_at");
         });
+
+        // v5 AI Ops + Talent Intelligence schema (see AppDbContext.Ai.cs). Only one OnModelCreatingPartial
+        // implementation is permitted, so the v5 mappings are invoked from here rather than a second hook.
+        ConfigureAiOperations(modelBuilder);
     }
 }
