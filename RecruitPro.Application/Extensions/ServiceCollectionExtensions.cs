@@ -29,6 +29,11 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IUserService, UserService>();
         services.AddScoped<IApplicationOwnershipResolver, ApplicationOwnershipResolver>();
 
+        // System Admin console (RBAC matrix + user directory + audit logs)
+        services.AddScoped<IPermissionCheckService, PermissionCheckService>();
+        services.AddScoped<ISysAdminRbacService, SysAdminRbacService>();
+        services.AddScoped<ISysAdminDirectoryService, SysAdminDirectoryService>();
+
         AddWorkflowAutomationServices(services);
 
         return services;

@@ -1141,6 +1141,10 @@ public partial class AppDbContext : DbContext
             entity.Property(e => e.Phone)
                 .HasMaxLength(20)
                 .HasColumnName("phone");
+            entity.Property(e => e.Status)
+                .HasMaxLength(50)
+                .HasDefaultValue("Active")
+                .HasColumnName("status");
             entity.Property(e => e.Username)
                 .HasMaxLength(50)
                 .HasColumnName("username");

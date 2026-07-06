@@ -24,6 +24,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<INotificationRepository, NotificationRepository>();
         services.AddScoped<ISkillRepository, SkillRepository>();
         services.AddScoped<ICopilotRepository, CopilotRepository>();
+        services.AddScoped<IRbacRepository, RbacRepository>();
 
         // v4 Workflow Automation + MCP
         services.AddScoped<IEventOutboxRepository, EventOutboxRepository>();
