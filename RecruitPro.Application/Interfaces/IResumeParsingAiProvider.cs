@@ -22,4 +22,9 @@ public class ResumeParsingAiResult
     public string? RawProviderResponse { get; set; }
     public string? TraceId { get; set; }
     public bool IsRetryable { get; set; }
+
+    // v5.1 — provider-reported token usage, when available.
+    public int? PromptTokens { get; set; }
+    public int? CompletionTokens { get; set; }
+    public int? TotalTokens { get; set; }
 }

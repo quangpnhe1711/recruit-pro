@@ -81,7 +81,8 @@ public class AiCopilotProvider : IAiCopilotProvider
             }
 
             string normalizedOutput = AiCompatibleApiHelper.NormalizeJsonPayload(outputText);
-            return AiStructuredJsonResult.Success(normalizedOutput, providerName, _settings.Model);
+            (int? promptTokens, int? completionTokens, int? totalTokens) = AiCompatibleApiHelper.TryExtractUsage(raw);
+            return AiStructuredJsonResult.Success(normalizedOutput, providerName, _settings.Model, promptTokens, completionTokens, totalTokens);
         }
         catch (Exception ex)
         {

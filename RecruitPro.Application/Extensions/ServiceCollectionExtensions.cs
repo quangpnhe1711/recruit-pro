@@ -30,6 +30,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IApplicationOwnershipResolver, ApplicationOwnershipResolver>();
 
         AddWorkflowAutomationServices(services);
+        AddAiOpsServices(services);
 
         return services;
     }
@@ -68,5 +69,16 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IMcpToolRegistry, McpToolRegistry>();
         services.AddScoped<IMcpToolService, McpToolService>();
         services.AddScoped<IMcpToolAuditService, McpToolAuditService>();
+    }
+
+    /// <summary>v5 AI Ops + Talent Intelligence services (telemetry read side, prompt registry,
+    /// provider routing, evaluation, talent intelligence).</summary>
+    private static void AddAiOpsServices(IServiceCollection services)
+    {
+        services.AddScoped<IAiOperationsMetricsService, AiOperationsMetricsService>();
+        services.AddScoped<IPromptRegistryService, PromptRegistryService>();
+        services.AddScoped<IProviderRoutingService, ProviderRoutingService>();
+        services.AddScoped<IAiEvaluationService, AiEvaluationService>();
+        services.AddScoped<ITalentIntelligenceService, TalentIntelligenceService>();
     }
 }

@@ -32,13 +32,19 @@ public sealed class AiStructuredJsonResult
         string? json,
         string providerName,
         string modelName,
-        string? failureReason)
+        string? failureReason,
+        int? promptTokens = null,
+        int? completionTokens = null,
+        int? totalTokens = null)
     {
         Succeeded = succeeded;
         Json = json;
         ProviderName = providerName;
         ModelName = modelName;
         FailureReason = failureReason;
+        PromptTokens = promptTokens;
+        CompletionTokens = completionTokens;
+        TotalTokens = totalTokens;
     }
 
     public bool Succeeded { get; }
@@ -47,8 +53,15 @@ public sealed class AiStructuredJsonResult
     public string ModelName { get; }
     public string? FailureReason { get; }
 
-    public static AiStructuredJsonResult Success(string json, string providerName, string modelName)
-        => new(true, json, providerName, modelName, null);
+    // v5.1 — provider-reported token usage, when available. Null when the provider omits a usage block.
+    public int? PromptTokens { get; }
+    public int? CompletionTokens { get; }
+    public int? TotalTokens { get; }
+
+    public static AiStructuredJsonResult Success(
+        string json, string providerName, string modelName,
+        int? promptTokens = null, int? completionTokens = null, int? totalTokens = null)
+        => new(true, json, providerName, modelName, null, promptTokens, completionTokens, totalTokens);
 
     public static AiStructuredJsonResult Failure(string failureReason, string providerName = "", string modelName = "")
         => new(false, null, providerName, modelName, failureReason);
