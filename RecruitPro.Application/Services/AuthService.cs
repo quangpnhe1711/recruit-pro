@@ -122,6 +122,13 @@ namespace RecruitPro.Application.Services
                     : "Username hoặc mật khẩu không đúng.");
         }
 
+            // Deactivated/blocked accounts must not authenticate — System Admin deactivation is real,
+            // not just a badge in the user directory.
+            if (user.Status != null && !user.Status.Equals("Active", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new UnauthorizeException("Tài khoản đã bị vô hiệu hóa. Liên hệ quản trị viên hệ thống.");
+            }
+
             var roles = user.UserRoles.Select(x => x.Role.Name).ToList();
             if (roleRule != null && !roles.Any(roleRule))
             {

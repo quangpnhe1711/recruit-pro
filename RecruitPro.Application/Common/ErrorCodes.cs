@@ -45,6 +45,17 @@ public static class ErrorCodes
     public const string ResumeFileTooLarge = "RESUME_FILE_TOO_LARGE";
     public const string ResumeFileUnsupportedType = "RESUME_FILE_UNSUPPORTED_TYPE";
 
+    // Job posting rules
+    public const string JobDeadlineInvalid = "JOB_DEADLINE_INVALID";
+
+    // System Admin / RBAC domain
+    public const string RbacUnknownPermission = "RBAC_UNKNOWN_PERMISSION";
+    public const string RbacAdminLockout = "RBAC_ADMIN_LOCKOUT";
+    public const string RbacRoleNotFound = "RBAC_ROLE_NOT_FOUND";
+    public const string UserStatusInvalid = "USER_STATUS_INVALID";
+    public const string UserSelfDeactivation = "USER_SELF_DEACTIVATION";
+    public const string AccountDisabled = "ACCOUNT_DISABLED";
+
     // Cross-cutting
     public const string Unauthenticated = "UNAUTHENTICATED";
     public const string Forbidden = "FORBIDDEN";

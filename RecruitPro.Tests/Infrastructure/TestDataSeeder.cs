@@ -237,12 +237,57 @@ public static class TestDataSeeder
             new UserRole { UserId = ManagerUserId, RoleId = ManagerRoleId, AssignedAt = now },
             new UserRole { UserId = HeadDepartmentUserId, RoleId = HeadDepartmentRoleId, AssignedAt = now },
             new UserRole { UserId = SystemAdminUserId, RoleId = SystemAdminRoleId, AssignedAt = now });
+        SeedPermissions(db);
         db.Departments.Add(engineering);
         db.Skills.AddRange(dotNet, sql);
         db.CandidateProfiles.Add(profile);
         db.Jobs.AddRange(approvedJob, pendingJob);
         db.Applications.Add(application);
         await db.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// Seeds the RBAC permission catalog and per-role grants, mirroring init.sql: SystemAdmin holds
+    /// everything (incl. PERMISSION_MANAGE); HR/Manager/Candidate hold business subsets only. The
+    /// [RequirePermission] guards on the SysAdmin console read these rows.
+    /// </summary>
+    private static void SeedPermissions(AppDbContext db)
+    {
+        Dictionary<string, Permission> byCode = RecruitPro.Application.Common.RbacCatalog.AllCodes
+            .ToDictionary(
+                code => code,
+                code => new Permission { Id = Guid.NewGuid(), Name = code.Replace('_', ' '), Code = code },
+                StringComparer.OrdinalIgnoreCase);
+        db.Permissions.AddRange(byCode.Values);
+
+        void Grant(Guid roleId, params string[] codes)
+        {
+            foreach (string code in codes)
+            {
+                db.RolePermissions.Add(new RolePermission
+                {
+                    RoleId = roleId,
+                    PermissionId = byCode[code].Id,
+                    AssignedAt = DateTime.UtcNow,
+                });
+            }
+        }
+
+        Grant(SystemAdminRoleId, byCode.Keys.ToArray());
+        Grant(HrRoleId,
+            "Job_VIEW", "Job_CREATE", "Job_UPDATE",
+            "Application_VIEW", "Application_REVIEW",
+            "Interview_VIEW", "Interview_CREATE", "Interview_UPDATE",
+            "CANDIDATE_PROFILE_VIEW", "DEPARTMENT_VIEW", "SKILL_VIEW", "NOTIFICATION_VIEW");
+        Grant(ManagerRoleId,
+            "Job_VIEW", "Job_APPROVE",
+            "Application_VIEW", "Application_REVIEW",
+            "Interview_VIEW", "DEPARTMENT_VIEW", "NOTIFICATION_VIEW", "System_LOG_VIEW");
+        Grant(HeadDepartmentRoleId,
+            "Interview_VIEW", "DEPARTMENT_VIEW", "SKILL_VIEW", "NOTIFICATION_VIEW");
+        Grant(CandidateRoleId,
+            "Job_VIEW", "Application_VIEW", "Application_APPLY", "Interview_VIEW",
+            "CANDIDATE_PROFILE_VIEW", "CANDIDATE_PROFILE_UPDATE", "SKILL_VIEW", "NOTIFICATION_VIEW");
     }
 
     private static DateTime TimestampNow() => Timestamp(DateTime.UtcNow);

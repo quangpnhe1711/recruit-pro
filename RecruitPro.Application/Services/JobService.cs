@@ -248,6 +248,7 @@ public class JobService : IJobService
             Title = job.Title,
             Location = $"{job.Location} ({job.WorkMode})",
             PostedAt = job.CreatedAt,
+            Deadline = job.Deadline,
             Status = job.Status.ToString(),
             SalaryRange = new SalaryRangeDto
             {
@@ -600,6 +601,13 @@ public class JobService : IJobService
             recruiterId = recruiter.Id;
         }
 
+        // BR: the application deadline must fall AFTER the posting date (CreatedAt = now at creation).
+        if (request.Deadline.HasValue && request.Deadline.Value.Date <= DbDateTime.Today)
+        {
+            return ApiResponse<HrCreateJobResponseDto>.BadRequest(
+                "Hạn nộp hồ sơ phải sau ngày đăng tuyển.", ErrorCodes.JobDeadlineInvalid);
+        }
+
         List<JobSkill> jobSkills = await BuildJobSkillsAsync(request.SkillRequirements, request.SkillIds, request.Skills);
         List<string> benefits = request.Benefits.Count > 0 ? request.Benefits : request.Responsibilities;
 
@@ -771,6 +779,14 @@ public class JobService : IJobService
 
         if (request.Deadline.HasValue)
         {
+            // BR: the deadline must stay AFTER the job's posting date (CreatedAt).
+            DateTime postedDate = (job.CreatedAt ?? DbDateTime.Now).Date;
+            if (request.Deadline.Value.Date <= postedDate)
+            {
+                return ApiResponse<HrJobStatusResponseDto>.BadRequest(
+                    "Hạn nộp hồ sơ phải sau ngày đăng tuyển.", ErrorCodes.JobDeadlineInvalid);
+            }
+
             job.Deadline = request.Deadline;
         }
 

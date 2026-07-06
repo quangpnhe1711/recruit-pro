@@ -19,6 +19,13 @@ public partial class User
 
     public string? AvatarUrl { get; set; }
 
+    /// <summary>
+    /// Account status string backed by <see cref="RecruitPro.Domain.Enums.UserStatus"/> values
+    /// (Active/Inactive/Blocked). The DB column has existed since the initial schema (users.status,
+    /// default 'Active'); non-Active accounts cannot log in and lose their RBAC grants.
+    /// </summary>
+    public string? Status { get; set; }
+
     public DateTime? CreatedAt { get; set; }
 
     public DateTime? UpdatedAt { get; set; }

@@ -6,6 +6,7 @@ public class JobDetailScreenDto
     public string Title { get; set; } = string.Empty;
     public string Location { get; set; } = string.Empty;
     public DateTime? PostedAt { get; set; }
+    public DateTime? Deadline { get; set; }
     public string Status { get; set; } = string.Empty;
     public SalaryRangeDto SalaryRange { get; set; } = new();
     public string SalaryLabel { get; set; } = string.Empty;
