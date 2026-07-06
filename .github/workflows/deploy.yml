@@ -20,16 +20,25 @@ jobs:
           script: |
             set -e
 
-            echo "== Pull latest backend code =="
+            echo "================================="
+            echo "📦 Pull latest backend code"
+            echo "================================="
             cd /opt/recruitpro/recruit-pro
-            git pull
+            git fetch origin
+            git reset --hard origin/develop
+            git clean -fd
 
-            echo "== Reset database and storage =="
-            cd /opt/recruitpro
-            bash reset.sh
+            echo "================================="
+            echo "🧹 Reset database (schema + seed)"
+            echo "================================="
+            bash /opt/recruitpro/reset.sh
 
-            echo "== Build and restart backend =="
+            echo "================================="
+            echo "🚀 Build & restart backend"
+            echo "================================="
             docker compose up -d --build backend
 
-            echo "== Check containers =="
+            echo "================================="
+            echo "📊 Container status"
+            echo "================================="
             docker ps
