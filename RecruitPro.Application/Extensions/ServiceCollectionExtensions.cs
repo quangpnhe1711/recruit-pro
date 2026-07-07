@@ -76,14 +76,12 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IMcpToolAuditService, McpToolAuditService>();
     }
 
-    /// <summary>v5 AI Ops + Talent Intelligence services (telemetry read side, prompt registry,
-    /// provider routing, evaluation, talent intelligence).</summary>
+    /// <summary>v5 AI Ops services: read-side telemetry metrics for the SysAdmin AI Ops dashboards.</summary>
+    // ponytail: only the metrics read-side is built. Prompt-registry / provider-routing / evaluation /
+    // talent-intelligence services were registered but never implemented (no class, no consumer, no FE
+    // screen) — dropped to unbreak the build. Re-add a registration when its service class + a caller exist.
     private static void AddAiOpsServices(IServiceCollection services)
     {
         services.AddScoped<IAiOperationsMetricsService, AiOperationsMetricsService>();
-        services.AddScoped<IPromptRegistryService, PromptRegistryService>();
-        services.AddScoped<IProviderRoutingService, ProviderRoutingService>();
-        services.AddScoped<IAiEvaluationService, AiEvaluationService>();
-        services.AddScoped<ITalentIntelligenceService, TalentIntelligenceService>();
     }
 }
