@@ -124,7 +124,7 @@ public class CopilotService : ICopilotService
         CopilotConversation? conversation = await _copilotRepository.GetConversationWithDetailsAsync(conversationId);
         if (conversation is null || conversation.UserId != userId)
         {
-            return ApiResponse<CopilotConversationDetailDto>.NotFound("Conversation not found");
+            return ApiResponse<CopilotConversationDetailDto>.NotFound(ErrorCodes.EntityNotFound);
         }
 
         return ApiResponse<CopilotConversationDetailDto>.Ok(_mapper.Map<CopilotConversationDetailDto>(conversation));
@@ -139,14 +139,14 @@ public class CopilotService : ICopilotService
     {
         Job? job = await _jobRepository.GetByIdAsync(jobId);
         if (job is null)
-            return ApiResponse<CopilotCandidatePoolDto>.NotFound("Job not found");
+            return ApiResponse<CopilotCandidatePoolDto>.NotFound(ErrorCodes.JobNotFound);
 
         if (!OwnershipScope.CanAccessJob(job, callerUserId, callerRoles))
-            return ApiResponse<CopilotCandidatePoolDto>.Forbidden("Bạn không có quyền xem candidate pool của job này.");
+            return ApiResponse<CopilotCandidatePoolDto>.Forbidden(ErrorCodes.Forbidden);
 
         CopilotCandidatePoolDto? pool = await _copilotRepository.GetCandidatePoolAsync(jobId);
         return pool is null
-            ? ApiResponse<CopilotCandidatePoolDto>.NotFound("Job not found")
+            ? ApiResponse<CopilotCandidatePoolDto>.NotFound(ErrorCodes.JobNotFound)
             : ApiResponse<CopilotCandidatePoolDto>.Ok(pool);
     }
 
@@ -157,12 +157,12 @@ public class CopilotService : ICopilotService
     {
         if (request.JobId == Guid.Empty)
         {
-            return ApiResponse<NaturalLanguageCandidateSearchResponseDto>.BadRequest("JobId is required for v2 candidate search.");
+            return ApiResponse<NaturalLanguageCandidateSearchResponseDto>.BadRequest(ErrorCodes.InvalidInput);
         }
 
         if (string.IsNullOrWhiteSpace(request.Query))
         {
-            return ApiResponse<NaturalLanguageCandidateSearchResponseDto>.BadRequest("Search query is required.");
+            return ApiResponse<NaturalLanguageCandidateSearchResponseDto>.BadRequest(ErrorCodes.InvalidInput);
         }
 
         // v2 §1 — candidate search is no longer a first-class active flow. Ranking is the single
@@ -361,12 +361,12 @@ public class CopilotService : ICopilotService
         RecruitPro.Domain.Entities.Application? application = await _applicationRepository.GetByIdAsync(applicationId);
         if (application is null)
         {
-            return ApiResponse<HrEmailDraftResponseDto>.NotFound("Application not found");
+            return ApiResponse<HrEmailDraftResponseDto>.NotFound(ErrorCodes.ApplicationNotFound);
         }
 
         if (!OwnershipScope.CanAccessApplication(application, callerUserId, callerRoles))
         {
-            return ApiResponse<HrEmailDraftResponseDto>.Forbidden("Bạn không có quyền tạo email draft cho hồ sơ này.");
+            return ApiResponse<HrEmailDraftResponseDto>.Forbidden(ErrorCodes.Forbidden);
         }
 
         string candidateName = string.IsNullOrWhiteSpace(application.User?.FullName) ? "ứng viên" : application.User.FullName;
@@ -407,12 +407,12 @@ public class CopilotService : ICopilotService
     {
         if (string.IsNullOrWhiteSpace(request.Name))
         {
-            return ApiResponse<CopilotPromptTemplateDto>.BadRequest("Template name is required.");
+            return ApiResponse<CopilotPromptTemplateDto>.BadRequest(ErrorCodes.InvalidInput);
         }
 
         if (string.IsNullOrWhiteSpace(request.Prompt))
         {
-            return ApiResponse<CopilotPromptTemplateDto>.BadRequest("Template prompt is required.");
+            return ApiResponse<CopilotPromptTemplateDto>.BadRequest(ErrorCodes.InvalidInput);
         }
 
         CopilotPromptTemplate template = new()
@@ -439,18 +439,18 @@ public class CopilotService : ICopilotService
         RecruitPro.Domain.Entities.Application? application = await _applicationRepository.GetByIdAsync(applicationId);
         if (application is null)
         {
-            return ApiResponse<CandidateFitAnalysisSnapshotDto>.NotFound("Application not found");
+            return ApiResponse<CandidateFitAnalysisSnapshotDto>.NotFound(ErrorCodes.ApplicationNotFound);
         }
 
         if (!OwnershipScope.CanAccessApplication(application, callerUserId, callerRoles))
         {
-            return ApiResponse<CandidateFitAnalysisSnapshotDto>.Forbidden("Bạn không có quyền xem AI fit analysis của hồ sơ này.");
+            return ApiResponse<CandidateFitAnalysisSnapshotDto>.Forbidden(ErrorCodes.Forbidden);
         }
 
         CandidateFitAnalysis? analysis = await _copilotRepository.GetLatestFitAnalysisAsync(applicationId);
         if (analysis is null)
         {
-            return ApiResponse<CandidateFitAnalysisSnapshotDto>.NotFound("Fit analysis not found");
+            return ApiResponse<CandidateFitAnalysisSnapshotDto>.NotFound(ErrorCodes.EntityNotFound);
         }
 
         return ApiResponse<CandidateFitAnalysisSnapshotDto>.Ok(MapFitAnalysisSnapshot(analysis));
@@ -485,7 +485,7 @@ public class CopilotService : ICopilotService
         CopilotConversation? conversation = await _copilotRepository.GetConversationAsync(conversationId);
         if (conversation is null || conversation.UserId != userId || conversation.JobId != request.JobId)
         {
-            return ApiResponse<CopilotPromptResponseDto>.NotFound("Conversation not found");
+            return ApiResponse<CopilotPromptResponseDto>.NotFound(ErrorCodes.EntityNotFound);
         }
 
         bool shouldRunRanking = request.ForceRanking
@@ -504,7 +504,7 @@ public class CopilotService : ICopilotService
         CopilotCandidatePoolDto? fullPool = await _copilotRepository.GetCandidatePoolAsync(request.JobId);
         if (fullPool is null)
         {
-            return ApiResponse<CopilotPromptResponseDto>.NotFound("Job not found");
+            return ApiResponse<CopilotPromptResponseDto>.NotFound(ErrorCodes.JobNotFound);
         }
 
         IReadOnlyList<CopilotSavedRule> savedRules = await _copilotRepository.GetSavedRulesAsync(request.JobId, userId);
@@ -699,7 +699,7 @@ public class CopilotService : ICopilotService
         CopilotCandidatePoolDto? pool = await _copilotRepository.GetCandidatePoolAsync(request.JobId);
         if (pool is null)
         {
-            return ApiResponse<CopilotPromptResponseDto>.NotFound("Job not found");
+            return ApiResponse<CopilotPromptResponseDto>.NotFound(ErrorCodes.JobNotFound);
         }
 
         pool = await EnrichPoolWithResumeTextAsync(pool);
@@ -1133,13 +1133,13 @@ public class CopilotService : ICopilotService
         CopilotRankingSession? session = await _copilotRepository.GetRankingSessionAsync(rankingSessionId);
         if (session is null || session.UserId != userId)
         {
-            return ApiResponse<PassCvResultDto>.NotFound("Không tìm thấy phiên xếp hạng.");
+            return ApiResponse<PassCvResultDto>.NotFound(ErrorCodes.EntityNotFound);
         }
 
         List<Guid> requested = request.ApplicationIds.Where(id => id != Guid.Empty).Distinct().ToList();
         if (requested.Count == 0)
         {
-            return ApiResponse<PassCvResultDto>.BadRequest("Cần chọn ít nhất một ứng viên để chuyển sang Head Review.");
+            return ApiResponse<PassCvResultDto>.BadRequest(ErrorCodes.InvalidInput);
         }
 
         HashSet<Guid> sessionApplicationIds = session.Results.Select(result => result.ApplicationId).ToHashSet();
@@ -1217,7 +1217,7 @@ public class CopilotService : ICopilotService
         CopilotRankingSession? session = await _copilotRepository.GetRankingSessionAsync(rankingSessionId);
         if (session is null || session.UserId != userId)
         {
-            return ApiResponse<CopilotRankingSessionDetailDto>.NotFound("Ranking session not found");
+            return ApiResponse<CopilotRankingSessionDetailDto>.NotFound(ErrorCodes.EntityNotFound);
         }
 
         return ApiResponse<CopilotRankingSessionDetailDto>.Ok(_mapper.Map<CopilotRankingSessionDetailDto>(session));
@@ -1278,7 +1278,7 @@ public class CopilotService : ICopilotService
         CopilotSavedRule? rule = await _copilotRepository.GetSavedRuleAsync(ruleId, userId);
         if (rule is null)
         {
-            return ApiResponse<CopilotSavedRuleDto>.NotFound("Saved rule not found");
+            return ApiResponse<CopilotSavedRuleDto>.NotFound(ErrorCodes.EntityNotFound);
         }
 
         rule.IsActive = request.IsActive;
@@ -1299,7 +1299,7 @@ public class CopilotService : ICopilotService
         CopilotSavedRule? rule = await _copilotRepository.GetSavedRuleAsync(ruleId, userId);
         if (rule is null)
         {
-            return ApiResponse<object>.NotFound("Saved rule not found");
+            return ApiResponse<object>.NotFound(ErrorCodes.EntityNotFound);
         }
 
         rule.IsDeleted = true;
@@ -1651,13 +1651,16 @@ public class CopilotService : ICopilotService
 
     private static ApiResponse<T> MirrorFailure<T>(int statusCode, string message, string? errorCode = null)
     {
+        // Code-first: mirror the upstream failure by its stable code, not its human message. The
+        // message param is kept so callers still pass (status, message, code); message resolution
+        // now happens centrally from the code via IErrorMessageProvider.
         return statusCode switch
         {
-            400 => ApiResponse<T>.BadRequest(message, errorCode),
-            403 => ApiResponse<T>.Forbidden(message, errorCode),
-            404 => ApiResponse<T>.NotFound(message, errorCode),
-            422 => ApiResponse<T>.UnprocessableEntity(message, errorCode: errorCode),
-            _ => ApiResponse<T>.Error(message)
+            400 => ApiResponse<T>.BadRequest(errorCode ?? ErrorCodes.InvalidInput),
+            403 => ApiResponse<T>.Forbidden(errorCode ?? ErrorCodes.Forbidden),
+            404 => ApiResponse<T>.NotFound(errorCode ?? ErrorCodes.EntityNotFound),
+            422 => ApiResponse<T>.UnprocessableEntity(errorCode ?? ErrorCodes.BusinessRuleViolation),
+            _ => ApiResponse<T>.Error(errorCode ?? ErrorCodes.ServerError)
         };
     }
 

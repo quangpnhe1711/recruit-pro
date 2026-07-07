@@ -23,6 +23,9 @@ builder.Services.AddJwtAuthentication(builder.Configuration);
 builder.Services.AddControllers(options =>
 {
     options.Filters.Add<ValidationActionFilter>();
+    // Resolves the code-first error contract for error ApiResponses that controllers/services RETURN
+    // (thrown exceptions are resolved in ExceptionMiddleware). Central message resolution, no hardcoding.
+    options.Filters.Add<ErrorEnvelopeResultFilter>();
 });
 
 // Upload hardening (Phase 2.4): framework-level body-size ceiling, layered under the precise per-file

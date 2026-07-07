@@ -1,25 +1,63 @@
 # Error Contract
 
-## Response envelope
+## Response envelope (code-first contract)
 
-Every API response uses `ApiResponse<T>` (RecruitPro.Application.DTOs.Response):
+Every API response uses `ApiResponse<T>` (RecruitPro.Application.DTOs.Response). Error responses now carry
+a nested, self-describing `error` block **in addition to** the legacy flat fields (kept for back-compat):
 
 ```json
 {
   "success": false,
   "statusCode": 409,
-  "message": "Candidate already applied for this job.",
+  "message": "Bạn đang có một đơn ứng tuyển còn hiệu lực cho vị trí này.",
+  "errorCode": "APPLICATION_ALREADY_ACTIVE",
+  "errors": { "email": ["Email này đã được sử dụng."] },
   "data": null,
-  "errors": { "field": ["..."] },
-  "extra": null
+  "extra": null,
+  "error": {
+    "type": "CONFLICT",
+    "code": "APPLICATION_ALREADY_ACTIVE",
+    "message": "Bạn đang có một đơn ứng tuyển còn hiệu lực cho vị trí này.",
+    "fieldErrors": [
+      { "field": "email", "code": "EMAIL_ALREADY_EXISTS", "message": "Email này đã được sử dụng.", "params": {} }
+    ],
+    "globalErrors": [],
+    "traceId": "..."
+  }
 }
 ```
 
 - `success` — boolean.
 - `statusCode` — mirrors the HTTP status; controllers return `StatusCode(result.StatusCode, result)`.
-- `message` — human-readable, localized (Vietnamese for candidate-facing flows).
-- `errors` — present for validation failures (field → messages).
+- `errorCode` / `message` / `errors` — legacy flat fields, kept so existing consumers keep working.
+- `error` — **the code-first block the web frontend reads.** `type` is derived from the HTTP status
+  (`VALIDATION_ERROR`/`AUTH_ERROR`/`FORBIDDEN`/`NOT_FOUND`/`CONFLICT`/`BUSINESS_ERROR`/`SERVER_ERROR`).
+  `code` is a stable machine code; `fieldErrors[].field` is camelCase matching the FE form; `params` feed
+  dynamic message interpolation on the FE.
+- `message` (both flat and nested) — a **debug-friendly payload** for F12/Postman/logs/non-web clients.
+  **The web UI never renders it** — it maps `code` (+ `params`) to its own i18n `errors.*` dictionary.
 - `extra` — diagnostic payload; for 500 in non-development it is limited to `{ traceId }`.
+
+### How the message is produced (never hardcoded)
+
+Controllers/services set only a **code** (+ optional params/field errors) via the code-first
+`ApiResponse<T>` factories (`Fail`/`BadRequest`/`NotFound`/`Conflict`/`UnprocessableEntity`/`Forbidden`/
+`Unauthorized`/`Error`/`ValidationError`) or by throwing `BusinessAppException(code, status, params, fieldErrors)`.
+The human message is resolved **centrally** from the code by `IErrorMessageProvider` (`ErrorMessageProvider`,
+a single VI catalog) at the boundary:
+- **Thrown** exceptions → `ExceptionMiddleware` (also maps FluentValidation failures to `fieldErrors` with
+  rule-derived codes + placeholder params, and 500s to a safe `SERVER_ERROR`).
+- **Returned** error `ApiResponse` → `ErrorEnvelopeResultFilter` (an `IAlwaysRunResultFilter`).
+- JWT challenge/forbidden responses (written outside MVC) resolve inline in `JwtExtension`.
+
+Codes live in `RecruitPro.Application.Common.ErrorCodes`, mirrored on the FE in
+`src/common/utils/apiError.ts` (`ERROR_CODES`) and copy in the i18n `errors.*` namespace (vi/en).
+
+> **Follow-up (optional precision):** ~30 previously-hardcoded messages were mapped to the closest
+> generic code (`INVALID_INPUT`, `ENTITY_NOT_FOUND`, `BUSINESS_RULE_VIOLATION`). They are functionally
+> correct; add dedicated codes (e.g. `SEARCH_QUERY_REQUIRED`, `INTERVIEWER_NOT_FOUND`,
+> `WORKFLOW_TRIGGER_INVALID`, `RANKING_SESSION_NOT_FOUND`, `EXECUTION_NOT_RETRYABLE`) only if the UI needs
+> to distinguish them.
 
 > **Update:** the envelope now carries an optional stable machine `errorCode`
 > (`ApiResponse.ErrorCode`; constants in `RecruitPro.Application.Common.ErrorCodes`, mirrored on the FE

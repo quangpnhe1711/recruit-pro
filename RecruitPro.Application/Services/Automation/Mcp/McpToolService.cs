@@ -70,7 +70,7 @@ public class McpToolService : IMcpToolService
         if (tool is null)
         {
             await AuditAsync(toolName, callerUserId, inputJson, allowed: false, deniedReason: "Unknown tool", output: null, latencyMs: 0);
-            return ApiResponse<McpToolResult>.NotFound("Không tìm thấy công cụ MCP.");
+            return ApiResponse<McpToolResult>.NotFound(ErrorCodes.McpToolNotFound);
         }
 
         // RBAC: only SystemAdmin may invoke internal tools (belt-and-suspenders behind the controller gate).

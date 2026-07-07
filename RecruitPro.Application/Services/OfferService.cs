@@ -59,13 +59,13 @@ public class OfferService : IOfferService
         Domain.Entities.Application? application = await GetApplicationAsync(applicationId);
         if (application == null)
         {
-            return ApiResponse<ApplicationOfferEditorDto>.NotFound("Không tìm thấy hồ sơ ứng tuyển.");
+            return ApiResponse<ApplicationOfferEditorDto>.NotFound(ErrorCodes.ApplicationNotFound);
         }
 
         // Phase 2.2b: ownership check — caller must own the application via recruiter or dept-head path.
         if (!OwnershipScope.CanAccessApplication(application, callerUserId, callerRoles))
         {
-            return ApiResponse<ApplicationOfferEditorDto>.Forbidden("Bạn không có quyền xem offer này.");
+            return ApiResponse<ApplicationOfferEditorDto>.Forbidden(ErrorCodes.Forbidden);
         }
 
         ApplicationOffer? offer = await _offerRepository.GetByApplicationIdAsync(application.Id);
@@ -117,13 +117,13 @@ public class OfferService : IOfferService
         Domain.Entities.Application? application = await GetApplicationAsync(applicationId, tracked: true);
         if (application == null)
         {
-            return ApiResponse<ApplicationOfferEditorDto>.NotFound("Không tìm thấy hồ sơ ứng tuyển.");
+            return ApiResponse<ApplicationOfferEditorDto>.NotFound(ErrorCodes.ApplicationNotFound);
         }
 
         // Phase 2.2b: ownership check — caller must own the application via recruiter or dept-head path.
         if (!OwnershipScope.CanAccessApplication(application, actorId, callerRoles))
         {
-            return ApiResponse<ApplicationOfferEditorDto>.Forbidden("Bạn không có quyền thực hiện thao tác offer này.");
+            return ApiResponse<ApplicationOfferEditorDto>.Forbidden(ErrorCodes.Forbidden);
         }
 
         // BR-WF-004: an offer can be prepared while the application is already at the Offer stage
@@ -133,9 +133,7 @@ public class OfferService : IOfferService
         bool isInterviewStage = application.Status == ApplicationStatus.Interview;
         if (!isOfferStage && !isInterviewStage)
         {
-            return ApiResponse<ApplicationOfferEditorDto>.UnprocessableEntity(
-                "Chỉ hồ sơ ở bước phỏng vấn đã hoàn tất hoặc bước offer mới có thể soạn offer.",
-                errorCode: ErrorCodes.OfferNotActionable);
+            return ApiResponse<ApplicationOfferEditorDto>.UnprocessableEntity(ErrorCodes.OfferNotActionable);
         }
 
         // BR-WF-005: preparing/sending an offer from the Interview stage requires a scheduled AND
@@ -145,13 +143,9 @@ public class OfferService : IOfferService
             switch (InterviewWorkflow.EvaluateCompletion(application.Interviews))
             {
                 case InterviewCompletionState.Required:
-                    return ApiResponse<ApplicationOfferEditorDto>.UnprocessableEntity(
-                        "Hãy lên lịch phỏng vấn trước khi gửi offer.",
-                        errorCode: ErrorCodes.InterviewRequired);
+                    return ApiResponse<ApplicationOfferEditorDto>.UnprocessableEntity(ErrorCodes.InterviewRequired);
                 case InterviewCompletionState.NotCompleted:
-                    return ApiResponse<ApplicationOfferEditorDto>.UnprocessableEntity(
-                        "Hãy hoàn tất phỏng vấn trước khi gửi offer.",
-                        errorCode: ErrorCodes.InterviewNotCompleted);
+                    return ApiResponse<ApplicationOfferEditorDto>.UnprocessableEntity(ErrorCodes.InterviewNotCompleted);
             }
         }
 
@@ -160,13 +154,13 @@ public class OfferService : IOfferService
 
         if (!await CurrencyExistsAsync(request.CurrencyCode))
         {
-            return ApiResponse<ApplicationOfferEditorDto>.BadRequest("Loại tiền tệ đã chọn không hợp lệ.");
+            return ApiResponse<ApplicationOfferEditorDto>.BadRequest(ErrorCodes.InvalidInput);
         }
 
         if (!string.IsNullOrWhiteSpace(request.OfferTemplateId) &&
             !Guid.TryParse(request.OfferTemplateId, out Guid offerTemplateId))
         {
-            return ApiResponse<ApplicationOfferEditorDto>.BadRequest("Mẫu offer không hợp lệ.");
+            return ApiResponse<ApplicationOfferEditorDto>.BadRequest(ErrorCodes.InvalidInput);
         }
 
         Guid? reportingManagerId = null;
@@ -174,7 +168,7 @@ public class OfferService : IOfferService
         {
             if (!Guid.TryParse(request.ReportingManagerId, out Guid parsedManagerId))
             {
-                return ApiResponse<ApplicationOfferEditorDto>.BadRequest("Người quản lý báo cáo không hợp lệ.");
+                return ApiResponse<ApplicationOfferEditorDto>.BadRequest(ErrorCodes.InvalidInput);
             }
 
             reportingManagerId = parsedManagerId;
@@ -187,12 +181,12 @@ public class OfferService : IOfferService
         {
             if (!Guid.TryParse(rawId, out Guid benefitId))
             {
-                return ApiResponse<ApplicationOfferEditorDto>.BadRequest("Có phúc lợi không hợp lệ.");
+                return ApiResponse<ApplicationOfferEditorDto>.BadRequest(ErrorCodes.InvalidInput);
             }
 
              if (!availableBenefitIds.Contains(benefitId))
             {
-                return ApiResponse<ApplicationOfferEditorDto>.BadRequest("Có phúc lợi hiện không khả dụng.");
+                return ApiResponse<ApplicationOfferEditorDto>.BadRequest(ErrorCodes.InvalidInput);
             }
 
             benefitIds.Add(benefitId);
@@ -243,9 +237,7 @@ public class OfferService : IOfferService
             }
             catch (Exception)
             {
-                return ApiResponse<ApplicationOfferEditorDto>.UnprocessableEntity(
-                    "Không gửi được email offer; trạng thái hồ sơ chưa thay đổi.",
-                    errorCode: ErrorCodes.EmailSendFailed);
+                return ApiResponse<ApplicationOfferEditorDto>.UnprocessableEntity(ErrorCodes.EmailSendFailed);
             }
 
             application.Status = ApplicationStatus.Offer;
@@ -273,7 +265,7 @@ public class OfferService : IOfferService
 
         if (refreshedApplication == null || refreshedOffer == null)
         {
-            return ApiResponse<ApplicationOfferEditorDto>.NotFound("Không tải lại được dữ liệu offer.");
+            return ApiResponse<ApplicationOfferEditorDto>.NotFound(ErrorCodes.EntityNotFound);
         }
 
         // offer_email_sent: only after the offer email succeeded AND the application transitioned to

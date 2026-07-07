@@ -29,9 +29,9 @@ public class AiOperationsMetricsService : IAiOperationsMetricsService
         DateTime? from, DateTime? to, string? feature, string? provider, string? model,
         CancellationToken cancellationToken = default)
     {
-        if (!TryResolveWindow(from, to, out DateTime start, out DateTime end, out string? error))
+        if (!TryResolveWindow(from, to, out DateTime start, out DateTime end, out string? errorCode, out IReadOnlyDictionary<string, object?>? errorParams))
         {
-            return ApiResponse<AiOperationsMetricsResponse>.BadRequest(error!);
+            return ApiResponse<AiOperationsMetricsResponse>.BadRequest(errorCode!, errorParams);
         }
 
         IReadOnlyList<AiTelemetryRow> rows = await _repository.QueryForMetricsAsync(start, end, feature, provider, model, cancellationToken);
@@ -71,7 +71,7 @@ public class AiOperationsMetricsService : IAiOperationsMetricsService
         AiRunTelemetry? entity = await _repository.GetByIdAsync(id, cancellationToken);
         if (entity is null)
         {
-            return ApiResponse<AiTelemetryDetailDto>.NotFound("Không tìm thấy bản ghi telemetry.");
+            return ApiResponse<AiTelemetryDetailDto>.NotFound(ErrorCodes.EntityNotFound);
         }
 
         return ApiResponse<AiTelemetryDetailDto>.Ok(ToDetail(entity));
@@ -81,9 +81,9 @@ public class AiOperationsMetricsService : IAiOperationsMetricsService
         DateTime? from, DateTime? to, string? feature, string? provider,
         CancellationToken cancellationToken = default)
     {
-        if (!TryResolveWindow(from, to, out DateTime start, out DateTime end, out string? error))
+        if (!TryResolveWindow(from, to, out DateTime start, out DateTime end, out string? errorCode, out IReadOnlyDictionary<string, object?>? errorParams))
         {
-            return ApiResponse<AiRiskFlagsResponse>.BadRequest(error!);
+            return ApiResponse<AiRiskFlagsResponse>.BadRequest(errorCode!, errorParams);
         }
 
         IReadOnlyList<AiTelemetryRow> rows = await _repository.QueryForMetricsAsync(start, end, feature, provider, model: null, cancellationToken);
@@ -118,22 +118,24 @@ public class AiOperationsMetricsService : IAiOperationsMetricsService
         return ApiResponse<AiRiskFlagsResponse>.Ok(response);
     }
 
-    private static bool TryResolveWindow(DateTime? from, DateTime? to, out DateTime start, out DateTime end, out string? error)
+    private static bool TryResolveWindow(DateTime? from, DateTime? to, out DateTime start, out DateTime end, out string? errorCode, out IReadOnlyDictionary<string, object?>? errorParams)
     {
-        error = null;
+        errorCode = null;
+        errorParams = null;
         // 'end' is exclusive; add a day so a to-date includes its whole day.
         end = (to ?? DbDateTime.Today).Date.AddDays(1);
         start = (from ?? end.AddDays(-DefaultWindowDays - 1)).Date;
 
         if (start >= end)
         {
-            error = "Khoảng thời gian không hợp lệ: 'from' phải trước 'to'.";
+            errorCode = ErrorCodes.InvalidInput;
             return false;
         }
 
         if ((end - start).TotalDays > MaxWindowDays)
         {
-            error = $"Khoảng thời gian quá dài (tối đa {MaxWindowDays} ngày).";
+            errorCode = ErrorCodes.InvalidInput;
+            errorParams = new Dictionary<string, object?> { ["max"] = MaxWindowDays };
             return false;
         }
 

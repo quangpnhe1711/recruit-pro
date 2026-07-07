@@ -43,7 +43,7 @@ public class SemanticDiscoveryService : ISemanticDiscoveryService
     {
         if (string.IsNullOrWhiteSpace(request.Query) && string.IsNullOrWhiteSpace(request.JobId))
         {
-            return ApiResponse<SemanticCandidatesResponseDto>.BadRequest("Hãy nhập từ khóa hoặc jobId.");
+            return ApiResponse<SemanticCandidatesResponseDto>.BadRequest(ErrorCodes.InvalidInput);
         }
 
         string queryText = request.Query;
@@ -81,7 +81,7 @@ public class SemanticDiscoveryService : ISemanticDiscoveryService
     {
         if (string.IsNullOrWhiteSpace(request.Query))
         {
-            return ApiResponse<SemanticCandidatesResponseDto>.BadRequest("Hãy nhập từ khóa tìm kiếm.");
+            return ApiResponse<SemanticCandidatesResponseDto>.BadRequest(ErrorCodes.InvalidInput);
         }
 
         IReadOnlyList<double> queryVector = await BuildTransientEmbeddingAsync(request.Query);
@@ -112,14 +112,14 @@ public class SemanticDiscoveryService : ISemanticDiscoveryService
     {
         if (!Guid.TryParse(candidateId, out Guid candidateGuid))
         {
-            return ApiResponse<SemanticCandidatesResponseDto>.NotFound("Không tìm thấy ứng viên.");
+            return ApiResponse<SemanticCandidatesResponseDto>.NotFound(ErrorCodes.CandidateNotFound);
         }
 
         CandidateProfile target = await GetCandidateAsync(candidateGuid);
         IReadOnlyList<double>? targetVector = await EnsureCandidateVectorAsync(target.Id);
         if (targetVector == null)
         {
-            return ApiResponse<SemanticCandidatesResponseDto>.BadRequest("Chưa có dữ liệu embedding của ứng viên.");
+            return ApiResponse<SemanticCandidatesResponseDto>.BadRequest(ErrorCodes.InvalidInput);
         }
 
         IReadOnlyList<CandidateProfile> candidates = await _candidateProfileRepository.GetAllForSemanticSearchAsync();
@@ -145,7 +145,7 @@ public class SemanticDiscoveryService : ISemanticDiscoveryService
         IReadOnlyList<double>? targetVector = await EnsureJobVectorAsync(target.Id);
         if (targetVector == null)
         {
-            return ApiResponse<SemanticJobsResponseDto>.BadRequest("Chưa có dữ liệu embedding của job.");
+            return ApiResponse<SemanticJobsResponseDto>.BadRequest(ErrorCodes.InvalidInput);
         }
 
         IReadOnlyList<Job> jobs = await _jobRepository.GetAllApprovedForSemanticSearchAsync();
@@ -171,13 +171,13 @@ public class SemanticDiscoveryService : ISemanticDiscoveryService
         // Phase 2.2b: job-level ownership check — caller must own the job to access its candidate ranking.
         if (!OwnershipScope.CanAccessJob(job, callerUserId, callerRoles))
         {
-            return ApiResponse<SemanticCandidatesResponseDto>.Forbidden("Bạn không có quyền xem danh sách ứng viên gợi ý của job này.");
+            return ApiResponse<SemanticCandidatesResponseDto>.Forbidden(ErrorCodes.Forbidden);
         }
 
         IReadOnlyList<double>? jobVector = await EnsureJobVectorAsync(job.Id);
         if (jobVector == null)
         {
-            return ApiResponse<SemanticCandidatesResponseDto>.BadRequest("Chưa có dữ liệu embedding của job.");
+            return ApiResponse<SemanticCandidatesResponseDto>.BadRequest(ErrorCodes.InvalidInput);
         }
 
         IReadOnlyList<CandidateProfile> candidates = await _candidateProfileRepository.GetAllForSemanticSearchAsync();
@@ -202,7 +202,7 @@ public class SemanticDiscoveryService : ISemanticDiscoveryService
         CandidateProfile? profile = await _candidateProfileRepository.GetByUserIdAsync(userId);
         if (profile == null)
         {
-            throw new NotFoundException("Không tìm thấy hồ sơ ứng viên.");
+            throw new BusinessAppException(ErrorCodes.CandidateProfileNotFound, 404);
         }
 
         IReadOnlyList<double>? candidateVector = await EnsureCandidateVectorAsync(profile.Id);
@@ -366,7 +366,7 @@ public class SemanticDiscoveryService : ISemanticDiscoveryService
         CandidateProfile? candidate = await _candidateProfileRepository.GetByIdAsync(candidateId);
         if (candidate == null)
         {
-            throw new NotFoundException("Không tìm thấy ứng viên.");
+            throw new BusinessAppException(ErrorCodes.CandidateNotFound, 404);
         }
 
         return candidate;
@@ -376,13 +376,13 @@ public class SemanticDiscoveryService : ISemanticDiscoveryService
     {
         if (!Guid.TryParse(jobId, out Guid jobGuid))
         {
-            throw new NotFoundException("Không tìm thấy job.");
+            throw new BusinessAppException(ErrorCodes.JobNotFound, 404);
         }
 
         Job? job = await _jobRepository.GetByIdAsync(jobGuid);
         if (job == null)
         {
-            throw new NotFoundException("Không tìm thấy job.");
+            throw new BusinessAppException(ErrorCodes.JobNotFound, 404);
         }
 
         return job;

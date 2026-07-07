@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using RecruitPro.Application.Common;
 using RecruitPro.Application.Interfaces;
 using RecruitPro.Application.Interfaces.IServices;
 using RecruitPro.Application.Interfaces.IServices.Automation;
@@ -13,6 +14,9 @@ public static class ServiceCollectionExtensions
 {
     public static IServiceCollection AddApplicationBusinessLogicServices(this IServiceCollection services)
     {
+        // Central error code → message resolver (code-first error contract). Stateless singleton.
+        services.AddSingleton<IErrorMessageProvider, ErrorMessageProvider>();
+
         services.AddScoped<IApplicationService, ApplicationService>();
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<ICandidateService, CandidateService>();

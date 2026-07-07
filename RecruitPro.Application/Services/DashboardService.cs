@@ -247,7 +247,7 @@ public class DashboardService : IDashboardService
         CandidateProfile? profile = await _candidateProfileRepository.GetByUserIdAsync(userId);
         if (profile == null)
         {
-            throw new NotFoundException("Candidate profile not found.");
+            throw new BusinessAppException(ErrorCodes.CandidateProfileNotFound, 404);
         }
 
         return profile;
@@ -264,7 +264,7 @@ public class DashboardService : IDashboardService
         User? user = await _userRepository.GetTrackedByIdAsync(userId);
         if (user == null)
         {
-            throw new NotFoundException("Không tìm thấy người dùng.");
+            throw new BusinessAppException(ErrorCodes.UserNotFound, 404);
         }
 
         CandidateProfile createdProfile = new()

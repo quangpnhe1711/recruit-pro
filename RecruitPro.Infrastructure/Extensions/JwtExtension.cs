@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
+using RecruitPro.Application.Common;
 using RecruitPro.Application.DTOs.Response;
 using System.Text;
 
@@ -45,19 +46,33 @@ namespace RecruitPro.Infrastructure.Extensions
                             {
                                 context.Response.StatusCode = 401;
                                 context.Response.ContentType = "application/json";
-                                await context.Response.WriteAsJsonAsync(ApiResponse<object>.Unauthorized("Không có quyền truy cập"));
+                                await context.Response.WriteAsJsonAsync(
+                                    ResolveEnvelope(context.HttpContext, ApiResponse<object>.Unauthorized(ErrorCodes.Unauthenticated)));
                             }
                         },
                         OnForbidden = async context =>
                         {
                             context.Response.StatusCode = 403;
                             context.Response.ContentType = "application/json";
-                            await context.Response.WriteAsJsonAsync(ApiResponse<object>.Forbidden("Bạn không có quyền"));
+                            await context.Response.WriteAsJsonAsync(
+                                ResolveEnvelope(context.HttpContext, ApiResponse<object>.Forbidden(ErrorCodes.Forbidden)));
                         }
                     };
                 });
 
             return services;
+        }
+
+        // These JWT-event responses are written straight to the socket and bypass the MVC result filter,
+        // so resolve the code → message + nested error block here from request-scoped services.
+        private static ApiResponse<object> ResolveEnvelope(HttpContext httpContext, ApiResponse<object> response)
+        {
+            var provider = httpContext.RequestServices.GetService<IErrorMessageProvider>();
+            if (provider is not null)
+            {
+                response.ResolveError(provider, httpContext.TraceIdentifier);
+            }
+            return response;
         }
     }
 }

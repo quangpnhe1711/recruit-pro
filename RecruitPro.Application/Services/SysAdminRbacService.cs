@@ -65,13 +65,13 @@ public class SysAdminRbacService : ISysAdminRbacService
     {
         if (!Guid.TryParse(roleId, out Guid roleGuid))
         {
-            return ApiResponse<RolePermissionsDto>.NotFound("Không tìm thấy vai trò.", ErrorCodes.RbacRoleNotFound);
+            return ApiResponse<RolePermissionsDto>.NotFound(ErrorCodes.RbacRoleNotFound);
         }
 
         Role? role = await _rbacRepository.GetRoleWithPermissionsAsync(roleGuid);
         if (role == null)
         {
-            return ApiResponse<RolePermissionsDto>.NotFound("Không tìm thấy vai trò.", ErrorCodes.RbacRoleNotFound);
+            return ApiResponse<RolePermissionsDto>.NotFound(ErrorCodes.RbacRoleNotFound);
         }
 
         return ApiResponse<RolePermissionsDto>.Ok(ToRolePermissionsDto(role));
@@ -82,7 +82,7 @@ public class SysAdminRbacService : ISysAdminRbacService
     {
         if (!Guid.TryParse(roleId, out Guid roleGuid))
         {
-            return ApiResponse<RolePermissionsDto>.NotFound("Không tìm thấy vai trò.", ErrorCodes.RbacRoleNotFound);
+            return ApiResponse<RolePermissionsDto>.NotFound(ErrorCodes.RbacRoleNotFound);
         }
 
         // 400 — every submitted code must exist in the catalog (backend source of truth).
@@ -102,8 +102,7 @@ public class SysAdminRbacService : ISysAdminRbacService
 
         if (unknownCodes.Count > 0)
         {
-            return ApiResponse<RolePermissionsDto>.BadRequest(
-                $"Quyền không tồn tại: {string.Join(", ", unknownCodes)}.", ErrorCodes.RbacUnknownPermission);
+            return ApiResponse<RolePermissionsDto>.BadRequest(ErrorCodes.RbacUnknownPermission);
         }
 
         canonicalCodes = canonicalCodes.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
@@ -111,7 +110,7 @@ public class SysAdminRbacService : ISysAdminRbacService
         Role? role = await _rbacRepository.GetRoleWithPermissionsAsync(roleGuid);
         if (role == null)
         {
-            return ApiResponse<RolePermissionsDto>.NotFound("Không tìm thấy vai trò.", ErrorCodes.RbacRoleNotFound);
+            return ApiResponse<RolePermissionsDto>.NotFound(ErrorCodes.RbacRoleNotFound);
         }
 
         // 409 — last-administrator protection: removing PERMISSION_MANAGE from this role must not leave
@@ -128,9 +127,7 @@ public class SysAdminRbacService : ISysAdminRbacService
                 RbacCatalog.ManagePermissionsCode, roleGuid);
             if (remainingAdmins == 0)
             {
-                return ApiResponse<RolePermissionsDto>.Conflict(
-                    "Không thể gỡ quyền quản trị RBAC khỏi vai trò này: sẽ không còn quản trị viên nào có thể quản lý phân quyền.",
-                    errorCode: ErrorCodes.RbacAdminLockout);
+                return ApiResponse<RolePermissionsDto>.Conflict(ErrorCodes.RbacAdminLockout);
             }
         }
 
@@ -140,8 +137,7 @@ public class SysAdminRbacService : ISysAdminRbacService
             // Catalog and DB seed drifted apart — surface which codes have no permission row.
             HashSet<string> found = permissions.Select(p => p.Code).ToHashSet(StringComparer.OrdinalIgnoreCase);
             List<string> missing = canonicalCodes.Where(code => !found.Contains(code)).ToList();
-            return ApiResponse<RolePermissionsDto>.BadRequest(
-                $"Quyền chưa được khởi tạo trong hệ thống: {string.Join(", ", missing)}.", ErrorCodes.RbacUnknownPermission);
+            return ApiResponse<RolePermissionsDto>.BadRequest(ErrorCodes.RbacUnknownPermission);
         }
 
         await _rbacRepository.ReplaceRolePermissionsAsync(role, permissions);

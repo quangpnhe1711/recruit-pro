@@ -9,7 +9,7 @@ namespace RecruitPro.Application.Exceptions
 {
     public class NotFoundException : BaseException
     {
-        public NotFoundException(string message) : base("Not found entity", HttpStatusCodeConstants.NotFound)
+        public NotFoundException(string message) : base(message, HttpStatusCodeConstants.NotFound)
         {
         }
     }

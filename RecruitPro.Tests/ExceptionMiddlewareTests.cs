@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using RecruitPro.API.Middlewares;
+using RecruitPro.Application.Common;
 using Xunit;
 
 namespace RecruitPro.Tests;
@@ -13,7 +14,9 @@ namespace RecruitPro.Tests;
 /// </summary>
 public sealed class ExceptionMiddlewareTests
 {
-    private const string GenericProductionMessage = "Đã xảy ra lỗi không mong muốn. Vui lòng thử lại sau.";
+    // Code-first contract: the 500 message is resolved from ErrorCodes.ServerError by the provider.
+    private static readonly string GenericProductionMessage =
+        new ErrorMessageProvider().GetMessage(ErrorCodes.ServerError);
 
     [Fact]
     public async Task Invoke_InProduction_ReturnsGenericMessage_AndDoesNotLeakExceptionDetail()
@@ -21,7 +24,7 @@ public sealed class ExceptionMiddlewareTests
         const string secret = "Host=db;Password=SuperSecret123;Database=postgres";
         RequestDelegate next = _ => throw new InvalidOperationException(secret);
         var environment = Mock.Of<IHostEnvironment>(env => env.EnvironmentName == Environments.Production);
-        var middleware = new ExceptionMiddleware(next, Mock.Of<ILogger<ExceptionMiddleware>>(), environment);
+        var middleware = new ExceptionMiddleware(next, Mock.Of<ILogger<ExceptionMiddleware>>(), environment, new ErrorMessageProvider());
 
         (string json, int statusCode) = await InvokeAndReadBodyAsync(middleware);
 
@@ -40,7 +43,7 @@ public sealed class ExceptionMiddlewareTests
         const string detail = "boom-development-detail";
         RequestDelegate next = _ => throw new InvalidOperationException(detail);
         var environment = Mock.Of<IHostEnvironment>(env => env.EnvironmentName == Environments.Development);
-        var middleware = new ExceptionMiddleware(next, Mock.Of<ILogger<ExceptionMiddleware>>(), environment);
+        var middleware = new ExceptionMiddleware(next, Mock.Of<ILogger<ExceptionMiddleware>>(), environment, new ErrorMessageProvider());
 
         (string json, int statusCode) = await InvokeAndReadBodyAsync(middleware);
 

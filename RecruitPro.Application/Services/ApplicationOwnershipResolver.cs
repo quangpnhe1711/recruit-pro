@@ -25,7 +25,7 @@ public sealed class ApplicationOwnershipResolver : IApplicationOwnershipResolver
         Domain.Entities.Application? application = await _applicationRepository.GetByIdAsync(applicationId);
         if (application == null)
         {
-            throw new NotFoundException("Không tìm thấy hồ sơ ứng tuyển.");
+            throw new BusinessAppException(ErrorCodes.ApplicationNotFound, 404);
         }
 
         return Resolve(application);

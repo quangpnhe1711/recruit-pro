@@ -40,16 +40,14 @@ internal sealed class RequirePermissionFilter : IAsyncAuthorizationFilter
         Guid? userId = context.HttpContext.User.TryGetCurrentUserId();
         if (userId == null)
         {
-            ApiResponse<object> unauthorized = ApiResponse<object>.Unauthorized(errorCode: ErrorCodes.Unauthenticated);
+            ApiResponse<object> unauthorized = ApiResponse<object>.Unauthorized(ErrorCodes.Unauthenticated);
             context.Result = new ObjectResult(unauthorized) { StatusCode = unauthorized.StatusCode };
             return;
         }
 
         if (!await _permissionCheck.HasPermissionAsync(userId.Value, _permissionCode))
         {
-            ApiResponse<object> forbidden = ApiResponse<object>.Forbidden(
-                $"Bạn không có quyền thực hiện thao tác này (yêu cầu quyền {_permissionCode}).",
-                ErrorCodes.Forbidden);
+            ApiResponse<object> forbidden = ApiResponse<object>.Forbidden(ErrorCodes.Forbidden);
             context.Result = new ObjectResult(forbidden) { StatusCode = forbidden.StatusCode };
         }
     }

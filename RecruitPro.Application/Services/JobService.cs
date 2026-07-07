@@ -140,13 +140,13 @@ public class JobService : IJobService
     {
         if (!Guid.TryParse(departmentId, out Guid departmentGuid))
         {
-            return ApiResponse<DepartmentResponseDto>.NotFound("Department not found.", errorCode: ErrorCodes.DepartmentNotFound);
+            return ApiResponse<DepartmentResponseDto>.NotFound(ErrorCodes.DepartmentNotFound);
         }
 
         Department? department = await _jobRepository.GetDepartmentByIdAsync(departmentGuid);
         if (department == null)
         {
-            return ApiResponse<DepartmentResponseDto>.NotFound("Department not found.", errorCode: ErrorCodes.DepartmentNotFound);
+            return ApiResponse<DepartmentResponseDto>.NotFound(ErrorCodes.DepartmentNotFound);
         }
 
         return ApiResponse<DepartmentResponseDto>.Ok(MapDepartment(department));
@@ -161,29 +161,26 @@ public class JobService : IJobService
     {
         if (!Guid.TryParse(departmentId, out Guid departmentGuid))
         {
-            return ApiResponse<DepartmentResponseDto>.NotFound("Department not found.", errorCode: ErrorCodes.DepartmentNotFound);
+            return ApiResponse<DepartmentResponseDto>.NotFound(ErrorCodes.DepartmentNotFound);
         }
 
         Department? department = await _jobRepository.GetTrackedDepartmentByIdAsync(departmentGuid);
         if (department == null)
         {
-            return ApiResponse<DepartmentResponseDto>.NotFound("Department not found.", errorCode: ErrorCodes.DepartmentNotFound);
+            return ApiResponse<DepartmentResponseDto>.NotFound(ErrorCodes.DepartmentNotFound);
         }
 
         if (!string.IsNullOrWhiteSpace(request.HeadUserId))
         {
             if (!Guid.TryParse(request.HeadUserId, out Guid headUserGuid))
             {
-                return ApiResponse<DepartmentResponseDto>.UnprocessableEntity(
-                    "The selected department head is not a valid user.", errorCode: ErrorCodes.InvalidDepartmentHead);
+                return ApiResponse<DepartmentResponseDto>.UnprocessableEntity(ErrorCodes.InvalidDepartmentHead);
             }
 
             User? headUser = await _userRepository.GetByIdAsync(headUserGuid);
             if (headUser == null || !UserHasAnyRole(headUser, RoleNames.HeadDepartment, RoleNames.SystemAdmin))
             {
-                return ApiResponse<DepartmentResponseDto>.UnprocessableEntity(
-                    "The selected department head must be an existing user with the HeadDepartment role.",
-                    errorCode: ErrorCodes.InvalidDepartmentHead);
+                return ApiResponse<DepartmentResponseDto>.UnprocessableEntity(ErrorCodes.InvalidDepartmentHead);
             }
 
             department.HeadUserId = headUser.Id;
@@ -448,16 +445,12 @@ public class JobService : IJobService
         ApprovalAccess access = EvaluateApprovalAccess(job.Department?.HeadUserId, currentUserId, currentUserRoles);
         if (access == ApprovalAccess.NoHead)
         {
-            return ApiResponse<ManagerJobApprovalDetailDto>.UnprocessableEntity(
-                "This job's department has no head assigned; assign a department head before approving or rejecting.",
-                errorCode: ErrorCodes.DepartmentHeadRequired);
+            return ApiResponse<ManagerJobApprovalDetailDto>.UnprocessableEntity(ErrorCodes.DepartmentHeadRequired);
         }
 
         if (access == ApprovalAccess.Forbidden)
         {
-            return ApiResponse<ManagerJobApprovalDetailDto>.Forbidden(
-                "Only the department head can view or act on this job's approval.",
-                errorCode: ErrorCodes.Forbidden);
+            return ApiResponse<ManagerJobApprovalDetailDto>.Forbidden(ErrorCodes.Forbidden);
         }
 
         int applicationsCount = job.Applications.Count;
@@ -575,8 +568,7 @@ public class JobService : IJobService
         Department? department = await ResolveDepartmentAsync(request.DepartmentId, request.Department);
         if (department == null)
         {
-            return ApiResponse<HrCreateJobResponseDto>.UnprocessableEntity(
-                "A valid department is required to create a job.", errorCode: ErrorCodes.DepartmentNotFound);
+            return ApiResponse<HrCreateJobResponseDto>.UnprocessableEntity(ErrorCodes.DepartmentNotFound);
         }
 
         // BR-OWN-002: RecruiterId is the business owner. When provided it must be an existing HR user;
@@ -586,16 +578,13 @@ public class JobService : IJobService
         {
             if (!Guid.TryParse(request.RecruiterId, out Guid parsedRecruiterId))
             {
-                return ApiResponse<HrCreateJobResponseDto>.UnprocessableEntity(
-                    "The selected recruiter is not a valid user.", errorCode: ErrorCodes.InvalidJobRecruiter);
+                return ApiResponse<HrCreateJobResponseDto>.UnprocessableEntity(ErrorCodes.InvalidJobRecruiter);
             }
 
             User? recruiter = await _userRepository.GetByIdAsync(parsedRecruiterId);
             if (recruiter == null || !UserHasAnyRole(recruiter, RoleNames.Hr))
             {
-                return ApiResponse<HrCreateJobResponseDto>.UnprocessableEntity(
-                    "The selected recruiter must be an existing user with the HR role.",
-                    errorCode: ErrorCodes.InvalidJobRecruiter);
+                return ApiResponse<HrCreateJobResponseDto>.UnprocessableEntity(ErrorCodes.InvalidJobRecruiter);
             }
 
             recruiterId = recruiter.Id;
@@ -604,8 +593,7 @@ public class JobService : IJobService
         // BR: the application deadline must fall AFTER the posting date (CreatedAt = now at creation).
         if (request.Deadline.HasValue && request.Deadline.Value.Date <= DbDateTime.Today)
         {
-            return ApiResponse<HrCreateJobResponseDto>.BadRequest(
-                "Hạn nộp hồ sơ phải sau ngày đăng tuyển.", ErrorCodes.JobDeadlineInvalid);
+            return ApiResponse<HrCreateJobResponseDto>.BadRequest(ErrorCodes.JobDeadlineInvalid);
         }
 
         List<JobSkill> jobSkills = await BuildJobSkillsAsync(request.SkillRequirements, request.SkillIds, request.Skills);
@@ -679,13 +667,13 @@ public class JobService : IJobService
     {
         if (!Guid.TryParse(jobId, out Guid jobGuid))
         {
-            return ApiResponse<HrJobStatusResponseDto>.NotFound("Job not found.");
+            return ApiResponse<HrJobStatusResponseDto>.NotFound(ErrorCodes.JobNotFound);
         }
 
         Job? job = await _jobRepository.GetTrackedByIdAsync(jobGuid);
         if (job == null)
         {
-            return ApiResponse<HrJobStatusResponseDto>.NotFound("Job not found.");
+            return ApiResponse<HrJobStatusResponseDto>.NotFound(ErrorCodes.JobNotFound);
         }
 
         if (!string.IsNullOrWhiteSpace(request.Title))
@@ -783,8 +771,7 @@ public class JobService : IJobService
             DateTime postedDate = (job.CreatedAt ?? DbDateTime.Now).Date;
             if (request.Deadline.Value.Date <= postedDate)
             {
-                return ApiResponse<HrJobStatusResponseDto>.BadRequest(
-                    "Hạn nộp hồ sơ phải sau ngày đăng tuyển.", ErrorCodes.JobDeadlineInvalid);
+                return ApiResponse<HrJobStatusResponseDto>.BadRequest(ErrorCodes.JobDeadlineInvalid);
             }
 
             job.Deadline = request.Deadline;
@@ -848,13 +835,13 @@ public class JobService : IJobService
     {
         if (!Guid.TryParse(jobId, out Guid jobGuid))
         {
-            return ApiResponse<string>.NotFound("Job not found.");
+            return ApiResponse<string>.NotFound(ErrorCodes.JobNotFound);
         }
 
         Job? job = await _jobRepository.GetTrackedByIdAsync(jobGuid);
         if (job == null)
         {
-            return ApiResponse<string>.NotFound("Job not found.");
+            return ApiResponse<string>.NotFound(ErrorCodes.JobNotFound);
         }
 
         await _jobRepository.DeleteAsync(job);
@@ -872,13 +859,13 @@ public class JobService : IJobService
     {
         if (!Guid.TryParse(jobId, out Guid jobGuid))
         {
-            throw new NotFoundException($"Job with ID {jobId} not found.");
+            throw new BusinessAppException(ErrorCodes.JobNotFound, 404);
         }
 
         Job? job = await _jobRepository.GetByIdAsync(jobGuid);
         if (job == null)
         {
-            throw new NotFoundException($"Job with ID {jobId} not found.");
+            throw new BusinessAppException(ErrorCodes.JobNotFound, 404);
         }
 
         return job;
@@ -1062,16 +1049,12 @@ public class JobService : IJobService
         ApprovalAccess access = EvaluateApprovalAccess(headUserId, currentUserId, currentUserRoles);
         if (access == ApprovalAccess.NoHead)
         {
-            return ApiResponse<HrJobStatusResponseDto>.UnprocessableEntity(
-                "This job's department has no head assigned; assign a department head before approving or rejecting.",
-                errorCode: ErrorCodes.DepartmentHeadRequired);
+            return ApiResponse<HrJobStatusResponseDto>.UnprocessableEntity(ErrorCodes.DepartmentHeadRequired);
         }
 
         if (access == ApprovalAccess.Forbidden)
         {
-            return ApiResponse<HrJobStatusResponseDto>.Forbidden(
-                "Only the department head can approve or reject this job.",
-                errorCode: ErrorCodes.Forbidden);
+            return ApiResponse<HrJobStatusResponseDto>.Forbidden(ErrorCodes.Forbidden);
         }
 
         return null;

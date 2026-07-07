@@ -112,13 +112,13 @@ public class AutomationDiagnosticsService : IAutomationDiagnosticsService
     {
         if (!Guid.TryParse(workflowId, out Guid id))
         {
-            return ApiResponse<WorkflowDiagnosticsDto>.BadRequest("workflowId không hợp lệ.");
+            return ApiResponse<WorkflowDiagnosticsDto>.BadRequest(ErrorCodes.InvalidInput);
         }
 
         WorkflowDefinition? def = await _workflows.GetDefinitionAsync(id);
         if (def is null)
         {
-            return ApiResponse<WorkflowDiagnosticsDto>.NotFound("Không tìm thấy workflow.");
+            return ApiResponse<WorkflowDiagnosticsDto>.NotFound(ErrorCodes.WorkflowNotFound);
         }
 
         WorkflowDefinitionVersion? active = def.Versions.FirstOrDefault(v => v.IsActive);

@@ -45,13 +45,13 @@ public class NotificationService : INotificationService
     {
         if (!Guid.TryParse(notificationId, out Guid parsedNotificationId))
         {
-            return ApiResponse<NotificationDto>.BadRequest("Mã thông báo không hợp lệ.");
+            return ApiResponse<NotificationDto>.BadRequest(ErrorCodes.InvalidInput);
         }
 
         Domain.Entities.Notification? notification = await _notificationRepository.GetByIdAsync(parsedNotificationId);
         if (notification == null || notification.UserId != userId)
         {
-            return ApiResponse<NotificationDto>.NotFound("Không tìm thấy thông báo.");
+            return ApiResponse<NotificationDto>.NotFound(ErrorCodes.NotificationNotFound);
         }
 
         if (notification.IsRead != true)
