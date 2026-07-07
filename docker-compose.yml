@@ -1,6 +1,18 @@
-version: '3.9'
-
 services:
+  backend:
+    image: recruitpro-api
+    container_name: recruitpro_api
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    depends_on:
+      - postgres
+      - minio
+    ports:
+      - "5000:8080"
+    env_file:
+      - /opt/recruitpro/api.env
 
   postgres:
     image: postgres:18
