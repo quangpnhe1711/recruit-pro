@@ -164,7 +164,6 @@ public sealed class ApplicationReapplyRegressionTests
 
         response.Success.Should().BeFalse();
         response.StatusCode.Should().Be(409);
-        response.Message.Should().Be("Candidate already applied for this job.");
         response.ErrorCode.Should().Be("APPLICATION_ALREADY_ACTIVE");
         applicationRepository.Verify(repository => repository.AddAsync(It.IsAny<Domain.Entities.Application>()), Times.Never);
     }
@@ -200,8 +199,8 @@ public sealed class ApplicationReapplyRegressionTests
 
         response.Success.Should().BeFalse();
         response.StatusCode.Should().Be(422);
-        response.Message.Should().NotBe("Candidate already applied for this job.");
-        response.Message.Should().Contain("not accepting new applications");
+        response.ErrorCode.Should().NotBe("APPLICATION_ALREADY_ACTIVE");
+        response.ErrorCode.Should().Be("JOB_NOT_ACCEPTING_APPLICATIONS");
     }
 
     // TEST-APPLICATION-500-001: the apply is durably committed before any side effect runs. A failing

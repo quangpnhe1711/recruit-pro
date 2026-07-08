@@ -56,6 +56,14 @@ namespace RecruitPro.API.Middlewares
 
         private async Task HandleExceptionAsync(HttpContext context, Exception exception, string traceId)
         {
+            // If the response has already started (e.g. an SSE/streaming endpoint that flushed headers),
+            // we can't rewrite status/headers — doing so throws a secondary exception that escapes this
+            // handler and resets the connection. The exception is already logged in Invoke; bail cleanly.
+            if (context.Response.HasStarted)
+            {
+                return;
+            }
+
             context.Response.ContentType = "application/json";
 
             ApiResponse<object> response = BuildResponse(exception, traceId);

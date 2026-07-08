@@ -61,7 +61,7 @@ public sealed class ApiIntegrationTests : IClassFixture<PostgresTestFixture>, IA
 
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
         json.RootElement.GetProperty("success").GetBoolean().Should().BeFalse();
-        json.RootElement.GetProperty("message").GetString().Should().Be("Username hoặc mật khẩu không đúng.");
+        json.RootElement.GetProperty("errorCode").GetString().Should().Be("INVALID_CREDENTIALS");
     }
 
     [Fact]
@@ -89,7 +89,7 @@ public sealed class ApiIntegrationTests : IClassFixture<PostgresTestFixture>, IA
         HttpResponseMessage forbidden = await _client.GetAsync("/api/hr/jobs");
         var forbiddenJson = await ApiResponseAssertions.AssertNo500AndEnvelopeAsync(forbidden);
         forbidden.StatusCode.Should().Be(HttpStatusCode.Forbidden);
-        forbiddenJson.RootElement.GetProperty("message").GetString().Should().Be("Bạn không có quyền");
+        forbiddenJson.RootElement.GetProperty("errorCode").GetString().Should().Be("FORBIDDEN");
     }
 
     [Fact]
@@ -113,7 +113,7 @@ public sealed class ApiIntegrationTests : IClassFixture<PostgresTestFixture>, IA
         HttpResponseMessage unauthorized = await _client.GetAsync("/api/candidate/profile");
         var unauthorizedJson = await ApiResponseAssertions.AssertNo500AndEnvelopeAsync(unauthorized);
         unauthorized.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
-        unauthorizedJson.RootElement.GetProperty("message").GetString().Should().Be("Không có quyền truy cập");
+        unauthorizedJson.RootElement.GetProperty("errorCode").GetString().Should().Be("UNAUTHENTICATED");
 
         string candidateToken = _factory.Fixture.CreateJwt(TestDataSeeder.CandidateUserId.ToString(), "Candidate");
         PostgresTestFixture.SetBearerToken(_client, candidateToken);
@@ -152,7 +152,7 @@ public sealed class ApiIntegrationTests : IClassFixture<PostgresTestFixture>, IA
 
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
         json.RootElement.GetProperty("success").GetBoolean().Should().BeFalse();
-        json.RootElement.GetProperty("message").GetString()!.ToLowerInvariant().Should().Contain("not found");
+        json.RootElement.GetProperty("errorCode").GetString().Should().Be("JOB_NOT_FOUND");
     }
 
     // ----------------------------------------------------------------------------------------------
@@ -322,7 +322,7 @@ public sealed class ApiIntegrationTests : IClassFixture<PostgresTestFixture>, IA
 
         json.RootElement.GetProperty("success").GetBoolean().Should().BeFalse();
         json.RootElement.GetProperty("statusCode").GetInt32().Should().Be(404);
-        json.RootElement.GetProperty("message").GetString().Should().Be("Fit analysis not found");
+        json.RootElement.GetProperty("errorCode").GetString().Should().Be("ENTITY_NOT_FOUND");
     }
 
     [Fact]

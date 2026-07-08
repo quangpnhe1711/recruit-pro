@@ -143,7 +143,7 @@ public sealed class ApplicationServiceUnitTests
         response.Success.Should().BeFalse();
         // Duplicate of an ACTIVE application is a conflict (409), not a generic bad request.
         response.StatusCode.Should().Be(409);
-        response.Message.Should().Be("Candidate already applied for this job.");
+        response.ErrorCode.Should().Be(RecruitPro.Application.Common.ErrorCodes.ApplicationAlreadyActive);
     }
 }
 
@@ -206,7 +206,7 @@ public sealed class AuthServiceUnitTests
         var response = await service.ForgotCandidatePasswordAsync("   ");
 
         response.StatusCode.Should().Be(400);
-        response.Message.Should().Be("Identifier is required.");
+        response.ErrorCode.Should().Be(RecruitPro.Application.Common.ErrorCodes.Required);
     }
 }
 
@@ -236,7 +236,7 @@ public sealed class CandidateServiceUnitTests
         var response = await service.GetResumeDownloadUrlAsync(Guid.NewGuid().ToString());
 
         response.StatusCode.Should().Be(404);
-        response.Message.Should().Be("Không tìm thấy CV.");
+        response.ErrorCode.Should().Be(RecruitPro.Application.Common.ErrorCodes.ResumeNotFound);
     }
 
     [Fact]
@@ -1224,7 +1224,7 @@ public sealed class InterviewServiceUnitTests
         var response = await service.GetScheduleDataAsync("not-a-guid");
 
         response.StatusCode.Should().Be(400);
-        response.Message.Should().Be("Mã hồ sơ ứng tuyển không hợp lệ.");
+        response.ErrorCode.Should().Be(RecruitPro.Application.Common.ErrorCodes.InvalidInput);
     }
 
     [Fact]
@@ -1246,7 +1246,7 @@ public sealed class InterviewServiceUnitTests
         var response = await service.UpdateInterviewStatusAsync(interviewId.ToString(), new UpdateInterviewStatusRequest { Status = "weird" });
 
         response.StatusCode.Should().Be(400);
-        response.Message.Should().Be("Trạng thái phỏng vấn không hợp lệ.");
+        response.ErrorCode.Should().Be(RecruitPro.Application.Common.ErrorCodes.InvalidInput);
     }
 }
 
@@ -1293,7 +1293,7 @@ public sealed class JobServiceUnitTests
         var response = await service.DeleteJobAsync("bad-id");
 
         response.StatusCode.Should().Be(404);
-        response.Message.Should().Be("Job not found.");
+        response.ErrorCode.Should().Be(RecruitPro.Application.Common.ErrorCodes.JobNotFound);
     }
 }
 
@@ -1424,7 +1424,7 @@ public sealed class NotificationServiceUnitTests
         var response = await service.MarkAsReadAsync(Guid.NewGuid(), Guid.NewGuid().ToString());
 
         response.StatusCode.Should().Be(404);
-        response.Message.Should().Be("Không tìm thấy thông báo.");
+        response.ErrorCode.Should().Be(RecruitPro.Application.Common.ErrorCodes.NotificationNotFound);
         repository.Verify(value => value.MarkAsReadAsync(It.IsAny<Guid>(), It.IsAny<DateTime>()), Times.Never);
     }
 }
@@ -1480,7 +1480,7 @@ public sealed class OfferServiceUnitTests
         var response = await service.GetOfferEditorAsync("not-a-guid", null, Array.Empty<string>());
 
         response.StatusCode.Should().Be(404);
-        response.Message.Should().Be("Không tìm thấy hồ sơ ứng tuyển.");
+        response.ErrorCode.Should().Be(RecruitPro.Application.Common.ErrorCodes.ApplicationNotFound);
     }
 
     [Fact]
@@ -1518,7 +1518,7 @@ public sealed class OfferServiceUnitTests
         });
 
         response.StatusCode.Should().Be(400);
-        response.Message.Should().Be("Loại tiền tệ đã chọn không hợp lệ.");
+        response.ErrorCode.Should().Be(RecruitPro.Application.Common.ErrorCodes.InvalidInput);
     }
 }
 
@@ -1538,7 +1538,7 @@ public sealed class SemanticDiscoveryServiceUnitTests
         var response = await service.SearchTalentPoolAsync(new TalentPoolSearchRequest());
 
         response.StatusCode.Should().Be(400);
-        response.Message.Should().Be("Hãy nhập từ khóa hoặc jobId.");
+        response.ErrorCode.Should().Be(RecruitPro.Application.Common.ErrorCodes.InvalidInput);
     }
 
     [Fact]
@@ -1558,7 +1558,8 @@ public sealed class SemanticDiscoveryServiceUnitTests
 
         Func<Task> act = () => service.GetRecommendedJobsForCandidateAsync(Guid.NewGuid(), 5);
 
-        await act.Should().ThrowAsync<NotFoundException>();
+        await act.Should().ThrowAsync<BusinessAppException>()
+            .Where(e => e.Code == RecruitPro.Application.Common.ErrorCodes.CandidateProfileNotFound);
     }
 }
 
