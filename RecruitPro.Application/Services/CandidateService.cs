@@ -130,7 +130,7 @@ public class CandidateService : ICandidateService
             ResumeBufferResult buffered = await ValidateAndBufferResumeAsync(resumeStream, resumeFileName, resumeContentType);
             if (!buffered.IsValid)
             {
-                return ApiResponse<CandidateRegisterResponseDto>.BadRequest(buffered.ErrorMessage!, buffered.ErrorCode);
+                return ApiResponse<CandidateRegisterResponseDto>.BadRequest(buffered.ErrorCode!);
             }
 
             bufferedResume = buffered.Buffer;
@@ -162,12 +162,12 @@ public class CandidateService : ICandidateService
 
             if (await _userRepository.ExistsByUsernameAsync(user.Username))
             {
-                return ApiResponse<CandidateRegisterResponseDto>.BadRequest("Username đã tồn tại.");
+                return ApiResponse<CandidateRegisterResponseDto>.ValidationError(new[] { new ApiFieldErrorInput { Field = "username", Code = ErrorCodes.UsernameAlreadyExists } });
             }
 
             if (await _userRepository.ExistsByEmailAsync(user.Email))
             {
-                return ApiResponse<CandidateRegisterResponseDto>.BadRequest("Email đã tồn tại.");
+                return ApiResponse<CandidateRegisterResponseDto>.ValidationError(new[] { new ApiFieldErrorInput { Field = "email", Code = ErrorCodes.EmailAlreadyExists } });
             }
 
             await _userRepository.AddAsync(user);
@@ -305,13 +305,13 @@ public class CandidateService : ICandidateService
     {
         if (!Guid.TryParse(candidateId, out Guid candidateGuid))
         {
-            return ApiResponse<HrCandidateDetailDto>.NotFound("Không tìm thấy ứng viên.");
+            return ApiResponse<HrCandidateDetailDto>.NotFound(ErrorCodes.CandidateNotFound);
         }
 
         CandidateProfile? profile = await _candidateRepository.GetHrDetailByIdAsync(candidateGuid);
         if (profile == null)
         {
-            return ApiResponse<HrCandidateDetailDto>.NotFound("Không tìm thấy ứng viên.");
+            return ApiResponse<HrCandidateDetailDto>.NotFound(ErrorCodes.CandidateNotFound);
         }
 
         // Phase 2.2c: a caller may only open a candidate they reach through an owned application.
@@ -320,7 +320,7 @@ public class CandidateService : ICandidateService
         if (!profile.User.Applications.Any(application =>
                 OwnershipScope.CanAccessApplication(application, currentUserId, currentUserRoles)))
         {
-            return ApiResponse<HrCandidateDetailDto>.NotFound("Không tìm thấy ứng viên.");
+            return ApiResponse<HrCandidateDetailDto>.NotFound(ErrorCodes.CandidateNotFound);
         }
 
         CandidateProfileResponseDto baseProfile = await MapProfileAsync(profile);
@@ -431,7 +431,7 @@ public class CandidateService : ICandidateService
 
         if (validRows.Count == 0)
         {
-            return ApiResponse<CandidateImportResultDto>.BadRequest("Không có dòng hợp lệ để import.");
+            return ApiResponse<CandidateImportResultDto>.BadRequest(ErrorCodes.InvalidInput);
         }
 
         List<string> createdCandidateIds = [];
@@ -567,7 +567,7 @@ public class CandidateService : ICandidateService
         ResumeBufferResult buffered = await ValidateAndBufferResumeAsync(resumeStream, resumeFileName, resumeContentType);
         if (!buffered.IsValid)
         {
-            return ApiResponse<CandidateProfileResponseDto>.BadRequest(buffered.ErrorMessage!, buffered.ErrorCode);
+            return ApiResponse<CandidateProfileResponseDto>.BadRequest(buffered.ErrorCode!);
         }
 
         await using MemoryStream bufferedResume = buffered.Buffer!;
@@ -727,7 +727,7 @@ public class CandidateService : ICandidateService
         CandidateExperienceDocument? existing = experiences.FirstOrDefault(item => item.Id.Equals(experienceId, StringComparison.OrdinalIgnoreCase));
         if (existing == null)
         {
-            throw new NotFoundException("Experience entry not found.");
+            throw new BusinessAppException(ErrorCodes.ExperienceNotFound, 404);
         }
 
         int index = experiences.IndexOf(existing);
@@ -752,7 +752,7 @@ public class CandidateService : ICandidateService
         int removedCount = experiences.RemoveAll(item => item.Id.Equals(experienceId, StringComparison.OrdinalIgnoreCase));
         if (removedCount == 0)
         {
-            throw new NotFoundException("Experience entry not found.");
+            throw new BusinessAppException(ErrorCodes.ExperienceNotFound, 404);
         }
 
         profile.ExperienceEntriesJson = SerializeDocuments(experiences);
@@ -774,7 +774,7 @@ public class CandidateService : ICandidateService
         ResumeBufferResult buffered = await ValidateAndBufferResumeAsync(resumeStream, fileName, contentType);
         if (!buffered.IsValid)
         {
-            return ApiResponse<CandidateResumeParseResponseDto>.BadRequest(buffered.ErrorMessage!, buffered.ErrorCode);
+            return ApiResponse<CandidateResumeParseResponseDto>.BadRequest(buffered.ErrorCode!);
         }
 
         CandidateProfile profile = await GetProfileEntityAsync(userId);
@@ -787,18 +787,18 @@ public class CandidateService : ICandidateService
         catch (NotSupportedException exception)
         {
             _logger.LogWarning(exception, "Unsupported resume format for parsing: {FileName}", fileName);
-            return ApiResponse<CandidateResumeParseResponseDto>.BadRequest(exception.Message);
+            return ApiResponse<CandidateResumeParseResponseDto>.BadRequest(ErrorCodes.ResumeFileUnsupportedType);
         }
         catch (Exception exception)
         {
             _logger.LogError(exception, "Failed to parse resume file {FileName} for user {UserId}.", fileName, userId);
-            return ApiResponse<CandidateResumeParseResponseDto>.BadRequest("We could not read this resume file. Please upload a PDF or DOCX resume.");
+            return ApiResponse<CandidateResumeParseResponseDto>.BadRequest(ErrorCodes.ResumeFileUnsupportedType);
         }
 
         extractedText = NormalizeResumeText(extractedText);
         if (!HasUsableResumeText(extractedText))
         {
-            return ApiResponse<CandidateResumeParseResponseDto>.BadRequest(ResumeExtractionFailureMessage);
+            return ApiResponse<CandidateResumeParseResponseDto>.BadRequest(ErrorCodes.ResumeFileUnsupportedType);
         }
 
         IReadOnlyList<Skill> allSkills = await _skillRepository.GetAllAsync();
@@ -829,7 +829,7 @@ public class CandidateService : ICandidateService
         ResumeBufferResult buffered = await ValidateAndBufferResumeAsync(resumeStream, fileName, contentType);
         if (!buffered.IsValid)
         {
-            return ApiResponse<ResumeUploadResponseDto>.BadRequest(buffered.ErrorMessage!, buffered.ErrorCode);
+            return ApiResponse<ResumeUploadResponseDto>.BadRequest(buffered.ErrorCode!);
         }
 
         CandidateProfile profile = await GetProfileEntityAsync(userId);
@@ -904,7 +904,7 @@ public class CandidateService : ICandidateService
             await PersistResumeParsingFailureAsync(profile, ResumeParseStatusTextExtractionFailed, ResumeExtractionFailureMessage, null, []);
             response.ParseStatus = ResumeParseStatusTextExtractionFailed;
             response.ParseMessage = ResumeExtractionFailureMessage;
-            return ApiResponse<ResumeUploadResponseDto>.BadRequest(response.ParseMessage);
+            return ApiResponse<ResumeUploadResponseDto>.BadRequest(ErrorCodes.ResumeFileUnsupportedType);
         }
 
         if (!HasUsableResumeText(extractedText))
@@ -912,7 +912,7 @@ public class CandidateService : ICandidateService
             await PersistResumeParsingFailureAsync(profile, ResumeParseStatusTextExtractionFailed, ResumeExtractionFailureMessage, extractedText, []);
             response.ParseStatus = ResumeParseStatusTextExtractionFailed;
             response.ParseMessage = ResumeExtractionFailureMessage;
-            return ApiResponse<ResumeUploadResponseDto>.BadRequest(response.ParseMessage);
+            return ApiResponse<ResumeUploadResponseDto>.BadRequest(ErrorCodes.ResumeFileUnsupportedType);
         }
 
         ResumeParsingAiResult aiResult = await _resumeParsingAiProvider.TryParseResumeAsync(extractedText, allSkills);
@@ -954,14 +954,14 @@ public class CandidateService : ICandidateService
     {
         if (!Guid.TryParse(resumeId, out Guid resumeGuid))
         {
-            return ApiResponse<ResumeFileResponseDto>.NotFound("Không tìm thấy CV.");
+            return ApiResponse<ResumeFileResponseDto>.NotFound(ErrorCodes.ResumeNotFound);
         }
 
         CandidateProfile? profile = await _candidateRepository.GetByResumeIdAsync(resumeGuid);
         CandidateResume? resume = profile?.Resumes.FirstOrDefault(item => item.Id == resumeGuid);
         if (profile == null || resume == null)
         {
-            return ApiResponse<ResumeFileResponseDto>.NotFound("Không tìm thấy CV.");
+            return ApiResponse<ResumeFileResponseDto>.NotFound(ErrorCodes.ResumeNotFound);
         }
 
         string presignedUrl = await _fileStorage.GetPresignedUrlAsync(resume.StorageKey);
@@ -1013,7 +1013,7 @@ public class CandidateService : ICandidateService
         CandidateProfile? profile = await _candidateRepository.GetByUserIdAsync(userId);
         if (profile == null)
         {
-            throw new NotFoundException("Candidate profile not found.");
+            throw new BusinessAppException(ErrorCodes.CandidateProfileNotFound, 404);
         }
 
         return profile;
@@ -1030,7 +1030,7 @@ public class CandidateService : ICandidateService
         CandidateProfile? profile = await _candidateRepository.GetByUserIdForUpdateAsync(userId);
         if (profile == null)
         {
-            throw new NotFoundException("Candidate profile not found.");
+            throw new BusinessAppException(ErrorCodes.CandidateProfileNotFound, 404);
         }
 
         return profile;
@@ -1071,7 +1071,7 @@ public class CandidateService : ICandidateService
         User? user = await _userRepository.GetTrackedByIdAsync(userId);
         if (user == null)
         {
-            throw new NotFoundException("Không tìm thấy người dùng.");
+            throw new BusinessAppException(ErrorCodes.UserNotFound, 404);
         }
 
         CandidateProfile profile = new()
@@ -1255,7 +1255,7 @@ public class CandidateService : ICandidateService
         if (!string.Equals(nextEmail, profile.User.Email, StringComparison.OrdinalIgnoreCase)
             && await _userRepository.ExistsByEmailAsync(nextEmail, profile.User.Id))
         {
-            throw new InvalidOperationException("Email đã tồn tại.");
+            throw new BusinessAppException(ErrorCodes.ValidationFailed, 400, fieldErrors: new[] { new ApiFieldErrorInput { Field = "email", Code = ErrorCodes.EmailAlreadyExists } });
         }
 
         profile.User.FullName = request.Name ?? profile.User.FullName;
@@ -3447,7 +3447,7 @@ public class CandidateService : ICandidateService
         Role? candidateRole = await _userRepository.GetRoleByNameAsync(CandidateRoleName);
         if (candidateRole == null)
         {
-            throw new NotFoundException("Không tìm thấy vai trò ứng viên.");
+            throw new BusinessAppException(ErrorCodes.CandidateRoleNotFound, 404);
         }
 
         await _userRepository.AddUserRoleAsync(new UserRole

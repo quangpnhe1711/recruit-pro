@@ -57,22 +57,20 @@ public class SysAdminDirectoryService : ISysAdminDirectoryService
     {
         if (!Guid.TryParse(userId, out Guid userGuid))
         {
-            return ApiResponse<SysAdminUserDto>.NotFound("Không tìm thấy người dùng.");
+            return ApiResponse<SysAdminUserDto>.NotFound(ErrorCodes.UserNotFound);
         }
 
         string? newStatus = AllowedStatuses.FirstOrDefault(
             allowed => string.Equals(allowed, request.Status?.Trim(), StringComparison.OrdinalIgnoreCase));
         if (newStatus == null)
         {
-            return ApiResponse<SysAdminUserDto>.BadRequest(
-                $"Trạng thái không hợp lệ. Chỉ chấp nhận: {string.Join(", ", AllowedStatuses)}.",
-                ErrorCodes.UserStatusInvalid);
+            return ApiResponse<SysAdminUserDto>.BadRequest(ErrorCodes.UserStatusInvalid);
         }
 
         User? user = await _rbacRepository.GetUserWithRolesAsync(userGuid);
         if (user == null)
         {
-            return ApiResponse<SysAdminUserDto>.NotFound("Không tìm thấy người dùng.");
+            return ApiResponse<SysAdminUserDto>.NotFound(ErrorCodes.UserNotFound);
         }
 
         bool deactivating = !string.Equals(newStatus, UserStatus.Active.ToString(), StringComparison.OrdinalIgnoreCase);
@@ -80,9 +78,7 @@ public class SysAdminDirectoryService : ISysAdminDirectoryService
         // 409 — admins cannot deactivate their own account (they would cut off their session mid-flight).
         if (deactivating && user.Id == currentUserId)
         {
-            return ApiResponse<SysAdminUserDto>.Conflict(
-                "Bạn không thể tự vô hiệu hóa tài khoản của chính mình.",
-                errorCode: ErrorCodes.UserSelfDeactivation);
+            return ApiResponse<SysAdminUserDto>.Conflict(ErrorCodes.UserSelfDeactivation);
         }
 
         // 409 — last-administrator protection: the system must always keep at least one ACTIVE user
@@ -93,9 +89,7 @@ public class SysAdminDirectoryService : ISysAdminDirectoryService
                 RbacCatalog.ManagePermissionsCode, user.Id);
             if (otherAdmins == 0)
             {
-                return ApiResponse<SysAdminUserDto>.Conflict(
-                    "Không thể vô hiệu hóa quản trị viên cuối cùng còn quyền quản lý phân quyền.",
-                    errorCode: ErrorCodes.RbacAdminLockout);
+                return ApiResponse<SysAdminUserDto>.Conflict(ErrorCodes.RbacAdminLockout);
             }
         }
 
@@ -123,7 +117,7 @@ public class SysAdminDirectoryService : ISysAdminDirectoryService
     {
         if (!Guid.TryParse(userId, out Guid userGuid))
         {
-            return ApiResponse<SysAdminUserDto>.NotFound("Không tìm thấy người dùng.");
+            return ApiResponse<SysAdminUserDto>.NotFound(ErrorCodes.UserNotFound);
         }
 
         List<Guid> roleGuids = new();
@@ -131,7 +125,7 @@ public class SysAdminDirectoryService : ISysAdminDirectoryService
         {
             if (!Guid.TryParse(rawRoleId, out Guid parsed))
             {
-                return ApiResponse<SysAdminUserDto>.BadRequest("Danh sách vai trò chứa id không hợp lệ.", ErrorCodes.RbacRoleNotFound);
+                return ApiResponse<SysAdminUserDto>.BadRequest(ErrorCodes.RbacRoleNotFound);
             }
 
             roleGuids.Add(parsed);
@@ -140,19 +134,19 @@ public class SysAdminDirectoryService : ISysAdminDirectoryService
         roleGuids = roleGuids.Distinct().ToList();
         if (roleGuids.Count == 0)
         {
-            return ApiResponse<SysAdminUserDto>.BadRequest("Người dùng phải có ít nhất một vai trò.", ErrorCodes.RbacRoleNotFound);
+            return ApiResponse<SysAdminUserDto>.BadRequest(ErrorCodes.RbacRoleNotFound);
         }
 
         User? user = await _rbacRepository.GetUserWithRolesAsync(userGuid);
         if (user == null)
         {
-            return ApiResponse<SysAdminUserDto>.NotFound("Không tìm thấy người dùng.");
+            return ApiResponse<SysAdminUserDto>.NotFound(ErrorCodes.UserNotFound);
         }
 
         List<Role> roles = await _rbacRepository.GetRolesByIdsAsync(roleGuids);
         if (roles.Count != roleGuids.Count)
         {
-            return ApiResponse<SysAdminUserDto>.BadRequest("Một hoặc nhiều vai trò không tồn tại.", ErrorCodes.RbacRoleNotFound);
+            return ApiResponse<SysAdminUserDto>.BadRequest(ErrorCodes.RbacRoleNotFound);
         }
 
         // 409 — last-administrator protection: if this user is currently an active RBAC administrator
@@ -169,9 +163,7 @@ public class SysAdminDirectoryService : ISysAdminDirectoryService
                     RbacCatalog.ManagePermissionsCode, user.Id);
                 if (otherAdmins == 0)
                 {
-                    return ApiResponse<SysAdminUserDto>.Conflict(
-                        "Không thể gỡ vai trò quản trị của quản trị viên cuối cùng còn quyền quản lý phân quyền.",
-                        errorCode: ErrorCodes.RbacAdminLockout);
+                    return ApiResponse<SysAdminUserDto>.Conflict(ErrorCodes.RbacAdminLockout);
                 }
             }
         }

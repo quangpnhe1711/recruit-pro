@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using RecruitPro.Application.Common;
 using RecruitPro.Application.DTOs.Response;
 using RecruitPro.Application.DTOs.Response.Automation;
 using RecruitPro.Application.Interfaces.IRepositories;
@@ -33,11 +34,11 @@ public class McpToolAuditService : IMcpToolAuditService
     {
         if (!Guid.TryParse(id, out Guid guid))
         {
-            return ApiResponse<McpAuditDto>.BadRequest("Id không hợp lệ.");
+            return ApiResponse<McpAuditDto>.BadRequest(ErrorCodes.InvalidInput);
         }
         McpToolAudit? audit = await _repository.GetByIdAsync(guid);
         return audit is null
-            ? ApiResponse<McpAuditDto>.NotFound("Không tìm thấy bản ghi audit.")
+            ? ApiResponse<McpAuditDto>.NotFound(ErrorCodes.EntityNotFound)
             : ApiResponse<McpAuditDto>.Ok(ToDto(audit));
     }
 

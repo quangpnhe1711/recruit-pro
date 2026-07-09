@@ -93,12 +93,12 @@ public class WorkflowDefinitionService : IWorkflowDefinitionService
     {
         if (!Guid.TryParse(id, out Guid guid))
         {
-            return ApiResponse<WorkflowDetailDto>.BadRequest("Id không hợp lệ.");
+            return ApiResponse<WorkflowDetailDto>.BadRequest(ErrorCodes.InvalidInput);
         }
         WorkflowDefinition? definition = await _workflows.GetDefinitionAsync(guid);
         if (definition is null)
         {
-            return ApiResponse<WorkflowDetailDto>.NotFound("Không tìm thấy workflow.");
+            return ApiResponse<WorkflowDetailDto>.NotFound(ErrorCodes.WorkflowNotFound);
         }
 
         var executions = await _workflows.QueryExecutionsAsync(guid, null, null, null, null, null, 1, 10);
@@ -114,7 +114,7 @@ public class WorkflowDefinitionService : IWorkflowDefinitionService
         }
         if (await _workflows.DefinitionExistsByNameAsync(request.Name))
         {
-            return ApiResponse<WorkflowDetailDto>.Conflict("Đã tồn tại workflow trùng tên.");
+            return ApiResponse<WorkflowDetailDto>.Conflict(ErrorCodes.DuplicateEntity);
         }
 
         WorkflowMode mode = Enum.Parse<WorkflowMode>(request.Mode, true);
@@ -142,12 +142,12 @@ public class WorkflowDefinitionService : IWorkflowDefinitionService
     {
         if (!Guid.TryParse(id, out Guid guid))
         {
-            return ApiResponse<WorkflowDetailDto>.BadRequest("Id không hợp lệ.");
+            return ApiResponse<WorkflowDetailDto>.BadRequest(ErrorCodes.InvalidInput);
         }
         WorkflowDefinition? definition = await _workflows.GetDefinitionTrackedAsync(guid);
         if (definition is null)
         {
-            return ApiResponse<WorkflowDetailDto>.NotFound("Không tìm thấy workflow.");
+            return ApiResponse<WorkflowDetailDto>.NotFound(ErrorCodes.WorkflowNotFound);
         }
 
         // Base content = latest version (draft or published) so omitted fields are preserved.
@@ -198,12 +198,12 @@ public class WorkflowDefinitionService : IWorkflowDefinitionService
     {
         if (!Guid.TryParse(id, out Guid guid))
         {
-            return ApiResponse<WorkflowVersionDto>.BadRequest("Id không hợp lệ.");
+            return ApiResponse<WorkflowVersionDto>.BadRequest(ErrorCodes.InvalidInput);
         }
         WorkflowDefinition? definition = await _workflows.GetDefinitionTrackedAsync(guid);
         if (definition is null)
         {
-            return ApiResponse<WorkflowVersionDto>.NotFound("Không tìm thấy workflow.");
+            return ApiResponse<WorkflowVersionDto>.NotFound(ErrorCodes.WorkflowNotFound);
         }
 
         WorkflowDefinitionVersion? draft = definition.Versions
@@ -212,7 +212,7 @@ public class WorkflowDefinitionService : IWorkflowDefinitionService
             .FirstOrDefault();
         if (draft is null)
         {
-            return ApiResponse<WorkflowVersionDto>.UnprocessableEntity("Không có phiên bản nháp để xuất bản.");
+            return ApiResponse<WorkflowVersionDto>.UnprocessableEntity(ErrorCodes.BusinessRuleViolation);
         }
 
         WorkflowDefinitionVersion trackedDraft = await _workflows.GetVersionTrackedAsync(draft.Id) ?? draft;
@@ -238,12 +238,12 @@ public class WorkflowDefinitionService : IWorkflowDefinitionService
     {
         if (!Guid.TryParse(id, out Guid guid))
         {
-            return ApiResponse<WorkflowDetailDto>.BadRequest("Id không hợp lệ.");
+            return ApiResponse<WorkflowDetailDto>.BadRequest(ErrorCodes.InvalidInput);
         }
         WorkflowDefinition? definition = await _workflows.GetDefinitionTrackedAsync(guid);
         if (definition is null)
         {
-            return ApiResponse<WorkflowDetailDto>.NotFound("Không tìm thấy workflow.");
+            return ApiResponse<WorkflowDetailDto>.NotFound(ErrorCodes.WorkflowNotFound);
         }
 
         definition.IsEnabled = isEnabled;
@@ -354,46 +354,49 @@ public class WorkflowDefinitionService : IWorkflowDefinitionService
         catch (JsonException) { return []; }
     }
 
+    // Returns an ErrorCodes.* code when the definition is invalid, null when valid.
+    // ponytail: all branches collapse to ValidationFailed — no workflow-specific validation codes exist yet
+    // (see report for proposed per-branch codes); add them if the FE needs to distinguish these cases.
     private static string? Validate(
         string? name, string triggerEvent, string mode,
         List<WorkflowActionInput> actions, List<WorkflowConditionInput> conditions)
     {
         if (string.IsNullOrWhiteSpace(name))
         {
-            return "Tên workflow là bắt buộc.";
+            return ErrorCodes.ValidationFailed;
         }
         if (!WorkflowEventTypes.All.Contains(triggerEvent))
         {
-            return $"Trigger '{triggerEvent}' không hợp lệ.";
+            return ErrorCodes.ValidationFailed;
         }
         if (!Enum.TryParse<WorkflowMode>(mode, true, out _))
         {
-            return $"Chế độ '{mode}' không hợp lệ.";
+            return ErrorCodes.ValidationFailed;
         }
         if (actions is null || actions.Count == 0)
         {
-            return "Cần ít nhất một hành động.";
+            return ErrorCodes.ValidationFailed;
         }
         foreach (WorkflowActionInput a in actions)
         {
             if (!WorkflowActionType.All.Contains(a.Type))
             {
-                return $"Hành động '{a.Type}' không được hỗ trợ.";
+                return ErrorCodes.ValidationFailed;
             }
             if (!IsValidJson(a.ConfigJson))
             {
-                return $"Cấu hình hành động '{a.Type}' không phải JSON hợp lệ.";
+                return ErrorCodes.ValidationFailed;
             }
         }
         foreach (WorkflowConditionInput c in conditions ?? [])
         {
             if (!WorkflowConditionOperator.All.Contains(c.Operator))
             {
-                return $"Toán tử điều kiện '{c.Operator}' không hợp lệ.";
+                return ErrorCodes.ValidationFailed;
             }
             if (string.IsNullOrWhiteSpace(c.Field))
             {
-                return "Điều kiện thiếu tên trường.";
+                return ErrorCodes.ValidationFailed;
             }
         }
         return null;

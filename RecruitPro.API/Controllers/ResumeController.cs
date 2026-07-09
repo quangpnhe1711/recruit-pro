@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using RecruitPro.API.Extensions;
+using RecruitPro.Application.Common;
+using RecruitPro.Application.DTOs.Response;
 using RecruitPro.Application.Interfaces.IServices;
 
 namespace RecruitPro.API.Controllers;
@@ -25,7 +27,7 @@ public class ResumeController : ControllerBase
             User.IsInRole("HR") || User.IsInRole("Manager"));
         if (result == null)
         {
-            return NotFound(new { message = "Không tìm thấy CV." });
+            return StatusCode(404, ApiResponse<object>.NotFound(ErrorCodes.ResumeNotFound));
         }
 
         Response.Headers.ContentDisposition = $"inline; filename=\"{result.FileName}\"";
@@ -45,7 +47,7 @@ public class ResumeController : ControllerBase
             User.IsInRole("HR") || User.IsInRole("Manager"));
         if (result == null)
         {
-            return NotFound(new { message = "Không tìm thấy CV." });
+            return StatusCode(404, ApiResponse<object>.NotFound(ErrorCodes.ResumeNotFound));
         }
 
         return File(result.Content, result.ContentType, result.FileName);

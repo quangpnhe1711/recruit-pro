@@ -2,7 +2,9 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using System.Text.Json;
 using RecruitPro.API.Extensions;
+using RecruitPro.Application.Common;
 using RecruitPro.Application.DTOs.Request.Candidate;
+using RecruitPro.Application.DTOs.Response;
 using RecruitPro.Application.Interfaces.IServices;
 
 namespace RecruitPro.API.Controllers;
@@ -67,7 +69,7 @@ public class CandidateController : ControllerBase
 
         if (request == null)
         {
-            return BadRequest("Invalid profile payload.");
+            return StatusCode(400, ApiResponse<object>.BadRequest(ErrorCodes.InvalidInput));
         }
 
         await using Stream? stream = resume?.OpenReadStream();

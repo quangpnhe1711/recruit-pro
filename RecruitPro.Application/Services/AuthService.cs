@@ -117,22 +117,20 @@ namespace RecruitPro.Application.Services
 
             if (user == null || !BCrypt.Net.BCrypt.Verify(password, user.PasswordHash))
             {
-                throw new UnauthorizeException(candidateLogin
-                    ? "Username hoặc mật khẩu không đúng."
-                    : "Username hoặc mật khẩu không đúng.");
+                throw new BusinessAppException(ErrorCodes.InvalidCredentials, 401);
         }
 
             // Deactivated/blocked accounts must not authenticate — System Admin deactivation is real,
             // not just a badge in the user directory.
             if (user.Status != null && !user.Status.Equals("Active", StringComparison.OrdinalIgnoreCase))
             {
-                throw new UnauthorizeException("Tài khoản đã bị vô hiệu hóa. Liên hệ quản trị viên hệ thống.");
+                throw new BusinessAppException(ErrorCodes.AccountDisabled, 401);
             }
 
             var roles = user.UserRoles.Select(x => x.Role.Name).ToList();
             if (roleRule != null && !roles.Any(roleRule))
             {
-                throw new UnauthorizeException("Tài khoản không có quyền truy cập cổng này.");
+                throw new BusinessAppException(ErrorCodes.PortalAccessDenied, 401);
             }
 
             if (roles.Any(role => role.Equals("Candidate", StringComparison.OrdinalIgnoreCase)))
@@ -164,7 +162,7 @@ namespace RecruitPro.Application.Services
             string normalizedIdentifier = identifier.Trim();
             if (string.IsNullOrWhiteSpace(normalizedIdentifier))
             {
-                return ApiResponse<string>.BadRequest("Identifier is required.");
+                return ApiResponse<string>.BadRequest(ErrorCodes.Required);
             }
 
             User? user = await _userRepository.GetTrackedByEmailOrUsernameAsync(normalizedIdentifier);

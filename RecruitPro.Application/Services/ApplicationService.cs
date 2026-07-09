@@ -154,12 +154,10 @@ public class ApplicationService : IApplicationService
             // 409 Conflict and every other unmet business precondition to 422 with its real reason.
             if (hasActiveApplication)
             {
-                return ApiResponse<ApplyJobResponseDto>.Conflict(
-                    "Candidate already applied for this job.", errorCode: ErrorCodes.ApplicationAlreadyActive);
+                return ApiResponse<ApplyJobResponseDto>.Conflict(ErrorCodes.ApplicationAlreadyActive);
             }
 
-            string message = eligibility.Blockers.FirstOrDefault() ?? "This job cannot be applied for right now.";
-            return ApiResponse<ApplyJobResponseDto>.UnprocessableEntity(message, errorCode: eligibility.PrimaryErrorCode);
+            return ApiResponse<ApplyJobResponseDto>.UnprocessableEntity(eligibility.PrimaryErrorCode!);
         }
 
         decimal ruleScore = CalculateRuleScore(profile, job);
@@ -201,8 +199,7 @@ public class ApplicationService : IApplicationService
             // (two requests both reading "no active application" before either commits). Map it to the
             // same stable 409 the service check produces, rather than letting it surface as a 500.
             await _unitOfWork.RollbackAsync();
-            return ApiResponse<ApplyJobResponseDto>.Conflict(
-                "Candidate already applied for this job.", errorCode: ErrorCodes.ApplicationAlreadyActive);
+            return ApiResponse<ApplyJobResponseDto>.Conflict(ErrorCodes.ApplicationAlreadyActive);
         }
 
         // The application is now durably committed: the apply succeeded. Everything below is a
@@ -270,8 +267,7 @@ public class ApplicationService : IApplicationService
         Job job = await GetJobAsync(jobId);
         if (!OwnershipScope.CanAccessJob(job, currentUserId, currentUserRoles))
         {
-            return ApiResponse<PaginatedResponseDto<ApplicationListItemDto>>.Forbidden(
-                "Bạn không có quyền xem ứng viên của tin tuyển dụng này.", errorCode: ErrorCodes.Forbidden);
+            return ApiResponse<PaginatedResponseDto<ApplicationListItemDto>>.Forbidden(ErrorCodes.Forbidden);
         }
 
         (IReadOnlyList<Domain.Entities.Application> applications, int total) = await _applicationRepository.GetByJobIdAsync(job.Id, page, pageSize);
@@ -296,8 +292,7 @@ public class ApplicationService : IApplicationService
         Job job = await GetJobAsync(jobId);
         if (!OwnershipScope.CanAccessJob(job, currentUserId, currentUserRoles))
         {
-            return ApiResponse<IReadOnlyList<RecentJobApplicationDto>>.Forbidden(
-                "Bạn không có quyền xem ứng viên của tin tuyển dụng này.", errorCode: ErrorCodes.Forbidden);
+            return ApiResponse<IReadOnlyList<RecentJobApplicationDto>>.Forbidden(ErrorCodes.Forbidden);
         }
 
         IReadOnlyList<Domain.Entities.Application> applications = await _applicationRepository.GetRecentByJobIdAsync(job.Id, 5);
@@ -384,8 +379,7 @@ public class ApplicationService : IApplicationService
         Domain.Entities.Application application = await GetTrackedApplicationForCandidateAsync(userId, applicationId);
         if (!ApplicationStatusWorkflow.CanCandidateWithdraw(application.Status))
         {
-            return ApiResponse<string>.UnprocessableEntity(
-                "This application can no longer be withdrawn.", errorCode: ErrorCodes.ApplicationNotWithdrawable);
+            return ApiResponse<string>.UnprocessableEntity(ErrorCodes.ApplicationNotWithdrawable);
         }
 
         // Withdrawal is candidate-initiated and non-punitive: it must be modelled as its own
@@ -433,15 +427,13 @@ public class ApplicationService : IApplicationService
         // is in Offer. No reviewer/Hired bypass — a business-state failure is 422, not 400.
         if (!ApplicationStatusWorkflow.CanCandidateRespondToOffer(application.Status))
         {
-            return ApiResponse<string>.UnprocessableEntity(
-                "This application is not waiting for an offer response.", errorCode: ErrorCodes.OfferNotActionable);
+            return ApiResponse<string>.UnprocessableEntity(ErrorCodes.OfferNotActionable);
         }
 
         ApplicationOffer? offer = await _offerRepository.GetTrackedByApplicationIdAsync(application.Id);
         if (offer?.Status != OfferStatus.Sent)
         {
-            return ApiResponse<string>.UnprocessableEntity(
-                "An offer has not been sent for this application yet.", errorCode: ErrorCodes.OfferNotActionable);
+            return ApiResponse<string>.UnprocessableEntity(ErrorCodes.OfferNotActionable);
         }
 
         application.Status = ApplicationStatus.Hired;
@@ -482,15 +474,13 @@ public class ApplicationService : IApplicationService
         Domain.Entities.Application application = await GetTrackedApplicationForCandidateAsync(userId, applicationId);
         if (!ApplicationStatusWorkflow.CanCandidateRespondToOffer(application.Status))
         {
-            return ApiResponse<string>.UnprocessableEntity(
-                "This application is not waiting for an offer response.", errorCode: ErrorCodes.OfferNotActionable);
+            return ApiResponse<string>.UnprocessableEntity(ErrorCodes.OfferNotActionable);
         }
 
         ApplicationOffer? offer = await _offerRepository.GetTrackedByApplicationIdAsync(application.Id);
         if (offer?.Status != OfferStatus.Sent)
         {
-            return ApiResponse<string>.UnprocessableEntity(
-                "An offer has not been sent for this application yet.", errorCode: ErrorCodes.OfferNotActionable);
+            return ApiResponse<string>.UnprocessableEntity(ErrorCodes.OfferNotActionable);
         }
 
         application.Status = ApplicationStatus.OfferDeclined;
@@ -596,19 +586,18 @@ public class ApplicationService : IApplicationService
     {
         if (!Guid.TryParse(applicationId, out Guid applicationGuid))
         {
-            return ApiResponse<ApplicationReviewDetailDto>.NotFound("Không tìm thấy hồ sơ ứng tuyển.");
+            return ApiResponse<ApplicationReviewDetailDto>.NotFound(ErrorCodes.ApplicationNotFound);
         }
 
         Domain.Entities.Application? application = await _applicationRepository.GetByIdAsync(applicationGuid);
         if (application == null)
         {
-            return ApiResponse<ApplicationReviewDetailDto>.NotFound("Không tìm thấy hồ sơ ứng tuyển.");
+            return ApiResponse<ApplicationReviewDetailDto>.NotFound(ErrorCodes.ApplicationNotFound);
         }
 
         if (!OwnershipScope.CanAccessApplication(application, currentUserId, currentUserRoles))
         {
-            return ApiResponse<ApplicationReviewDetailDto>.Forbidden(
-                "Bạn không có quyền truy cập hồ sơ ứng tuyển này.", errorCode: ErrorCodes.Forbidden);
+            return ApiResponse<ApplicationReviewDetailDto>.Forbidden(ErrorCodes.Forbidden);
         }
 
         return ApiResponse<ApplicationReviewDetailDto>.Ok(MapApplicationToReviewDetailDto(application));
@@ -628,13 +617,13 @@ public class ApplicationService : IApplicationService
     {
         if (!Guid.TryParse(applicationId, out Guid applicationGuid))
         {
-            return ApiResponse<ApplicationReviewDetailDto>.NotFound("Không tìm thấy hồ sơ ứng tuyển.");
+            return ApiResponse<ApplicationReviewDetailDto>.NotFound(ErrorCodes.ApplicationNotFound);
         }
 
         Domain.Entities.Application? application = await _applicationRepository.GetTrackedByIdAsync(applicationGuid);
         if (application == null)
         {
-            return ApiResponse<ApplicationReviewDetailDto>.NotFound("Không tìm thấy hồ sơ ứng tuyển.");
+            return ApiResponse<ApplicationReviewDetailDto>.NotFound(ErrorCodes.ApplicationNotFound);
         }
 
         // NOTE: write-authorization for decision transitions is enforced by the existing head/recruiter
@@ -646,7 +635,7 @@ public class ApplicationService : IApplicationService
         {
             // Malformed input (unparseable status string) is a 400; an invalid but well-formed
             // transition is a business-state failure (422) — see below.
-            return ApiResponse<ApplicationReviewDetailDto>.BadRequest("Target application status is invalid.");
+            return ApiResponse<ApplicationReviewDetailDto>.BadRequest(ErrorCodes.InvalidInput);
         }
 
         // INV-009: Hired and OfferDeclined are candidate-owned outcomes of an offer response. A
@@ -654,9 +643,7 @@ public class ApplicationService : IApplicationService
         // those transitions only happen through accept-offer / decline-offer.
         if (application.Status == ApplicationStatus.Offer)
         {
-            return ApiResponse<ApplicationReviewDetailDto>.UnprocessableEntity(
-                "An offer outcome must come from the candidate accepting or declining the offer.",
-                errorCode: ErrorCodes.InvalidApplicationTransition);
+            return ApiResponse<ApplicationReviewDetailDto>.UnprocessableEntity(ErrorCodes.InvalidApplicationTransition);
         }
 
         // BR-WF-001/002: Offer and Rejected are email-gated outcomes. The decision endpoint (the status
@@ -665,23 +652,17 @@ public class ApplicationService : IApplicationService
         // which validate interview completion and send the candidate email before any transition.
         if (targetStatus.Value == ApplicationStatus.Offer)
         {
-            return ApiResponse<ApplicationReviewDetailDto>.UnprocessableEntity(
-                "Sending an offer requires the offer email flow; the status cannot be set to Offer directly.",
-                errorCode: ErrorCodes.EmailRequiredForOffer);
+            return ApiResponse<ApplicationReviewDetailDto>.UnprocessableEntity(ErrorCodes.EmailRequiredForOffer);
         }
 
         if (targetStatus.Value == ApplicationStatus.Rejected)
         {
-            return ApiResponse<ApplicationReviewDetailDto>.UnprocessableEntity(
-                "Rejecting an application requires the rejection email flow; the status cannot be set to Rejected directly.",
-                errorCode: ErrorCodes.EmailRequiredForRejection);
+            return ApiResponse<ApplicationReviewDetailDto>.UnprocessableEntity(ErrorCodes.EmailRequiredForRejection);
         }
 
         if (!ApplicationStatusWorkflow.CanTransition(application.Status, targetStatus.Value))
         {
-            return ApiResponse<ApplicationReviewDetailDto>.UnprocessableEntity(
-                $"Invalid transition from {application.Status} to {targetStatus.Value}.",
-                errorCode: ErrorCodes.InvalidApplicationTransition);
+            return ApiResponse<ApplicationReviewDetailDto>.UnprocessableEntity(ErrorCodes.InvalidApplicationTransition);
         }
 
         // BR-OWN-007 — ManagerReview = the DepartmentHeadReview business stage. Advancing a ManagerReview
@@ -724,7 +705,7 @@ public class ApplicationService : IApplicationService
         Domain.Entities.Application? refreshedApplication = await _applicationRepository.GetByIdAsync(applicationGuid);
         if (refreshedApplication == null)
         {
-            return ApiResponse<ApplicationReviewDetailDto>.NotFound("Không tìm thấy hồ sơ ứng tuyển.");
+            return ApiResponse<ApplicationReviewDetailDto>.NotFound(ErrorCodes.ApplicationNotFound);
         }
 
         // INV-010: the status change is committed; notification is a best-effort side effect and must
@@ -778,13 +759,13 @@ public class ApplicationService : IApplicationService
     {
         if (!Guid.TryParse(applicationId, out Guid applicationGuid))
         {
-            return ApiResponse<ApplicationReviewDetailDto>.NotFound("Không tìm thấy hồ sơ ứng tuyển.");
+            return ApiResponse<ApplicationReviewDetailDto>.NotFound(ErrorCodes.ApplicationNotFound);
         }
 
         Domain.Entities.Application? application = await _applicationRepository.GetTrackedByIdAsync(applicationGuid);
         if (application == null)
         {
-            return ApiResponse<ApplicationReviewDetailDto>.NotFound("Không tìm thấy hồ sơ ứng tuyển.");
+            return ApiResponse<ApplicationReviewDetailDto>.NotFound(ErrorCodes.ApplicationNotFound);
         }
 
         // Write-authorization for the rejection flow follows the existing workflow guard (interview
@@ -795,9 +776,7 @@ public class ApplicationService : IApplicationService
         if (application.Status == ApplicationStatus.Offer
             || !ApplicationStatusWorkflow.CanTransition(application.Status, ApplicationStatus.Rejected))
         {
-            return ApiResponse<ApplicationReviewDetailDto>.UnprocessableEntity(
-                $"Invalid transition from {application.Status} to Rejected.",
-                errorCode: ErrorCodes.InvalidApplicationTransition);
+            return ApiResponse<ApplicationReviewDetailDto>.UnprocessableEntity(ErrorCodes.InvalidApplicationTransition);
         }
 
         // BR-OWN-007: rejecting from the ManagerReview (DepartmentHeadReview) stage is reserved for the
@@ -825,9 +804,7 @@ public class ApplicationService : IApplicationService
         // The transition is email-gated: a real message must be composed.
         if (string.IsNullOrWhiteSpace(request.Subject) || string.IsNullOrWhiteSpace(request.Body))
         {
-            return ApiResponse<ApplicationReviewDetailDto>.UnprocessableEntity(
-                "A rejection email requires both a subject and a body.",
-                errorCode: ErrorCodes.EmailRequiredForRejection);
+            return ApiResponse<ApplicationReviewDetailDto>.UnprocessableEntity(ErrorCodes.EmailRequiredForRejection);
         }
 
         // Send the email BEFORE any DB change. If the send fails the application must NOT transition.
@@ -847,9 +824,7 @@ public class ApplicationService : IApplicationService
                 "Rejection email failed for application {ApplicationId}; status left unchanged at {Status}.",
                 application.Id,
                 application.Status);
-            return ApiResponse<ApplicationReviewDetailDto>.UnprocessableEntity(
-                "The rejection email could not be sent; the application was not rejected.",
-                errorCode: ErrorCodes.EmailSendFailed);
+            return ApiResponse<ApplicationReviewDetailDto>.UnprocessableEntity(ErrorCodes.EmailSendFailed);
         }
 
         ApplicationStatus previousStatus = application.Status;
@@ -870,7 +845,7 @@ public class ApplicationService : IApplicationService
         Domain.Entities.Application? refreshedApplication = await _applicationRepository.GetByIdAsync(applicationGuid);
         if (refreshedApplication == null)
         {
-            return ApiResponse<ApplicationReviewDetailDto>.NotFound("Không tìm thấy hồ sơ ứng tuyển.");
+            return ApiResponse<ApplicationReviewDetailDto>.NotFound(ErrorCodes.ApplicationNotFound);
         }
 
         // INV-010: status committed after the rejection email succeeded; the in-app notification is a
@@ -901,12 +876,8 @@ public class ApplicationService : IApplicationService
     {
         return InterviewWorkflow.EvaluateCompletion(application.Interviews) switch
         {
-            InterviewCompletionState.Required => ApiResponse<T>.UnprocessableEntity(
-                "Schedule an interview before deciding the outcome.",
-                errorCode: ErrorCodes.InterviewRequired),
-            InterviewCompletionState.NotCompleted => ApiResponse<T>.UnprocessableEntity(
-                "Complete the interview before sending an offer or rejection.",
-                errorCode: ErrorCodes.InterviewNotCompleted),
+            InterviewCompletionState.Required => ApiResponse<T>.UnprocessableEntity(ErrorCodes.InterviewRequired),
+            InterviewCompletionState.NotCompleted => ApiResponse<T>.UnprocessableEntity(ErrorCodes.InterviewNotCompleted),
             _ => null
         };
     }
@@ -920,19 +891,18 @@ public class ApplicationService : IApplicationService
     {
         if (!Guid.TryParse(applicationId, out Guid applicationGuid))
         {
-            return ApiResponse<ResumeFileResponseDto>.NotFound("Không tìm thấy hồ sơ ứng tuyển.");
+            return ApiResponse<ResumeFileResponseDto>.NotFound(ErrorCodes.ApplicationNotFound);
         }
 
         Domain.Entities.Application? application = await _applicationRepository.GetByIdAsync(applicationGuid);
         if (application == null)
         {
-            return ApiResponse<ResumeFileResponseDto>.NotFound("Không tìm thấy hồ sơ ứng tuyển.");
+            return ApiResponse<ResumeFileResponseDto>.NotFound(ErrorCodes.ApplicationNotFound);
         }
 
         if (!OwnershipScope.CanAccessApplication(application, currentUserId, currentUserRoles))
         {
-            return ApiResponse<ResumeFileResponseDto>.Forbidden(
-                "Bạn không có quyền xem CV của hồ sơ ứng tuyển này.", errorCode: ErrorCodes.Forbidden);
+            return ApiResponse<ResumeFileResponseDto>.Forbidden(ErrorCodes.Forbidden);
         }
 
         CandidateResume? resume = application.User.CandidateProfile == null
@@ -940,7 +910,7 @@ public class ApplicationService : IApplicationService
             : GetCurrentResume(application.User.CandidateProfile);
         if (resume == null)
         {
-            return ApiResponse<ResumeFileResponseDto>.NotFound("Không tìm thấy CV.");
+            return ApiResponse<ResumeFileResponseDto>.NotFound(ErrorCodes.ResumeNotFound);
         }
 
         _logger.LogInformation(
@@ -966,13 +936,13 @@ public class ApplicationService : IApplicationService
     {
         if (!Guid.TryParse(applicationId, out Guid applicationGuid))
         {
-            return ApiResponse<string>.NotFound("Không tìm thấy hồ sơ ứng tuyển.");
+            return ApiResponse<string>.NotFound(ErrorCodes.ApplicationNotFound);
         }
 
         Domain.Entities.Application? application = await _applicationRepository.GetByIdAsync(applicationGuid);
         if (application == null)
         {
-            return ApiResponse<string>.NotFound("Không tìm thấy hồ sơ ứng tuyển.");
+            return ApiResponse<string>.NotFound(ErrorCodes.ApplicationNotFound);
         }
 
         string recipient = application.User.Email;
@@ -1140,9 +1110,7 @@ public class ApplicationService : IApplicationService
             return null;
         }
 
-        return ApiResponse<ApplicationReviewDetailDto>.Forbidden(
-            "Only the assigned department head or a system administrator can advance this application from manager review.",
-            errorCode: ErrorCodes.Forbidden);
+        return ApiResponse<ApplicationReviewDetailDto>.Forbidden(ErrorCodes.Forbidden);
     }
 
     private async Task<IReadOnlyCollection<string>> GetUserRoleNamesAsync(Guid? userId)
@@ -1168,13 +1136,13 @@ public class ApplicationService : IApplicationService
     {
         if (!Guid.TryParse(jobId, out Guid jobGuid))
         {
-            throw new NotFoundException($"Job with ID {jobId} not found.");
+            throw new BusinessAppException(ErrorCodes.JobNotFound, 404);
         }
 
         Job? job = await _jobRepository.GetByIdAsync(jobGuid);
         if (job == null)
         {
-            throw new NotFoundException($"Job with ID {jobId} not found.");
+            throw new BusinessAppException(ErrorCodes.JobNotFound, 404);
         }
 
         return job;
@@ -1191,7 +1159,7 @@ public class ApplicationService : IApplicationService
         CandidateProfile? profile = await _candidateProfileRepository.GetByUserIdAsync(userId);
         if (profile == null)
         {
-            throw new NotFoundException("Candidate profile not found.");
+            throw new BusinessAppException(ErrorCodes.CandidateProfileNotFound, 404);
         }
 
         return profile;
@@ -1208,7 +1176,7 @@ public class ApplicationService : IApplicationService
         User? user = await _userRepository.GetTrackedByIdAsync(userId);
         if (user == null)
         {
-            throw new NotFoundException("Không tìm thấy người dùng.");
+            throw new BusinessAppException(ErrorCodes.UserNotFound, 404);
         }
 
         CandidateProfile createdProfile = new()
@@ -1239,13 +1207,13 @@ public class ApplicationService : IApplicationService
         CandidateProfile profile = await GetOrCreateProfileEntityAsync(userId);
         if (!Guid.TryParse(applicationId, out Guid applicationGuid))
         {
-            throw new NotFoundException("Không tìm thấy hồ sơ ứng tuyển.");
+            throw new BusinessAppException(ErrorCodes.ApplicationNotFound, 404);
         }
 
         Domain.Entities.Application? application = await _applicationRepository.GetTrackedByIdAsync(applicationGuid);
         if (application == null || application.UserId != profile.UserId)
         {
-            throw new NotFoundException("Không tìm thấy hồ sơ ứng tuyển.");
+            throw new BusinessAppException(ErrorCodes.ApplicationNotFound, 404);
         }
 
         return application;

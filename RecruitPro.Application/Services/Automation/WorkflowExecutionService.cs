@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using RecruitPro.Application.Common;
 using RecruitPro.Application.DTOs.Response;
 using RecruitPro.Application.DTOs.Response.Automation;
 using RecruitPro.Application.Interfaces.IRepositories;
@@ -47,12 +48,12 @@ public class WorkflowExecutionService : IWorkflowExecutionService
     {
         if (!Guid.TryParse(id, out Guid guid))
         {
-            return ApiResponse<ExecutionDetailDto>.BadRequest("Id không hợp lệ.");
+            return ApiResponse<ExecutionDetailDto>.BadRequest(ErrorCodes.InvalidInput);
         }
         WorkflowExecution? execution = await _workflows.GetExecutionAsync(guid);
         if (execution is null)
         {
-            return ApiResponse<ExecutionDetailDto>.NotFound("Không tìm thấy lần thực thi.");
+            return ApiResponse<ExecutionDetailDto>.NotFound(ErrorCodes.WorkflowExecutionNotFound);
         }
         return ApiResponse<ExecutionDetailDto>.Ok(await ToDetailAsync(execution));
     }
@@ -61,16 +62,16 @@ public class WorkflowExecutionService : IWorkflowExecutionService
     {
         if (!Guid.TryParse(id, out Guid guid))
         {
-            return ApiResponse<ExecutionDetailDto>.BadRequest("Id không hợp lệ.");
+            return ApiResponse<ExecutionDetailDto>.BadRequest(ErrorCodes.InvalidInput);
         }
         WorkflowExecution? execution = await _workflows.GetExecutionAsync(guid);
         if (execution is null)
         {
-            return ApiResponse<ExecutionDetailDto>.NotFound("Không tìm thấy lần thực thi.");
+            return ApiResponse<ExecutionDetailDto>.NotFound(ErrorCodes.WorkflowExecutionNotFound);
         }
         if (execution.Status is not (WorkflowExecutionStatus.Failed or WorkflowExecutionStatus.DeadLetter))
         {
-            return ApiResponse<ExecutionDetailDto>.UnprocessableEntity("Chỉ có thể thử lại lần thực thi thất bại hoặc dead-letter.");
+            return ApiResponse<ExecutionDetailDto>.UnprocessableEntity(ErrorCodes.BusinessRuleViolation);
         }
 
         await _retryService.RetryExecutionAsync(guid, manual: true);
@@ -99,12 +100,12 @@ public class WorkflowExecutionService : IWorkflowExecutionService
     {
         if (!Guid.TryParse(id, out Guid guid))
         {
-            return ApiResponse<OutboxEventDto>.BadRequest("Id không hợp lệ.");
+            return ApiResponse<OutboxEventDto>.BadRequest(ErrorCodes.InvalidInput);
         }
         PublishedDomainEvent? domainEvent = await _outbox.GetByIdAsync(guid);
         if (domainEvent is null)
         {
-            return ApiResponse<OutboxEventDto>.NotFound("Không tìm thấy sự kiện.");
+            return ApiResponse<OutboxEventDto>.NotFound(ErrorCodes.EntityNotFound);
         }
         return ApiResponse<OutboxEventDto>.Ok(ToEventDto(domainEvent));
     }

@@ -102,18 +102,18 @@ public class InterviewService : IInterviewService
     {
         if (string.IsNullOrWhiteSpace(applicationId))
         {
-            return ApiResponse<ScheduleDataResponseDto>.BadRequest("Vui lòng chọn hồ sơ ứng tuyển trước khi lên lịch.");
+            return ApiResponse<ScheduleDataResponseDto>.BadRequest(ErrorCodes.InvalidInput);
         }
 
         if (!Guid.TryParse(applicationId, out Guid applicationGuid))
         {
-            return ApiResponse<ScheduleDataResponseDto>.BadRequest("Mã hồ sơ ứng tuyển không hợp lệ.");
+            return ApiResponse<ScheduleDataResponseDto>.BadRequest(ErrorCodes.InvalidInput);
         }
 
         Domain.Entities.Application? application = await _applicationRepository.GetByIdAsync(applicationGuid);
         if (application == null)
         {
-            return ApiResponse<ScheduleDataResponseDto>.NotFound("Không tìm thấy hồ sơ ứng tuyển.");
+            return ApiResponse<ScheduleDataResponseDto>.NotFound(ErrorCodes.ApplicationNotFound);
         }
 
         IReadOnlyList<User> interviewers = await _userRepository.GetUsersInRolesAsync("HR", "Manager");
@@ -154,13 +154,13 @@ public class InterviewService : IInterviewService
     {
         if (!Guid.TryParse(request.ApplicationId, out Guid applicationGuid))
         {
-            return ApiResponse<InterviewCreatedResponseDto>.BadRequest("Mã hồ sơ ứng tuyển không hợp lệ.");
+            return ApiResponse<InterviewCreatedResponseDto>.BadRequest(ErrorCodes.InvalidInput);
         }
 
         Domain.Entities.Application? application = await _applicationRepository.GetTrackedByIdAsync(applicationGuid);
         if (application == null)
         {
-            return ApiResponse<InterviewCreatedResponseDto>.NotFound("Không tìm thấy hồ sơ ứng tuyển.");
+            return ApiResponse<InterviewCreatedResponseDto>.NotFound(ErrorCodes.ApplicationNotFound);
         }
 
         // INV-008: an interview is only valid/actionable when the application is at the ManagerReview
@@ -169,21 +169,19 @@ public class InterviewService : IInterviewService
         if (application.Status != ApplicationStatus.ManagerReview &&
             application.Status != ApplicationStatus.Interview)
         {
-            return ApiResponse<InterviewCreatedResponseDto>.UnprocessableEntity(
-                "Chỉ có thể lên lịch từ bước quản lý duyệt hoặc khi chuỗi phỏng vấn đang diễn ra.",
-                errorCode: ErrorCodes.InterviewNotActionable);
+            return ApiResponse<InterviewCreatedResponseDto>.UnprocessableEntity(ErrorCodes.InterviewNotActionable);
         }
 
         if (!string.IsNullOrWhiteSpace(request.CandidateId)
             && (!Guid.TryParse(request.CandidateId, out Guid candidateGuid) || candidateGuid != application.UserId))
         {
-            return ApiResponse<InterviewCreatedResponseDto>.BadRequest("Ứng viên không khớp với hồ sơ đã chọn.");
+            return ApiResponse<InterviewCreatedResponseDto>.BadRequest(ErrorCodes.InvalidInput);
         }
 
         if (!string.IsNullOrWhiteSpace(request.JobId)
             && (!Guid.TryParse(request.JobId, out Guid jobGuid) || jobGuid != application.JobId))
         {
-            return ApiResponse<InterviewCreatedResponseDto>.BadRequest("Job không khớp với hồ sơ đã chọn.");
+            return ApiResponse<InterviewCreatedResponseDto>.BadRequest(ErrorCodes.InvalidInput);
         }
 
         Guid? interviewerGuid = null;
@@ -191,13 +189,13 @@ public class InterviewService : IInterviewService
         {
             if (!Guid.TryParse(request.InterviewerId, out Guid parsedInterviewerGuid))
             {
-                return ApiResponse<InterviewCreatedResponseDto>.BadRequest("Mã người phỏng vấn không hợp lệ.");
+                return ApiResponse<InterviewCreatedResponseDto>.BadRequest(ErrorCodes.InvalidInput);
             }
 
             User? interviewer = await _userRepository.GetByIdAsync(parsedInterviewerGuid);
             if (interviewer == null)
             {
-                return ApiResponse<InterviewCreatedResponseDto>.NotFound("Không tìm thấy người phỏng vấn.");
+                return ApiResponse<InterviewCreatedResponseDto>.NotFound(ErrorCodes.UserNotFound);
             }
 
             interviewerGuid = parsedInterviewerGuid;
@@ -299,19 +297,19 @@ public class InterviewService : IInterviewService
     {
         if (!Guid.TryParse(interviewId, out Guid interviewGuid))
         {
-            return ApiResponse<string>.NotFound("Không tìm thấy lịch phỏng vấn.");
+            return ApiResponse<string>.NotFound(ErrorCodes.InterviewNotFound);
         }
 
         Interview? interview = await _interviewRepository.GetTrackedByIdAsync(interviewGuid);
         if (interview == null)
         {
-            return ApiResponse<string>.NotFound("Không tìm thấy lịch phỏng vấn.");
+            return ApiResponse<string>.NotFound(ErrorCodes.InterviewNotFound);
         }
 
         InterviewStatus? parsedStatus = ParseInterviewStatus(request.Status);
         if (!parsedStatus.HasValue)
         {
-            return ApiResponse<string>.BadRequest("Trạng thái phỏng vấn không hợp lệ.");
+            return ApiResponse<string>.BadRequest(ErrorCodes.InvalidInput);
         }
 
         bool becameCompleted = parsedStatus.Value == InterviewStatus.Completed
@@ -353,13 +351,13 @@ public class InterviewService : IInterviewService
     {
         if (!Guid.TryParse(interviewId, out Guid interviewGuid))
         {
-            return ApiResponse<string>.NotFound("Không tìm thấy lịch phỏng vấn.");
+            return ApiResponse<string>.NotFound(ErrorCodes.InterviewNotFound);
         }
 
         Interview? interview = await _interviewRepository.GetTrackedByIdAsync(interviewGuid);
         if (interview == null)
         {
-            return ApiResponse<string>.NotFound("Không tìm thấy lịch phỏng vấn.");
+            return ApiResponse<string>.NotFound(ErrorCodes.InterviewNotFound);
         }
 
         await _interviewRepository.DeleteAsync(interview);

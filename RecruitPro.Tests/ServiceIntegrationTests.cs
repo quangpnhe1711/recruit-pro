@@ -42,8 +42,8 @@ public sealed class ServiceIntegrationTests : IClassFixture<PostgresTestFixture>
 
         Func<Task> act = () => service.InternalLoginAsync("candidate.user", "Pass@123");
 
-        await act.Should().ThrowAsync<UnauthorizeException>()
-            .WithMessage("Tài khoản không có quyền truy cập cổng này.");
+        await act.Should().ThrowAsync<BusinessAppException>()
+            .Where(e => e.Code == RecruitPro.Application.Common.ErrorCodes.PortalAccessDenied);
     }
 
     [Fact]
@@ -191,7 +191,7 @@ public sealed class ServiceIntegrationTests : IClassFixture<PostgresTestFixture>
             new ApplyJobRequest());
 
         duplicate.StatusCode.Should().Be(409);
-        duplicate.Message.Should().Be("Candidate already applied for this job.");
+        duplicate.ErrorCode.Should().Be(RecruitPro.Application.Common.ErrorCodes.ApplicationAlreadyActive);
     }
 
     [Fact]
