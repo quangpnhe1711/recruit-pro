@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+option csharp_namespace = "RecruitPro.ScoringService.Grpc";
+
+package scoring;
+
+// Stateless candidate-vs-job match scoring. The main API gathers the data and calls this over gRPC.
+service Scorer {
+  rpc ScoreCandidate (ScoreRequest) returns (ScoreReply);
+}
+
+message ScoreRequest {
+  repeated string candidate_skills = 1;
+  repeated string required_skills = 2;
+  int32 candidate_experience_years = 3;
+  int32 required_experience_years = 4;
+}
+
+message ScoreReply {
+  double score = 1;                 // 0..100
+  string label = 2;                 // Strong / Moderate / Weak
+  repeated string matched_skills = 3;
+  repeated string missing_skills = 4;
+}
