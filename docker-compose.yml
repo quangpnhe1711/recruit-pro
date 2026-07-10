@@ -9,10 +9,23 @@ services:
     depends_on:
       - postgres
       - minio
+      - scoring
     ports:
       - "5000:8080"
+    environment:
+      # Reach the gRPC ScoringService over the compose network (overrides appsettings default).
+      - Services__ScoringUrl=http://scoring:8080
     env_file:
       - /opt/recruitpro/api.env
+
+  # Standalone gRPC service the API calls for candidate match scoring (service-to-service comms).
+  scoring:
+    image: recruitpro-scoring
+    container_name: recruitpro_scoring
+    build:
+      context: .
+      dockerfile: RecruitPro.ScoringService/Dockerfile
+    restart: always
 
   postgres:
     image: postgres:18

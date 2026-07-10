@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.OData;
 using RecruitPro.Application.Interfaces;
 using RecruitPro.Application.Interfaces.IServices;
 using RecruitPro.Infrastructure.Repositories;
@@ -15,6 +16,9 @@ using System;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Allow the gRPC client to talk to the ScoringService over plaintext HTTP/2 (h2c) — no TLS in dev/compose.
+AppContext.SetSwitch("System.Net.Http.SocketsHttpHandler.Http2UnencryptedSupport", true);
+
 //setting jwt
 builder.Services.AddJwtAuthentication(builder.Configuration);
 
@@ -26,7 +30,19 @@ builder.Services.AddControllers(options =>
     // Resolves the code-first error contract for error ApiResponses that controllers/services RETURN
     // (thrown exceptions are resolved in ExceptionMiddleware). Central message resolution, no hardcoding.
     options.Filters.Add<ErrorEnvelopeResultFilter>();
-});
+    // Content negotiation: honor the client Accept header so the same endpoints can return XML as well
+    // as JSON (e.g. Accept: application/xml). JSON stays the default.
+    options.RespectBrowserAcceptHeader = true;
+})
+// OData query endpoints under the /odata route prefix (separate from /api). Read-only, supports
+// $filter/$orderby/$select/$top/$skip/$count. EDM in RecruitPro.API.OData.ODataEdmModel.
+.AddOData(opt => opt
+    .Select().Filter().OrderBy().Count().SetMaxTop(100)
+    .AddRouteComponents("odata", RecruitPro.API.OData.ODataEdmModel.Build()))
+// Added AFTER OData so the MVC XML formatter wins content negotiation for /api endpoints (OData 8 also
+// registers an application/xml formatter that only serves OData routes). DataContractSerializer handles
+// the wrapped ApiResponse<T>/DTO graphs that XmlSerializer refuses.
+.AddXmlDataContractSerializerFormatters();
 
 // Upload hardening (Phase 2.4): framework-level body-size ceiling, layered under the precise per-file
 // validation in CandidateService (5 MB CV cap). Kestrel + the multipart form reader reject oversized
@@ -112,6 +128,13 @@ builder.Services.AddCors(options =>
         });
 });
 
+
+// gRPC client to the external ScoringService (service-to-service communication). Address from config;
+// falls back to the local dev port. See RecruitPro.ScoringService.
+builder.Services.AddGrpcClient<RecruitPro.ScoringService.Grpc.Scorer.ScorerClient>(o =>
+{
+    o.Address = new Uri(builder.Configuration["Services:ScoringUrl"] ?? "http://localhost:5210");
+});
 
 // register repo
 builder.Services.AddInfrastructureServices();
