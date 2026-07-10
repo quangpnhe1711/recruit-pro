@@ -13,6 +13,11 @@ namespace RecruitPro.Tests.Infrastructure;
 
 public sealed class PostgresTestFixture : IAsyncLifetime
 {
+    // Dedicated test-only signing key. The web-app factory feeds this SAME value into the test host's
+    // Jwt:Key config, so tests are independent of the committed appsettings.json key (which is a rotatable
+    // dev placeholder — the real key ships via the Jwt__Key env var).
+    public const string TestSigningKey = "test-only-signing-key-recruitpro-0123456789ABCDEF";
+
     private readonly PostgreSqlContainer _container = new PostgreSqlBuilder()
         .WithImage("postgres:16-alpine")
         .WithDatabase("recruitpro_tests")
@@ -61,7 +66,7 @@ public sealed class PostgresTestFixture : IAsyncLifetime
             claims: claims,
             expires: DateTime.UtcNow.AddHours(1),
             signingCredentials: new SigningCredentials(
-                new SymmetricSecurityKey(Encoding.UTF8.GetBytes("8F2A1C9D5E7B3K6M0P4Q8R1T7Y2U9W5X")),
+                new SymmetricSecurityKey(Encoding.UTF8.GetBytes(TestSigningKey)),
                 SecurityAlgorithms.HmacSha256));
 
         return new JwtSecurityTokenHandler().WriteToken(token);

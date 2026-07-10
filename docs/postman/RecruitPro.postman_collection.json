@@ -1,0 +1,1441 @@
+{
+  "info": {
+    "name": "RecruitPro API",
+    "_postman_id": "b1e7c0de-1a2b-4c3d-9e8f-recruitpro0001",
+    "description": "RecruitPro recruitment API. Flows: login -> apply -> screening -> offer; OData queries; XML content negotiation; gRPC external score; SysAdmin disable-user. Log in first (Auth folder) to populate {{accessToken}}. Shared password: Password@123.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Auth",
+      "description": "Authentication + token lifecycle. Start here: log in to populate {{accessToken}}/{{refreshToken}}, then run the candidate flow (apply -> screening -> offer) and the HR/SysAdmin flows. Login by username, password Password@123. Demo users: candidate=nhatquang, HR=thucuyen, Manager/Head=tiendat, SystemAdmin=admin.",
+      "item": [
+        {
+          "name": "Candidate Login (nhatquang)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/candidate/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "candidate",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"nhatquang\",\n  \"password\": \"Password@123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Candidate portal login. Saves accessToken/refreshToken for the apply -> offer flow."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Save tokens from the ApiResponse envelope (data.accessToken / data.refreshToken).",
+                  "const d = pm.response.json().data;",
+                  "if (d) {",
+                  "  pm.collectionVariables.set('accessToken', d.accessToken);",
+                  "  pm.collectionVariables.set('refreshToken', d.refreshToken);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Internal Login - HR (thucuyen)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/internal/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "internal",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"thucuyen\",\n  \"password\": \"Password@123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Internal/staff login for HR. Saves tokens for Jobs/Applications/Interviews/Offers."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Save tokens from the ApiResponse envelope (data.accessToken / data.refreshToken).",
+                  "const d = pm.response.json().data;",
+                  "if (d) {",
+                  "  pm.collectionVariables.set('accessToken', d.accessToken);",
+                  "  pm.collectionVariables.set('refreshToken', d.refreshToken);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Internal Login - Manager/Head (tiendat)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/internal/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "internal",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"tiendat\",\n  \"password\": \"Password@123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Internal login for Manager / HeadDepartment (approval queue, manager dashboard)."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Save tokens from the ApiResponse envelope (data.accessToken / data.refreshToken).",
+                  "const d = pm.response.json().data;",
+                  "if (d) {",
+                  "  pm.collectionVariables.set('accessToken', d.accessToken);",
+                  "  pm.collectionVariables.set('refreshToken', d.refreshToken);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Internal Login - SystemAdmin (admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/internal/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "internal",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"admin\",\n  \"password\": \"Password@123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Internal login for SystemAdmin. Saves tokens for the SysAdmin folder."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Save tokens from the ApiResponse envelope (data.accessToken / data.refreshToken).",
+                  "const d = pm.response.json().data;",
+                  "if (d) {",
+                  "  pm.collectionVariables.set('accessToken', d.accessToken);",
+                  "  pm.collectionVariables.set('refreshToken', d.refreshToken);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Refresh Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/refresh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "refresh"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Rotate tokens: reads {{refreshToken}} from the body and re-saves the rotated pair."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Save tokens from the ApiResponse envelope (data.accessToken / data.refreshToken).",
+                  "const d = pm.response.json().data;",
+                  "if (d) {",
+                  "  pm.collectionVariables.set('accessToken', d.accessToken);",
+                  "  pm.collectionVariables.set('refreshToken', d.refreshToken);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Candidate Forgot Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/candidate/forgot-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "candidate",
+                "forgot-password"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identifier\": \"nhatquang\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Request a candidate password reset by username/email."
+          },
+          "response": []
+        },
+        {
+          "name": "Internal Forgot Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/internal/forgot-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "internal",
+                "forgot-password"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identifier\": \"thucuyen\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Request an internal-user password reset by username/email."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Jobs",
+      "description": "Public job board search + HR authoring. HR (thucuyen) creates/updates jobs; approve/reject is scoped to the department head in the service layer.",
+      "item": [
+        {
+          "name": "List Jobs (search / filter / paging)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/jobs?page=1&pageSize=10&keyword=engineer&sortBy=newest",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "jobs"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "10"
+                },
+                {
+                  "key": "keyword",
+                  "value": "engineer"
+                },
+                {
+                  "key": "sortBy",
+                  "value": "newest"
+                }
+              ]
+            },
+            "description": "Public paged job search. Also supports repeated employmentTypes / skills query params."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Job Detail",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/jobs/{{jobId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "jobs",
+                "{{jobId}}"
+              ]
+            },
+            "description": "Public job detail screen. Set {{jobId}} to a real job id."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Job (HR)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/hr/jobs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "hr",
+                "jobs"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Backend Engineer (Java)\",\n  \"department\": \"Engineering\",\n  \"employmentType\": \"FullTime\",\n  \"workMode\": \"Hybrid\",\n  \"location\": \"Ha Noi\",\n  \"shortPitch\": \"Build the RecruitPro core services.\",\n  \"description\": \"We are hiring a backend engineer to work on the recruitment platform.\",\n  \"responsibilities\": [\n    \"Design APIs\",\n    \"Own service reliability\"\n  ],\n  \"requirements\": [\n    \"3+ years Java\",\n    \"REST/gRPC experience\"\n  ],\n  \"skills\": [\n    \"Java\",\n    \"SQL\"\n  ],\n  \"salaryMin\": 2000,\n  \"salaryMax\": 3500,\n  \"currency\": \"USD\",\n  \"vacancyCount\": 2,\n  \"minExperienceYears\": 3,\n  \"benefits\": [\n    \"Health insurance\",\n    \"13th month salary\"\n  ],\n  \"deadline\": \"2026-12-31T00:00:00Z\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "HR creates a job (starts in a pending/draft approval state)."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Job (HR)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/hr/jobs/{{jobId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "hr",
+                "jobs",
+                "{{jobId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"Updated JD text.\",\n  \"salaryMax\": 4000,\n  \"requirements\": [\n    \"3+ years Java\",\n    \"gRPC\",\n    \"OData\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "HR partial-update of a job's fields."
+          },
+          "response": []
+        },
+        {
+          "name": "Approve / Reject Job (HR/Manager/Head)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/hr/jobs/{{jobId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "hr",
+                "jobs",
+                "{{jobId}}",
+                "status"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"Approved\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Approval transition (Approved/Rejected). Scoped to the job's DepartmentHead (BR-OWN-003)."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "OData",
+      "description": "OData v4 query endpoints under /odata (separate from /api). Jobs is public (Approved only); Applications is HR/Manager gated. Supports $filter/$orderby/$select/$top/$skip/$count.",
+      "item": [
+        {
+          "name": "OData Jobs ($filter/$top/$orderby/$select)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/odata/Jobs?$filter=contains(Title,'Java')&$top=5&$orderby=CreatedAt desc&$select=Id,Title,Location,Status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "odata",
+                "Jobs"
+              ],
+              "query": [
+                {
+                  "key": "$filter",
+                  "value": "contains(Title,'Java')"
+                },
+                {
+                  "key": "$top",
+                  "value": "5"
+                },
+                {
+                  "key": "$orderby",
+                  "value": "CreatedAt desc"
+                },
+                {
+                  "key": "$select",
+                  "value": "Id,Title,Location,Status"
+                }
+              ]
+            },
+            "description": "Composable OData query over the Approved job set."
+          },
+          "response": []
+        },
+        {
+          "name": "OData Applications ($filter/$select/$orderby)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/odata/Applications?$filter=Status eq 'Interview'&$select=Id,Status,FinalScore&$orderby=AppliedAt desc",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "odata",
+                "Applications"
+              ],
+              "query": [
+                {
+                  "key": "$filter",
+                  "value": "Status eq 'Interview'"
+                },
+                {
+                  "key": "$select",
+                  "value": "Id,Status,FinalScore"
+                },
+                {
+                  "key": "$orderby",
+                  "value": "AppliedAt desc"
+                }
+              ]
+            },
+            "description": "OData over applications (HR/Manager only)."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Content Negotiation",
+      "description": "Same endpoint returns JSON or XML by Accept header. This request asks for application/xml.",
+      "item": [
+        {
+          "name": "XML Demo Jobs (Accept: application/xml)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/xml"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/xml-demo/jobs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "xml-demo",
+                "jobs"
+              ]
+            },
+            "description": "Content negotiation demo. Change Accept to application/json to get JSON."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Applications",
+      "description": "Candidate apply -> HR screening decision -> offer accept/decline. Candidate endpoints use the nhatquang token; the HR decision uses the thucuyen token.",
+      "item": [
+        {
+          "name": "Apply to Job (Candidate)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/jobs/{{jobId}}/apply",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "jobs",
+                "{{jobId}}",
+                "apply"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"coverLetter\": \"I am excited to apply for this role.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Candidate applies to {{jobId}} (uses the profile CV on file)."
+          },
+          "response": []
+        },
+        {
+          "name": "My Applications (Candidate)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/candidate/applications?page=1&pageSize=10",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "candidate",
+                "applications"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "Candidate's own applications, paged."
+          },
+          "response": []
+        },
+        {
+          "name": "Screening Decision (HR)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/hr/applications/{{applicationId}}/decision",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "hr",
+                "applications",
+                "{{applicationId}}",
+                "decision"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"targetStatus\": \"Interview\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "HR moves an application to the next stage (e.g. Screening -> Interview -> Offer)."
+          },
+          "response": []
+        },
+        {
+          "name": "Withdraw Application (Candidate)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/candidate/applications/{{applicationId}}/withdraw",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "candidate",
+                "applications",
+                "{{applicationId}}",
+                "withdraw"
+              ]
+            },
+            "description": "Candidate withdraws their application."
+          },
+          "response": []
+        },
+        {
+          "name": "Accept Offer (Candidate)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/candidate/applications/{{applicationId}}/accept-offer",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "candidate",
+                "applications",
+                "{{applicationId}}",
+                "accept-offer"
+              ]
+            },
+            "description": "Candidate accepts a sent offer."
+          },
+          "response": []
+        },
+        {
+          "name": "Decline Offer (Candidate)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/candidate/applications/{{applicationId}}/decline-offer",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "candidate",
+                "applications",
+                "{{applicationId}}",
+                "decline-offer"
+              ]
+            },
+            "description": "Candidate declines a sent offer."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Interviews",
+      "description": "HR schedules and updates interviews; candidate views their own. Ownership (Interview -> Application -> Job) is enforced in the service.",
+      "item": [
+        {
+          "name": "List Interviews (HR)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/hr/interviews?page=1&pageSize=10",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "hr",
+                "interviews"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "Paged interview list for HR/Manager/Head."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Interview (HR)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/hr/interviews",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "hr",
+                "interviews"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"candidateId\": \"{{candidateId}}\",\n  \"applicationId\": \"{{applicationId}}\",\n  \"jobId\": \"{{jobId}}\",\n  \"date\": \"2026-08-01\",\n  \"startMinutes\": 540,\n  \"durationMinutes\": 60,\n  \"mode\": \"video\",\n  \"locationOrLink\": \"https://meet.example.com/rp-interview\",\n  \"interviewerId\": null,\n  \"status\": \"Scheduled\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Schedule an interview. startMinutes = minutes past midnight (540 = 09:00)."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Interview Status (HR)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/hr/interviews/{{interviewId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "hr",
+                "interviews",
+                "{{interviewId}}",
+                "status"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"Completed\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Update interview status (Scheduled/Completed/Cancelled...)."
+          },
+          "response": []
+        },
+        {
+          "name": "Candidate Interviews",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/candidate/interviews",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "candidate",
+                "interviews"
+              ]
+            },
+            "description": "Candidate's own scheduled interviews."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Offers",
+      "description": "HR drafts and sends an offer against an application. Candidate accepts/declines via the Applications folder.",
+      "item": [
+        {
+          "name": "Get Offer Editor (HR)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/hr/applications/{{applicationId}}/offer",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "hr",
+                "applications",
+                "{{applicationId}}",
+                "offer"
+              ]
+            },
+            "description": "Load the offer editor / current draft for an application."
+          },
+          "response": []
+        },
+        {
+          "name": "Save Offer Draft (HR)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/hr/applications/{{applicationId}}/offer",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "hr",
+                "applications",
+                "{{applicationId}}",
+                "offer"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"baseSalary\": 3000,\n  \"currencyCode\": \"USD\",\n  \"bonusDescription\": \"Annual performance bonus\",\n  \"employmentType\": \"FullTime\",\n  \"proposedStartDate\": \"2026-09-01T00:00:00Z\",\n  \"probationPeriod\": \"2 months\",\n  \"personalMessage\": \"We are delighted to extend this offer.\",\n  \"benefitIds\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Persist the offer as a draft."
+          },
+          "response": []
+        },
+        {
+          "name": "Send Offer (HR)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/hr/applications/{{applicationId}}/offer/send",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "hr",
+                "applications",
+                "{{applicationId}}",
+                "offer",
+                "send"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"baseSalary\": 3000,\n  \"currencyCode\": \"USD\",\n  \"bonusDescription\": \"Annual performance bonus\",\n  \"employmentType\": \"FullTime\",\n  \"proposedStartDate\": \"2026-09-01T00:00:00Z\",\n  \"probationPeriod\": \"2 months\",\n  \"personalMessage\": \"We are delighted to extend this offer.\",\n  \"benefitIds\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Send the offer to the candidate."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "gRPC External Score",
+      "description": "Service-to-service demo: the API delegates candidate match scoring to RecruitPro.ScoringService over gRPC. {{applicationId}} must be a GUID.",
+      "item": [
+        {
+          "name": "External Score (HR)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/hr/applications/{{applicationId}}/external-score",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "hr",
+                "applications",
+                "{{applicationId}}",
+                "external-score"
+              ]
+            },
+            "description": "Returns score/label/matched/missing skills from the gRPC scoring service."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "SysAdmin",
+      "description": "System Admin directory (log in as admin). Each endpoint is guarded by a fine-grained permission. Includes the disable-user flow (PATCH status -> Inactive).",
+      "item": [
+        {
+          "name": "Overview",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/sysadmin/overview",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sysadmin",
+                "overview"
+              ]
+            },
+            "description": "Admin console overview (USER_VIEW)."
+          },
+          "response": []
+        },
+        {
+          "name": "List Users",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/sysadmin/users?q=&page=1&pageSize=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sysadmin",
+                "users"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": ""
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "Search/paged user directory (USER_VIEW)."
+          },
+          "response": []
+        },
+        {
+          "name": "Disable User (PATCH status)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/sysadmin/users/{{userId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sysadmin",
+                "users",
+                "{{userId}}",
+                "status"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"Inactive\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Disable a user by setting status to Inactive (USER_UPDATE). Use Active to re-enable."
+          },
+          "response": []
+        },
+        {
+          "name": "Update User Roles",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/sysadmin/users/{{userId}}/roles",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sysadmin",
+                "users",
+                "{{userId}}",
+                "roles"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roleIds\": [\n    \"{{roleId}}\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Replace a user's role set (ROLE_MANAGE)."
+          },
+          "response": []
+        },
+        {
+          "name": "Audit Logs",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/sysadmin/audit-logs?q=&page=1&pageSize=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sysadmin",
+                "audit-logs"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": ""
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "System audit log (System_LOG_VIEW)."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Dashboards",
+      "description": "Role dashboards. Each requires a token for the matching role.",
+      "item": [
+        {
+          "name": "HR Dashboard",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/hr/dashboard",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "hr",
+                "dashboard"
+              ]
+            },
+            "description": "HR/Manager dashboard metrics."
+          },
+          "response": []
+        },
+        {
+          "name": "Manager Dashboard",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/manager/dashboard",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "manager",
+                "dashboard"
+              ]
+            },
+            "description": "Manager/HeadDepartment dashboard metrics."
+          },
+          "response": []
+        },
+        {
+          "name": "Candidate Dashboard",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/candidate/dashboard",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "candidate",
+                "dashboard"
+              ]
+            },
+            "description": "Candidate dashboard metrics."
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5013",
+      "type": "string"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "refreshToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "jobId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "applicationId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "candidateId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "interviewId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "userId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "roleId",
+      "value": "",
+      "type": "string"
+    }
+  ]
+}

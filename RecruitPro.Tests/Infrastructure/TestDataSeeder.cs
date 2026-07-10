@@ -14,6 +14,10 @@ public static class TestDataSeeder
     public static readonly Guid SystemAdminRoleId = Guid.Parse("10000000-0000-0000-0000-000000000005");
     public static readonly Guid CandidateUserId = Guid.Parse("20000000-0000-0000-0000-000000000001");
     public static readonly Guid HrUserId = Guid.Parse("20000000-0000-0000-0000-000000000002");
+    // A second, real HR-role user that owns NO job/application/candidate — used to assert ownership
+    // scoping (valid role, not the owner). It must be a real row because authentication now rejects
+    // tokens whose subject does not exist (JwtExtension.OnTokenValidated).
+    public static readonly Guid SecondHrUserId = Guid.Parse("20000000-0000-0000-0000-000000000006");
     public static readonly Guid ManagerUserId = Guid.Parse("20000000-0000-0000-0000-000000000003");
     public static readonly Guid HeadDepartmentUserId = Guid.Parse("20000000-0000-0000-0000-000000000004");
     public static readonly Guid SystemAdminUserId = Guid.Parse("20000000-0000-0000-0000-000000000005");
@@ -74,6 +78,20 @@ public static class TestDataSeeder
             FullName = "Manager User",
             PasswordHash = BCrypt.Net.BCrypt.HashPassword("Pass@123"),
             Phone = "0900000003",
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+
+        // Second HR user with no ownership over any seeded job/application — the "out-of-scope HR" in
+        // ownership tests. A real row so its access token passes authentication and reaches the scoping logic.
+        User secondHr = new()
+        {
+            Id = SecondHrUserId,
+            Username = "hr.two",
+            Email = "hr2@recruitpro.test",
+            FullName = "HR User Two",
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword("Pass@123"),
+            Phone = "0900000006",
             CreatedAt = now,
             UpdatedAt = now
         };
@@ -230,10 +248,11 @@ public static class TestDataSeeder
         });
 
         db.Roles.AddRange(candidateRole, hrRole, managerRole, headDepartmentRole, systemAdminRole);
-        db.Users.AddRange(candidate, hr, manager, headDepartment, systemAdmin);
+        db.Users.AddRange(candidate, hr, secondHr, manager, headDepartment, systemAdmin);
         db.UserRoles.AddRange(
             new UserRole { UserId = CandidateUserId, RoleId = CandidateRoleId, AssignedAt = now },
             new UserRole { UserId = HrUserId, RoleId = HrRoleId, AssignedAt = now },
+            new UserRole { UserId = SecondHrUserId, RoleId = HrRoleId, AssignedAt = now },
             new UserRole { UserId = ManagerUserId, RoleId = ManagerRoleId, AssignedAt = now },
             new UserRole { UserId = HeadDepartmentUserId, RoleId = HeadDepartmentRoleId, AssignedAt = now },
             new UserRole { UserId = SystemAdminUserId, RoleId = SystemAdminRoleId, AssignedAt = now });

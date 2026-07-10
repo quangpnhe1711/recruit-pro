@@ -173,22 +173,25 @@ public sealed class AuthServiceUnitTests
         };
 
         userRepository.Setup(repository => repository.GetByUsernameAsync(user.Username)).ReturnsAsync(user);
-        jwtService.Setup(service => service.GenerateToken(user, "Access")).Returns("access-token");
-        jwtService.Setup(service => service.GenerateToken(user, "Refresh")).Returns("refresh-token");
+        jwtService.Setup(service => service.GenerateAccessToken(user)).Returns("access-token");
+        jwtService.Setup(service => service.CreateRefreshToken()).Returns(("raw-refresh", "refresh-hash"));
 
         var service = new AuthService(
             userRepository.Object,
             Mock.Of<ICandidateProfileRepository>(),
+            Mock.Of<IRefreshTokenRepository>(),
             jwtService.Object,
             Mock.Of<IEmailService>(),
             Mock.Of<IUnitOfWork>(),
-            mapper);
+            mapper,
+            Microsoft.Extensions.Options.Options.Create(new RecruitPro.Application.Configurations.JwtSettings()));
 
         var response = await service.CandidateLoginAsync(user.Username, "Pass@123");
 
         response.Success.Should().BeTrue();
         response.Data!.AccessToken.Should().Be("access-token");
-        response.Data.RefreshToken.Should().Be("refresh-token");
+        // The client receives the RAW refresh token; only its hash is persisted.
+        response.Data.RefreshToken.Should().Be("raw-refresh");
         response.Data.User.Roles.Should().Contain("Candidate");
     }
 
@@ -198,10 +201,12 @@ public sealed class AuthServiceUnitTests
         var service = new AuthService(
             Mock.Of<IUserRepository>(),
             Mock.Of<ICandidateProfileRepository>(),
+            Mock.Of<IRefreshTokenRepository>(),
             Mock.Of<IJwtService>(),
             Mock.Of<IEmailService>(),
             Mock.Of<IUnitOfWork>(),
-            TestMapperFactory.Create());
+            TestMapperFactory.Create(),
+            Microsoft.Extensions.Options.Options.Create(new RecruitPro.Application.Configurations.JwtSettings()));
 
         var response = await service.ForgotCandidatePasswordAsync("   ");
 
@@ -432,7 +437,7 @@ public sealed class CandidateServiceUnitTests
             unitOfWork ?? Mock.Of<IUnitOfWork>(),
             fileStorageService ?? Mock.Of<IFileStorageService>(),
             emailService ?? Mock.Of<IEmailService>(),
-            resumeTextExtractor ?? Mock.Of<IResumeTextExtractor>(),
+            new ResumeParsingService(resumeTextExtractor ?? Mock.Of<IResumeTextExtractor>()),
             resumeParsingAiProvider ?? Mock.Of<IResumeParsingAiProvider>(),
             Mock.Of<ISemanticDiscoveryService>(),
             TestMapperFactory.Create(),

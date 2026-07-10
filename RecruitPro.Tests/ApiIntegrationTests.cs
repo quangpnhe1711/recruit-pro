@@ -182,7 +182,7 @@ public sealed class ApiIntegrationTests : IClassFixture<PostgresTestFixture>, IA
         string url = $"/api/jobs/{TestDataSeeder.ApprovedJobId}/applications?page=1&pageSize=10";
 
         // HR that owns neither the job nor the department -> 403 even with a valid HR role.
-        PostgresTestFixture.SetBearerToken(_client, _factory.Fixture.CreateJwt(Guid.NewGuid().ToString(), "HR"));
+        PostgresTestFixture.SetBearerToken(_client, _factory.Fixture.CreateJwt(TestDataSeeder.SecondHrUserId.ToString(), "HR"));
         HttpResponseMessage outsider = await _client.GetAsync(url);
         outsider.StatusCode.Should().Be(HttpStatusCode.Forbidden);
 
@@ -215,7 +215,7 @@ public sealed class ApiIntegrationTests : IClassFixture<PostgresTestFixture>, IA
         (await _client.GetAsync(url)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
 
         // HR with no ownership over this application -> forbidden, despite the HR role.
-        PostgresTestFixture.SetBearerToken(_client, _factory.Fixture.CreateJwt(Guid.NewGuid().ToString(), "HR"));
+        PostgresTestFixture.SetBearerToken(_client, _factory.Fixture.CreateJwt(TestDataSeeder.SecondHrUserId.ToString(), "HR"));
         HttpResponseMessage outsider = await _client.GetAsync(url);
         outsider.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
@@ -225,7 +225,7 @@ public sealed class ApiIntegrationTests : IClassFixture<PostgresTestFixture>, IA
     {
         const string url = "/api/hr/applications?page=1&pageSize=10";
 
-        PostgresTestFixture.SetBearerToken(_client, _factory.Fixture.CreateJwt(Guid.NewGuid().ToString(), "HR"));
+        PostgresTestFixture.SetBearerToken(_client, _factory.Fixture.CreateJwt(TestDataSeeder.SecondHrUserId.ToString(), "HR"));
         var outsiderJson = await ApiResponseAssertions.AssertNo500AndEnvelopeAsync(await _client.GetAsync(url));
         outsiderJson.RootElement.GetProperty("data").GetProperty("items").GetArrayLength().Should().Be(0);
 
@@ -247,7 +247,7 @@ public sealed class ApiIntegrationTests : IClassFixture<PostgresTestFixture>, IA
         (await _client.GetAsync(url)).StatusCode.Should().Be(HttpStatusCode.OK);
 
         // HR with no owned application for this candidate -> 404 (existence is not leaked).
-        PostgresTestFixture.SetBearerToken(_client, _factory.Fixture.CreateJwt(Guid.NewGuid().ToString(), "HR"));
+        PostgresTestFixture.SetBearerToken(_client, _factory.Fixture.CreateJwt(TestDataSeeder.SecondHrUserId.ToString(), "HR"));
         (await _client.GetAsync(url)).StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
@@ -298,7 +298,7 @@ public sealed class ApiIntegrationTests : IClassFixture<PostgresTestFixture>, IA
         PostgresTestFixture.SetBearerToken(_client, _factory.Fixture.CreateJwt(TestDataSeeder.CandidateUserId.ToString(), "Candidate"));
         (await _client.GetAsync(url)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
 
-        PostgresTestFixture.SetBearerToken(_client, _factory.Fixture.CreateJwt(Guid.NewGuid().ToString(), "HR"));
+        PostgresTestFixture.SetBearerToken(_client, _factory.Fixture.CreateJwt(TestDataSeeder.SecondHrUserId.ToString(), "HR"));
         (await _client.GetAsync(url)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
 
         PostgresTestFixture.SetBearerToken(_client, _factory.Fixture.CreateJwt(TestDataSeeder.ManagerUserId.ToString(), "Manager"));

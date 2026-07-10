@@ -25,12 +25,18 @@ public class SysAdminDirectoryService : ISysAdminDirectoryService
     ];
 
     private readonly IRbacRepository _rbacRepository;
+    private readonly IRefreshTokenRepository _refreshTokenRepository;
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<SysAdminDirectoryService> _logger;
 
-    public SysAdminDirectoryService(IRbacRepository rbacRepository, IUnitOfWork unitOfWork, ILogger<SysAdminDirectoryService> logger)
+    public SysAdminDirectoryService(
+        IRbacRepository rbacRepository,
+        IRefreshTokenRepository refreshTokenRepository,
+        IUnitOfWork unitOfWork,
+        ILogger<SysAdminDirectoryService> logger)
     {
         _rbacRepository = rbacRepository;
+        _refreshTokenRepository = refreshTokenRepository;
         _unitOfWork = unitOfWork;
         _logger = logger;
     }
@@ -96,6 +102,15 @@ public class SysAdminDirectoryService : ISysAdminDirectoryService
         string previousStatus = user.Status ?? UserStatus.Active.ToString();
         user.Status = newStatus;
         user.UpdatedAt = DbDateTime.Now;
+
+        // Deactivation is enforced immediately, not eventually: the TokenVersion bump kills every
+        // access token already issued (checked per-request in JwtExtension.OnTokenValidated), and the
+        // refresh tokens are revoked so no new access token can be minted.
+        if (deactivating)
+        {
+            user.TokenVersion += 1;
+        }
+
         await _rbacRepository.AddSystemLogAsync(new SystemLog
         {
             Id = Guid.NewGuid(),
@@ -105,6 +120,11 @@ public class SysAdminDirectoryService : ISysAdminDirectoryService
             CreatedAt = DbDateTime.Now,
         });
         await _unitOfWork.SaveChangesAsync();
+
+        if (deactivating)
+        {
+            await _refreshTokenRepository.DeleteAllForUserAsync(user.Id);
+        }
 
         _logger.LogInformation("User {UserId} status changed {Old} -> {New} by {AdminId}.",
             user.Id, previousStatus, newStatus, currentUserId);

@@ -20,6 +20,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IApplicationService, ApplicationService>();
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<ICandidateService, CandidateService>();
+        services.AddScoped<IResumeParsingService, ResumeParsingService>();
         services.AddScoped<IDashboardService, DashboardService>();
         services.AddScoped<IInterviewService, InterviewService>();
         services.AddScoped<IJobService, JobService>();

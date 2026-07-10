@@ -26,6 +26,14 @@ public partial class User
     /// </summary>
     public string? Status { get; set; }
 
+    /// <summary>
+    /// Monotonic token generation. Every issued access token embeds the value current at login;
+    /// deactivating an account bumps this so all previously-issued access tokens fail validation
+    /// (see JwtExtension.OnTokenValidated) — the deactivation takes effect immediately, not only
+    /// after the short access-token lifetime elapses.
+    /// </summary>
+    public int TokenVersion { get; set; }
+
     public DateTime? CreatedAt { get; set; }
 
     public DateTime? UpdatedAt { get; set; }

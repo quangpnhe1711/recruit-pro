@@ -1884,6 +1884,12 @@ namespace RecruitPro.Infrastructure.Migrations
                         .HasColumnType("character varying(20)")
                         .HasColumnName("phone");
 
+                    b.Property<int>("TokenVersion")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("token_version");
+
                     b.Property<DateTime?>("UpdatedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("timestamp without time zone")

@@ -5,7 +5,7 @@
 Purpose:
 
 - Candidate and internal login
-- Token issuance and refresh
+- Token issuance and rotating refresh (the `RefreshToken` table is read and written)
 - Session access control
 
 Main entities:
@@ -17,8 +17,9 @@ Main entities:
 
 Current implementation:
 
-- JWT-based auth service
-- Role-based authorization attributes in controllers
+- JWT-based auth service: 15-min access tokens with a `token_version` claim, plus opaque 7-day refresh tokens stored as SHA-256 hashes and rotated (single-use) via `POST /api/auth/refresh`
+- Role-based authorization attributes in business controllers; fine-grained permission checks are used only in the SysAdmin area
+- Account deactivation bumps `token_version` and deletes the user's refresh tokens, invalidating live access tokens immediately
 
 ## 2. Candidate
 
@@ -152,7 +153,7 @@ Main entities:
 
 Purpose:
 
-- Internal role and permission based operations
+- Internal SysAdmin operations; this is the only area with fine-grained permission-based enforcement
 
 Main entities:
 

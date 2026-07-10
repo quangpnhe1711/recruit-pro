@@ -437,6 +437,7 @@ CREATE TABLE public.users (
     phone character varying(20),
     avatar_url text,
     status character varying(50) DEFAULT 'Active',
+    token_version integer DEFAULT 0 NOT NULL,
     created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
     updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP
 );

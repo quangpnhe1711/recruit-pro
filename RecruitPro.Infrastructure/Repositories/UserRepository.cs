@@ -142,6 +142,17 @@ namespace RecruitPro.Infrastructure.Repositories
                 .FirstOrDefaultAsync(u => u.Id == id);
         }
 
+        public async Task<(string? Status, int TokenVersion)?> GetAuthSnapshotAsync(Guid id)
+        {
+            var snapshot = await _context.Users
+                .AsNoTracking()
+                .Where(u => u.Id == id)
+                .Select(u => new { u.Status, u.TokenVersion })
+                .FirstOrDefaultAsync();
+
+            return snapshot == null ? null : (snapshot.Status, snapshot.TokenVersion);
+        }
+
         public async Task<IReadOnlyList<User>> GetUsersInRolesAsync(params string[] roles)
         {
             return await _context.Users

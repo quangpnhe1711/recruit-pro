@@ -54,7 +54,7 @@ The system uses an async enrichment pattern:
 flowchart TD
     U[User] --> L[Login Endpoint]
     L --> A[AuthService]
-    A --> T[Issue JWT + Refresh Token]
+    A --> T[Issue 15-min access JWT + rotating refresh token]
     T --> C[Client stores token]
     C --> G[Route Guards / API Authorization]
     G --> R[Protected Resources]

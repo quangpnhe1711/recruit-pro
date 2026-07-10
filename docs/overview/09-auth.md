@@ -4,9 +4,13 @@
 
 Confirmed mechanisms:
 
-- JWT authentication
-- Refresh token support
+- JWT authentication (short-lived access tokens, 15 minutes, carrying a `token_version` claim)
+- Working refresh-token rotation via `POST /api/auth/refresh`
 - Role-aware login endpoints
+
+Refresh tokens are opaque random strings with a 7-day lifetime, one per login. They are stored in the database as SHA-256 hashes (the raw value is only ever returned to the client) and rotated on each refresh: the used token is deleted and a new `{ accessToken, refreshToken }` pair is issued. Refresh returns 401 if the token is missing, expired, unknown, or the account is not Active.
+
+There is no `GET /api/auth/me` and no `POST /api/auth/logout` endpoint. Logout is client-side only — the client discards its tokens. The server revokes tokens only on account deactivation: SysAdmin `PATCH /api/sysadmin/users/{id}/status` to Inactive/Blocked bumps `users.token_version` and deletes all of that user's refresh tokens, so every live access token fails immediately (checked per-request in `JwtExtension.OnTokenValidated`) and no new one can be minted.
 
 ## Authorization
 
@@ -47,7 +51,7 @@ Confirmed in source tree:
 ## Authorization Flow
 
 1. User signs in
-2. API returns JWT and refresh token
+2. API returns a 15-minute access JWT and an opaque refresh token (hashed in DB); the client later calls `POST /api/auth/refresh` to rotate them
 3. Client stores token
 4. Protected endpoints validate token and role/permission
 5. Frontend guards route and action visibility

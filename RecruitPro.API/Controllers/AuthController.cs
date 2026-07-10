@@ -38,6 +38,13 @@ namespace RecruitPro.API.Controllers
             return StatusCode(result.StatusCode, result);
         }
 
+        [HttpPost("refresh")]
+        public async Task<IActionResult> Refresh([FromBody] RefreshRequest request)
+        {
+            var result = await _authService.RefreshAsync(request.RefreshToken);
+            return StatusCode(result.StatusCode, result);
+        }
+
         [HttpPost("candidate/forgot-password")]
         public async Task<IActionResult> CandidateForgotPassword([FromBody] ForgotPasswordRequest request)
         {

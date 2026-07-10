@@ -74,8 +74,8 @@ Hệ thống dùng:
 
 - Candidate login
 - Internal login
-- Token refresh
-- Logout
+- Token refresh (rotating endpoint: single-use refresh token, 15-min access token)
+- Logout (client-side only, no server endpoint)
 - Role-based user session
 
 ### 4.2 Candidate module
@@ -147,7 +147,7 @@ Hệ thống dùng:
 
 ### 5.3 Permission model
 
-The system uses permission-based authorization, not only role-based authorization.
+Fine-grained permission-based enforcement (`RequirePermission`) is applied only in the SysAdmin area. All other business controllers are role-based (`[Authorize(Roles=...)]`). The permission groups below describe the intended model.
 
 Permission groups:
 
@@ -247,9 +247,9 @@ Trạng thái application hiện có:
 - `POST /api/auth/login`
 - `POST /api/auth/candidate/login`
 - `POST /api/auth/internal/login`
-- `POST /api/auth/refresh-token`
-- `GET /api/auth/me`
-- `POST /api/auth/logout`
+- `POST /api/auth/refresh` — body `{ "refreshToken": "..." }`; rotates the DB-stored refresh token (single-use) and returns a fresh `{ accessToken, refreshToken }`; 401 if missing/expired/unknown or account not Active
+- `GET /api/auth/me` — not implemented (no such endpoint)
+- `POST /api/auth/logout` — not implemented; logout is client-side only (client discards its tokens)
 
 ### 7.2 Public job endpoints
 
@@ -505,7 +505,7 @@ Current abstraction uses generic AI provider names:
 ### 14.3 Maintainability
 
 - Clear separation between API, application, infrastructure, and domain
-- Permission-based authorization should remain centralized
+- Permission-based enforcement (currently limited to the SysAdmin area) should remain centralized; business controllers stay role-based
 
 ### 14.4 Backward compatibility
 

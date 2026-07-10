@@ -1145,6 +1145,9 @@ public partial class AppDbContext : DbContext
                 .HasMaxLength(50)
                 .HasDefaultValue("Active")
                 .HasColumnName("status");
+            entity.Property(e => e.TokenVersion)
+                .HasDefaultValue(0)
+                .HasColumnName("token_version");
             entity.Property(e => e.Username)
                 .HasMaxLength(50)
                 .HasColumnName("username");

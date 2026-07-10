@@ -1,5 +1,7 @@
 using AutoMapper;
+using Microsoft.Extensions.Options;
 using RecruitPro.Application.Common;
+using RecruitPro.Application.Configurations;
 using RecruitPro.Application.DTOs.Request.Auth;
 using RecruitPro.Application.DTOs.Response;
 using RecruitPro.Application.Exceptions;
@@ -14,10 +16,12 @@ namespace RecruitPro.Application.Services
     {
         private readonly IUserRepository _userRepository;
         private readonly ICandidateProfileRepository _candidateProfileRepository;
+        private readonly IRefreshTokenRepository _refreshTokenRepository;
         private readonly IJwtService _jwtService;
         private readonly IEmailService _emailService;
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
+        private readonly JwtSettings _jwtSettings;
         private const string CandidateLoginUrl = "http://localhost:5173/login";
         private const string InternalLoginUrl = "http://localhost:5173/internal/login";
         private const string ResumeParseStatusNotStarted = "NotStarted";
@@ -34,17 +38,21 @@ namespace RecruitPro.Application.Services
         public AuthService(
             IUserRepository userRepository,
             ICandidateProfileRepository candidateProfileRepository,
+            IRefreshTokenRepository refreshTokenRepository,
             IJwtService jwtService,
             IEmailService emailService,
             IUnitOfWork unitOfWork,
-            IMapper mapper)
+            IMapper mapper,
+            IOptions<JwtSettings> jwtSettings)
         {
             _userRepository = userRepository;
             _candidateProfileRepository = candidateProfileRepository;
+            _refreshTokenRepository = refreshTokenRepository;
             _jwtService = jwtService;
             _emailService = emailService;
             _unitOfWork = unitOfWork;
             _mapper = mapper;
+            _jwtSettings = jwtSettings.Value;
         }
 
         /// <summary>
@@ -138,16 +146,70 @@ namespace RecruitPro.Application.Services
                 user = await EnsureCandidateProfileAsync(user);
             }
 
-            var accessToken = _jwtService.GenerateToken(user, "Access");
-            var refreshToken = _jwtService.GenerateToken(user, "Refresh");
+            return ApiResponse<LoginResponseDto>.Ok(await IssueTokensAsync(user));
+        }
 
-            var loginResponseDto = _mapper.Map<LoginResponseDto>(user, options =>
+        /// <summary>
+        /// Rotates a refresh token: validates the stored hash is present, unexpired, and belongs to an
+        /// Active account, then deletes it and issues a fresh access+refresh pair. A deactivated account's
+        /// tokens were already deleted (revoke-all), so its refresh attempt simply finds nothing → 401.
+        /// </summary>
+        public async Task<ApiResponse<LoginResponseDto>> RefreshAsync(string refreshToken)
+        {
+            if (string.IsNullOrWhiteSpace(refreshToken))
+            {
+                return ApiResponse<LoginResponseDto>.Unauthorized(ErrorCodes.Unauthenticated);
+            }
+
+            string hash = _jwtService.HashRefreshToken(refreshToken.Trim());
+            RefreshToken? stored = await _refreshTokenRepository.GetByHashAsync(hash);
+            if (stored == null || stored.ExpiryDate <= DbDateTime.Now)
+            {
+                if (stored != null)
+                {
+                    _refreshTokenRepository.Remove(stored);
+                    await _unitOfWork.SaveChangesAsync();
+                }
+
+                return ApiResponse<LoginResponseDto>.Unauthorized(ErrorCodes.Unauthenticated);
+            }
+
+            User? user = await _userRepository.GetByIdAsync(stored.UserId);
+            if (user == null || (user.Status != null && !user.Status.Equals("Active", StringComparison.OrdinalIgnoreCase)))
+            {
+                _refreshTokenRepository.Remove(stored);
+                await _unitOfWork.SaveChangesAsync();
+                return ApiResponse<LoginResponseDto>.Unauthorized(ErrorCodes.AccountDisabled);
+            }
+
+            // Single-use rotation: the presented token is retired before a new pair is minted.
+            _refreshTokenRepository.Remove(stored);
+            return ApiResponse<LoginResponseDto>.Ok(await IssueTokensAsync(user));
+        }
+
+        /// <summary>
+        /// Issues an access token (carrying the current TokenVersion) and a fresh opaque refresh token,
+        /// persisting only the refresh token's hash, then projects both into the login response.
+        /// </summary>
+        private async Task<LoginResponseDto> IssueTokensAsync(User user)
+        {
+            string accessToken = _jwtService.GenerateAccessToken(user);
+            (string rawRefresh, string refreshHash) = _jwtService.CreateRefreshToken();
+
+            await _refreshTokenRepository.AddAsync(new RefreshToken
+            {
+                Id = Guid.NewGuid(),
+                UserId = user.Id,
+                Token = refreshHash,
+                ExpiryDate = DbDateTime.Now.AddMinutes(_jwtSettings.RefreshTokenExpiryMinutes),
+            });
+            await _unitOfWork.SaveChangesAsync();
+
+            return _mapper.Map<LoginResponseDto>(user, options =>
             {
                 options.Items["AccessToken"] = accessToken;
-                options.Items["RefreshToken"] = refreshToken;
+                options.Items["RefreshToken"] = rawRefresh;
             });
-
-            return ApiResponse<LoginResponseDto>.Ok(loginResponseDto);
         }
 
         /// <summary>

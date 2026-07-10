@@ -26,7 +26,10 @@ public sealed class RecruitProWebApplicationFactory(PostgresTestFixture fixture)
             config.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["ConnectionStrings:Mycnn"] = Fixture.ConnectionString,
-                ["AiProvider:Enabled"] = "false"
+                ["AiProvider:Enabled"] = "false",
+                // Pin the signing key to the fixture's test key so tests don't depend on the committed
+                // appsettings.json placeholder (see PostgresTestFixture.TestSigningKey).
+                ["Jwt:Key"] = PostgresTestFixture.TestSigningKey
             });
         });
 

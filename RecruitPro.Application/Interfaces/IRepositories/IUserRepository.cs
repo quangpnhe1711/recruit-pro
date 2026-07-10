@@ -22,6 +22,9 @@ namespace RecruitPro.Application.Interfaces.IRepositories
 
         Task<User?> GetByIdAsync(Guid id);
 
+        /// <summary>Cheap projection (status + token version) read on every authenticated request to enforce deactivation.</summary>
+        Task<(string? Status, int TokenVersion)?> GetAuthSnapshotAsync(Guid id);
+
         Task<IReadOnlyList<User>> GetUsersInRolesAsync(params string[] roles);
         Task<Role?> GetRoleByNameAsync(string roleName);
 

@@ -11,9 +11,9 @@
 - `POST /api/auth/login`
 - `POST /api/auth/candidate/login`
 - `POST /api/auth/internal/login`
-- `POST /api/auth/refresh-token`
-- `GET /api/auth/me`
-- `POST /api/auth/logout`
+- `POST /api/auth/refresh` — body `{ "refreshToken": "..." }`; validates and rotates the DB-stored refresh token (single-use: old token deleted, new pair issued) and returns a fresh `{ accessToken, refreshToken }` in the standard envelope. Returns 401 if the token is missing/expired/unknown or the account is not Active.
+- `GET /api/auth/me` — not implemented (no such endpoint).
+- `POST /api/auth/logout` — not implemented; logout is client-side only (the client discards its tokens). The server revokes refresh tokens only on account deactivation and retires used ones on rotation.
 
 ## Candidate Endpoints
 

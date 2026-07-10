@@ -70,5 +70,5 @@ flowchart LR
 
 - Candidate profile is treated as the normalized source of truth after resume parsing
 - AI is used as an augmentation layer, not as a mandatory dependency for business flow
-- Internal and candidate flows are separated by role-based and permission-based access
+- Internal and candidate flows are separated by role-based access; fine-grained permission-based enforcement applies only in the SysAdmin area
 

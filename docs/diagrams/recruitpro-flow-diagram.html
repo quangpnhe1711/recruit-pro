@@ -809,6 +809,27 @@
         </div>
       </div>
     </section>
+
+    <section class="rules">
+      <div class="rules-inner">
+        <div>
+          <h2>5. Xác thực &amp; Vòng đời phiên (Auth &amp; Session)</h2>
+          <p>
+            Đăng nhập cấp một cặp token: access token là JWT sống 15 phút (mang claim
+            token_version), refresh token là chuỗi ngẫu nhiên sống 7 ngày và chỉ lưu trong DB
+            dưới dạng hash SHA-256. Vô hiệu hóa tài khoản làm mọi access token đang sống bị từ
+            chối ngay ở request kế tiếp. Scoring và parse CV nay là các collaborator tách riêng.
+          </p>
+        </div>
+        <div class="rule-grid">
+          <div class="rule-card"><strong>Cặp token khi login</strong><span>Access token JWT sống 15 phút, chứa claim token_version. Refresh token là chuỗi ngẫu nhiên sống 7 ngày, chỉ lưu DB dưới dạng hash SHA-256 (không lưu bản rõ).</span></div>
+          <div class="rule-card"><strong>POST /api/auth/refresh</strong><span>Đổi refresh token theo single-use rotation để lấy cặp token mới. Trả 401 nếu token sai, hết hạn hoặc tài khoản bị khóa. Client dùng cơ chế silent-refresh khi access token hết hạn.</span></div>
+          <div class="rule-card"><strong>Vô hiệu hóa tài khoản</strong><span>SysAdmin đổi status sang Inactive/Blocked: token_version += 1 và xóa toàn bộ refresh token của user. Mọi access token đang sống lập tức bị từ chối (kiểm tra mỗi request ở JwtExtension.OnTokenValidated) nên frontend nhận 401 và tự logout.</span></div>
+          <div class="rule-card"><strong>Scoring qua gRPC</strong><span>Chấm điểm là service ngoài tiến trình, gọi qua gRPC (RecruitPro.ScoringService, service scoring trong docker-compose) thay vì chạy in-process cùng API.</span></div>
+          <div class="rule-card"><strong>Tách ResumeParsingService</strong><span>Trích xuất/parse text CV đã tách khỏi CandidateService thành collaborator riêng ResumeParsingService để giảm god-service.</span></div>
+        </div>
+      </div>
+    </section>
   </div>
 
   <script>

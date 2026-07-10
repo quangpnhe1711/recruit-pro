@@ -686,6 +686,28 @@
         </footer>
       </div>
     </section>
+
+    <section class="rules">
+      <div class="rules-inner">
+        <h2>5 · Scoring service &amp; kiểm soát truy cập</h2>
+        <p class="lead">
+          Hai lưu ý hạ tầng bổ sung cho luồng Copilot: chấm điểm ngoài đi qua một tiến trình
+          riêng, và cổng phân quyền của Copilot nay tôn trọng việc vô hiệu hóa tài khoản.
+        </p>
+        <div class="rule-grid" style="margin-top: 16px;">
+          <div class="rule-card">
+            <span class="rk"><b>gRPC</b></span>
+            <strong class="rt">Scoring là service ngoài tiến trình</strong>
+            <span>Chấm điểm ngoài do <code>RecruitPro.ScoringService</code> đảm nhận; API gọi qua một hop gRPC cross-process (service <code>scoring</code> trong docker-compose) thay vì chạy in-process.</span>
+          </div>
+          <div class="rule-card">
+            <span class="rk"><b>AUTH</b></span>
+            <strong class="rt">Cổng role + vô hiệu hóa tài khoản</strong>
+            <span>Endpoint Copilot gác bởi <code>[Authorize(Roles="HR,Manager")]</code>. Cổng này nay còn tôn trọng vô hiệu hóa tài khoản: user bị khóa có <code>token_version</code> tăng / refresh token bị xóa nên access token mất hiệu lực ngay lập tức.</span>
+          </div>
+        </div>
+      </div>
+    </section>
   </div>
 
   <script>
