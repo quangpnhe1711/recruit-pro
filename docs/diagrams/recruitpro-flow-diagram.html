@@ -1,0 +1,1185 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>RecruitPro Flow Diagram</title>
+  <script>
+    (function () {
+      var stored = localStorage.getItem("rp-flow-theme");
+      var dark = stored ? stored === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
+      document.documentElement.classList.toggle("dark", dark);
+    })();
+  </script>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f4ef;
+      --panel: #fffdf8;
+      --panel-strong: #f0ece4;
+      --text: #1d2528;
+      --muted: #667277;
+      --soft: #d8d1c3;
+      --line: #859096;
+      --line-strong: #3d484d;
+      --source: #0b7a75;
+      --source-soft: #dff4f1;
+      --config: #946c2d;
+      --config-soft: #f5ead4;
+      --transaction: #315f9d;
+      --transaction-soft: #e2ecfb;
+      --history: #7b5aa6;
+      --history-soft: #eee6f7;
+      --derived: #6b7280;
+      --derived-soft: #eceff1;
+      --exception: #b4443c;
+      --exception-soft: #fae3df;
+      --gap: #c66b1c;
+      --gap-soft: #ffedd7;
+      --ok: #477943;
+      --ok-soft: #e5f2df;
+      --shadow: 0 18px 45px rgba(42, 38, 30, 0.14);
+      --stage: #fbfaf6;
+      --stage-grid: rgba(70, 80, 84, 0.1);
+      --chip-bg: #ffffff;
+      --focus: #111827;
+    }
+
+    html.dark {
+      color-scheme: dark;
+      --bg: #111415;
+      --panel: #171b1d;
+      --panel-strong: #202629;
+      --text: #eef1ee;
+      --muted: #a4adaa;
+      --soft: #30383b;
+      --line: #6d777b;
+      --line-strong: #d4dbd9;
+      --source: #60d5c9;
+      --source-soft: #143d3b;
+      --config: #e2b66d;
+      --config-soft: #43331a;
+      --transaction: #86b7f3;
+      --transaction-soft: #182d4a;
+      --history: #c2a8f2;
+      --history-soft: #302544;
+      --derived: #c1c8ca;
+      --derived-soft: #2a3032;
+      --exception: #f29b91;
+      --exception-soft: #4a201e;
+      --gap: #f4a45b;
+      --gap-soft: #432817;
+      --ok: #9ed495;
+      --ok-soft: #20391f;
+      --shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+      --stage: #131718;
+      --stage-grid: rgba(236, 241, 238, 0.08);
+      --chip-bg: #1b2022;
+      --focus: #ffffff;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      letter-spacing: 0;
+    }
+
+    .app-shell {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .topbar {
+      display: grid;
+      grid-template-columns: minmax(260px, 1fr) auto;
+      gap: 18px;
+      align-items: center;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--soft);
+      background: var(--panel);
+      position: sticky;
+      top: 0;
+      z-index: 20;
+    }
+
+    .title-block h1 {
+      margin: 0;
+      font-size: 20px;
+      line-height: 1.2;
+      font-weight: 760;
+    }
+
+    .title-block p {
+      margin: 5px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    button {
+      border: 1px solid var(--soft);
+      background: var(--chip-bg);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font: inherit;
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    button:hover,
+    button.active {
+      border-color: var(--line-strong);
+      box-shadow: 0 0 0 2px color-mix(in srgb, var(--line-strong) 14%, transparent);
+    }
+
+    .zoom-label {
+      min-width: 58px;
+      text-align: center;
+      border: 1px solid var(--soft);
+      border-radius: 8px;
+      padding: 8px 9px;
+      color: var(--muted);
+      font-size: 13px;
+      background: var(--panel-strong);
+    }
+
+    .stage-wrap {
+      position: relative;
+      height: calc(100vh - 78px);
+      min-height: 620px;
+      overflow: hidden;
+      background:
+        linear-gradient(90deg, var(--stage-grid) 1px, transparent 1px),
+        linear-gradient(0deg, var(--stage-grid) 1px, transparent 1px),
+        var(--stage);
+      background-size: 36px 36px;
+      border-bottom: 1px solid var(--soft);
+    }
+
+    svg {
+      width: 100%;
+      height: 100%;
+      display: block;
+      cursor: grab;
+      user-select: none;
+      touch-action: none;
+    }
+
+    svg.grabbing { cursor: grabbing; }
+
+    .diagram-title {
+      font-size: 34px;
+      font-weight: 780;
+      fill: var(--text);
+    }
+
+    .diagram-subtitle,
+    .note-text {
+      font-size: 16px;
+      fill: var(--muted);
+    }
+
+    .section-title {
+      font-size: 24px;
+      font-weight: 760;
+      fill: var(--text);
+    }
+
+    .lane-title {
+      font-size: 17px;
+      font-weight: 720;
+      fill: var(--muted);
+    }
+
+    .node-title {
+      font-size: 16px;
+      font-weight: 740;
+      fill: var(--text);
+    }
+
+    .node-subtitle {
+      font-size: 12.5px;
+      fill: var(--muted);
+    }
+
+    .small {
+      font-size: 11.5px;
+      fill: var(--muted);
+    }
+
+    .panel-bg,
+    .node-bg,
+    .lane-bg,
+    .compare-bg {
+      fill: var(--panel);
+      stroke: var(--soft);
+      stroke-width: 1.4;
+    }
+
+    .section-bg {
+      fill: color-mix(in srgb, var(--panel) 86%, transparent);
+      stroke: var(--soft);
+      stroke-width: 1.4;
+    }
+
+    .node {
+      cursor: pointer;
+    }
+
+    .node:hover .node-bg,
+    .node.active .node-bg {
+      stroke: var(--focus);
+      stroke-width: 2.4;
+    }
+
+    .source .node-bg { fill: var(--source-soft); stroke: var(--source); }
+    .config .node-bg { fill: var(--config-soft); stroke: var(--config); }
+    .transaction .node-bg { fill: var(--transaction-soft); stroke: var(--transaction); }
+    .history .node-bg { fill: var(--history-soft); stroke: var(--history); }
+    .derived .node-bg { fill: var(--derived-soft); stroke: var(--derived); }
+    .exception .node-bg { fill: var(--exception-soft); stroke: var(--exception); }
+    .gap .node-bg { fill: var(--gap-soft); stroke: var(--gap); }
+    .ok .node-bg { fill: var(--ok-soft); stroke: var(--ok); }
+
+    .badge-source { fill: var(--source); }
+    .badge-config { fill: var(--config); }
+    .badge-transaction { fill: var(--transaction); }
+    .badge-history { fill: var(--history); }
+    .badge-derived { fill: var(--derived); }
+    .badge-exception { fill: var(--exception); }
+    .badge-gap { fill: var(--gap); }
+    .badge-ok { fill: var(--ok); }
+    .badge-label {
+      fill: var(--panel);
+      font-size: 10px;
+      font-weight: 780;
+      letter-spacing: 0;
+    }
+
+    .connector {
+      fill: none;
+      stroke: var(--line);
+      stroke-width: 2.2;
+      marker-end: url(#arrow);
+    }
+
+    .connector.strong {
+      stroke: var(--line-strong);
+      stroke-width: 3;
+    }
+
+    .connector.exception-path {
+      stroke: var(--exception);
+      stroke-dasharray: 9 7;
+    }
+
+    .connector.future-path {
+      stroke: var(--config);
+      stroke-dasharray: 4 7;
+    }
+
+    .connector.history-path {
+      stroke: var(--history);
+      stroke-dasharray: 2 6;
+    }
+
+    .connector.active-path {
+      stroke: var(--focus);
+      stroke-width: 4;
+      stroke-dasharray: 18 9;
+      animation: dash 1.05s linear infinite;
+    }
+
+    .arrow-fill { fill: var(--line); }
+    .arrow-strong { fill: var(--line-strong); }
+
+    @keyframes dash {
+      to { stroke-dashoffset: -54; }
+    }
+
+    .focus-hidden {
+      opacity: 0.28;
+    }
+
+    .legend {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(130px, 1fr));
+      gap: 10px;
+      padding: 14px 20px;
+      background: var(--panel);
+      border-bottom: 1px solid var(--soft);
+    }
+
+    .legend-item {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      color: var(--muted);
+      font-size: 12.5px;
+    }
+
+    .legend-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+      flex: 0 0 auto;
+    }
+
+    .detail-panel {
+      position: absolute;
+      right: 18px;
+      top: 18px;
+      width: min(430px, calc(100vw - 36px));
+      max-height: calc(100% - 36px);
+      overflow: auto;
+      border: 1px solid var(--soft);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      padding: 16px;
+      z-index: 12;
+    }
+
+    .detail-panel[hidden] { display: none; }
+
+    .detail-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    .detail-head h2 {
+      margin: 0;
+      font-size: 17px;
+      line-height: 1.25;
+    }
+
+    .detail-type {
+      display: inline-flex;
+      margin-top: 6px;
+      border-radius: 999px;
+      padding: 4px 8px;
+      color: var(--panel);
+      font-size: 11px;
+      font-weight: 760;
+      background: var(--line-strong);
+    }
+
+    .detail-body {
+      color: var(--muted);
+      font-size: 13.5px;
+      line-height: 1.55;
+    }
+
+    .detail-body ul {
+      margin: 8px 0 0;
+      padding-left: 18px;
+    }
+
+    .detail-body li { margin: 5px 0; }
+
+    .rules {
+      padding: 28px 22px 34px;
+      background: var(--panel);
+    }
+
+    .rules-inner {
+      max-width: 1180px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 0.85fr 1.15fr;
+      gap: 22px;
+      align-items: start;
+    }
+
+    .rules h2 {
+      margin: 0 0 10px;
+      font-size: 22px;
+    }
+
+    .rules p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.6;
+      font-size: 14px;
+    }
+
+    .rule-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .rule-card {
+      border: 1px solid var(--soft);
+      border-radius: 8px;
+      padding: 12px;
+      background: var(--panel-strong);
+    }
+
+    .rule-card strong {
+      display: block;
+      margin-bottom: 5px;
+      font-size: 13.5px;
+    }
+
+    .rule-card span {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    @media (max-width: 900px) {
+      .topbar {
+        grid-template-columns: 1fr;
+      }
+
+      .controls {
+        justify-content: flex-start;
+      }
+
+      .legend {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .rules-inner,
+      .rule-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="title-block">
+        <h1>RecruitPro - end-to-end recruitment flows</h1>
+        <p>Đọc từ source code và source-of-truth docs: job approval, candidate apply, review, interview, offer, notification, AI scoring.</p>
+      </div>
+      <div class="controls" aria-label="Diagram controls">
+        <button type="button" data-focus="all" class="active">Tất cả</button>
+        <button type="button" data-focus="business">Business flow</button>
+        <button type="button" data-focus="data">Data responsibility</button>
+        <button type="button" data-focus="gap">Current vs expected</button>
+        <span class="zoom-label" id="zoomLabel">100%</span>
+        <button type="button" id="resetZoom">Reset</button>
+        <button type="button" id="themeToggle">Dark</button>
+      </div>
+    </header>
+
+    <div class="legend" aria-label="Legend">
+      <div class="legend-item"><span class="legend-dot" style="background: var(--source)"></span>Source of truth</div>
+      <div class="legend-item"><span class="legend-dot" style="background: var(--config)"></span>Configuration, ảnh hưởng dữ liệu mới</div>
+      <div class="legend-item"><span class="legend-dot" style="background: var(--transaction)"></span>Transaction data</div>
+      <div class="legend-item"><span class="legend-dot" style="background: var(--history)"></span>History/snapshot, không sửa lùi</div>
+      <div class="legend-item"><span class="legend-dot" style="background: var(--exception)"></span>Exception path</div>
+    </div>
+
+    <main class="stage-wrap">
+      <aside class="detail-panel" id="detailPanel" aria-live="polite">
+        <div class="detail-head">
+          <div>
+            <h2 id="detailTitle">Cách đọc diagram</h2>
+            <span class="detail-type" id="detailType">Overview</span>
+          </div>
+          <button type="button" id="closeDetail" aria-label="Close detail panel">Close</button>
+        </div>
+        <div class="detail-body" id="detailBody">
+          Kéo để pan, lăn chuột để zoom. Click vào từng node để xem rule, bảng liên quan và exception. Nút focus phía trên giúp QA/BA xem từng nhóm flow riêng.
+        </div>
+      </aside>
+
+      <svg id="diagram" viewBox="0 0 2400 1840" role="img" aria-label="RecruitPro system flow diagram">
+        <defs>
+          <marker id="arrow" markerWidth="14" markerHeight="10" refX="12" refY="5" orient="auto" markerUnits="strokeWidth">
+            <path d="M 0 0 L 14 5 L 0 10 z" class="arrow-fill"></path>
+          </marker>
+        </defs>
+
+        <g id="svg-content">
+          <text x="70" y="72" class="diagram-title">RecruitPro Flow Map</text>
+          <text x="70" y="104" class="diagram-subtitle">Các flow chính nhìn theo business, ownership, data responsibility và gap cần xác nhận.</text>
+
+          <!-- Section 1: End-to-end business flow -->
+          <g data-section="business">
+            <rect x="50" y="135" width="2300" height="720" rx="8" class="section-bg"></rect>
+            <text x="80" y="182" class="section-title">1. End-to-end business flow</text>
+            <text x="80" y="210" class="note-text">Từ cấu hình phòng ban -> tạo job -> apply -> screening -> interview -> offer/hired/reject/withdraw.</text>
+
+            <rect x="80" y="238" width="2210" height="92" rx="8" class="lane-bg"></rect>
+            <rect x="80" y="348" width="2210" height="122" rx="8" class="lane-bg"></rect>
+            <rect x="80" y="488" width="2210" height="154" rx="8" class="lane-bg"></rect>
+            <rect x="80" y="660" width="2210" height="162" rx="8" class="lane-bg"></rect>
+            <text x="105" y="292" class="lane-title">System Admin / Config</text>
+            <text x="105" y="414" class="lane-title">HR / Recruiter</text>
+            <text x="105" y="568" class="lane-title">Candidate</text>
+            <text x="105" y="747" class="lane-title">DepartmentHead + System</text>
+
+            <g class="node config" data-id="department-config" data-section="business data" transform="translate(300 250)">
+              <rect width="210" height="64" rx="8" class="node-bg"></rect>
+              <circle cx="178" cy="18" r="14" class="badge-config"></circle><text x="178" y="22" text-anchor="middle" class="badge-label">CFG</text>
+              <text x="16" y="26" class="node-title">Department Head</text>
+              <text x="16" y="48" class="node-subtitle">departments.head_user_id</text>
+            </g>
+
+            <g class="node transaction" data-id="job-create" data-section="business data" transform="translate(300 374)">
+              <rect width="210" height="74" rx="8" class="node-bg"></rect>
+              <circle cx="178" cy="18" r="14" class="badge-transaction"></circle><text x="178" y="22" text-anchor="middle" class="badge-label">TX</text>
+              <text x="16" y="27" class="node-title">HR tạo job</text>
+              <text x="16" y="49" class="node-subtitle">Status = PendingApproval</text>
+              <text x="16" y="65" class="small">RecruiterId snapshot nguồn</text>
+            </g>
+
+            <g class="node source" data-id="job-approval" data-section="business data" transform="translate(560 702)">
+              <rect width="230" height="76" rx="8" class="node-bg"></rect>
+              <circle cx="196" cy="18" r="14" class="badge-source"></circle><text x="196" y="22" text-anchor="middle" class="badge-label">SOT</text>
+              <text x="16" y="28" class="node-title">Head duyệt job?</text>
+              <text x="16" y="50" class="node-subtitle">jobs.status: Approved/Rejected</text>
+              <text x="16" y="66" class="small">Chỉ head của Department được duyệt</text>
+            </g>
+
+            <g class="node source" data-id="job-public" data-section="business data" transform="translate(850 374)">
+              <rect width="210" height="74" rx="8" class="node-bg"></rect>
+              <circle cx="178" cy="18" r="14" class="badge-source"></circle><text x="178" y="22" text-anchor="middle" class="badge-label">SOT</text>
+              <text x="16" y="27" class="node-title">Job public</text>
+              <text x="16" y="49" class="node-subtitle">Chỉ Approved mới apply</text>
+              <text x="16" y="65" class="small">Deadline vẫn phải còn hạn</text>
+            </g>
+
+            <g class="node config" data-id="profile-cv" data-section="business data" transform="translate(850 525)">
+              <rect width="210" height="76" rx="8" class="node-bg"></rect>
+              <circle cx="178" cy="18" r="14" class="badge-config"></circle><text x="178" y="22" text-anchor="middle" class="badge-label">CFG</text>
+              <text x="16" y="28" class="node-title">Profile + CV</text>
+              <text x="16" y="50" class="node-subtitle">candidate_profiles/resumes</text>
+              <text x="16" y="66" class="small">Bắt buộc trước khi apply</text>
+            </g>
+
+            <g class="node transaction" data-id="apply-check" data-section="business data" transform="translate(1135 522)">
+              <rect width="245" height="82" rx="8" class="node-bg"></rect>
+              <circle cx="211" cy="18" r="14" class="badge-transaction"></circle><text x="211" y="22" text-anchor="middle" class="badge-label">TX</text>
+              <text x="16" y="28" class="node-title">Apply eligibility</text>
+              <text x="16" y="50" class="node-subtitle">open job, no active duplicate</text>
+              <text x="16" y="67" class="small">profile đầy đủ + có current resume</text>
+            </g>
+
+            <g class="node source history" data-id="application-created" data-section="business data" transform="translate(1460 518)">
+              <rect width="270" height="92" rx="8" class="node-bg"></rect>
+              <circle cx="236" cy="18" r="14" class="badge-source"></circle><text x="236" y="22" text-anchor="middle" class="badge-label">SOT</text>
+              <text x="16" y="28" class="node-title">Application created</text>
+              <text x="16" y="50" class="node-subtitle">Status = Applied, rule score</text>
+              <text x="16" y="67" class="small">AssignedRecruiter/Head snapshot</text>
+              <text x="16" y="83" class="small">Closed rows là history</text>
+            </g>
+
+            <g class="node derived" data-id="post-commit-side-effects" data-section="business data" transform="translate(1810 514)">
+              <rect width="260" height="104" rx="8" class="node-bg"></rect>
+              <circle cx="226" cy="18" r="14" class="badge-derived"></circle><text x="226" y="22" text-anchor="middle" class="badge-label">SIDE</text>
+              <text x="16" y="28" class="node-title">Post-commit side effects</text>
+              <text x="16" y="50" class="node-subtitle">notification + semantic queue</text>
+              <text x="16" y="68" class="small">Lỗi không rollback apply</text>
+              <text x="16" y="86" class="small">SSE chỉ realtime, DB là truth</text>
+            </g>
+
+            <g class="node transaction" data-id="screening" data-section="business data" transform="translate(1460 374)">
+              <rect width="270" height="74" rx="8" class="node-bg"></rect>
+              <circle cx="236" cy="18" r="14" class="badge-transaction"></circle><text x="236" y="22" text-anchor="middle" class="badge-label">TX</text>
+              <text x="16" y="27" class="node-title">HR screening</text>
+              <text x="16" y="49" class="node-subtitle">Applied -> Screening</text>
+              <text x="16" y="65" class="small">Candidate được notify</text>
+            </g>
+
+            <g class="node history" data-id="head-review" data-section="business data" transform="translate(1810 692)">
+              <rect width="260" height="94" rx="8" class="node-bg"></rect>
+              <circle cx="226" cy="18" r="14" class="badge-history"></circle><text x="226" y="22" text-anchor="middle" class="badge-label">HIST</text>
+              <text x="16" y="28" class="node-title">Head Review</text>
+              <text x="16" y="50" class="node-subtitle">Screening -> ManagerReview</text>
+              <text x="16" y="68" class="small">Stamp requested_at một lần</text>
+              <text x="16" y="84" class="small">Assigned head quyết định</text>
+            </g>
+
+            <g class="node transaction" data-id="interview" data-section="business data" transform="translate(1490 700)">
+              <rect width="250" height="82" rx="8" class="node-bg"></rect>
+              <circle cx="216" cy="18" r="14" class="badge-transaction"></circle><text x="216" y="22" text-anchor="middle" class="badge-label">TX</text>
+              <text x="16" y="28" class="node-title">Interview</text>
+              <text x="16" y="50" class="node-subtitle">Schedule -> Completed</text>
+              <text x="16" y="67" class="small">Offer/Reject cần Completed</text>
+            </g>
+
+            <g class="node transaction" data-id="offer-email" data-section="business data" transform="translate(1150 700)">
+              <rect width="245" height="82" rx="8" class="node-bg"></rect>
+              <circle cx="211" cy="18" r="14" class="badge-transaction"></circle><text x="211" y="22" text-anchor="middle" class="badge-label">TX</text>
+              <text x="16" y="28" class="node-title">Offer email</text>
+              <text x="16" y="50" class="node-subtitle">Email gửi OK -> Offer</text>
+              <text x="16" y="67" class="small">Draft không đổi status</text>
+            </g>
+
+            <g class="node source" data-id="final-outcome" data-section="business data" transform="translate(850 700)">
+              <rect width="220" height="82" rx="8" class="node-bg"></rect>
+              <circle cx="188" cy="18" r="14" class="badge-source"></circle><text x="188" y="22" text-anchor="middle" class="badge-label">SOT</text>
+              <text x="16" y="28" class="node-title">Final outcome</text>
+              <text x="16" y="50" class="node-subtitle">Hired / OfferDeclined</text>
+              <text x="16" y="67" class="small">Candidate phản hồi offer</text>
+            </g>
+
+            <g class="node exception" data-id="exception-flow" data-section="business gap" transform="translate(300 678)">
+              <rect width="210" height="108" rx="8" class="node-bg"></rect>
+              <circle cx="178" cy="18" r="14" class="badge-exception"></circle><text x="178" y="22" text-anchor="middle" class="badge-label">EX</text>
+              <text x="16" y="28" class="node-title">Exception paths</text>
+              <text x="16" y="50" class="node-subtitle">Reject email / Withdraw</text>
+              <text x="16" y="68" class="small">Scheduled interview -> Canceled</text>
+              <text x="16" y="86" class="small">Closed rows không re-open</text>
+            </g>
+
+            <path data-section="business" class="connector future-path" d="M 510 282 C 560 282 560 410 300 410"></path>
+            <path data-section="business" class="connector strong" d="M 510 411 C 630 411 720 411 850 411"></path>
+            <path data-section="business" class="connector strong" d="M 510 411 C 570 520 600 630 670 702"></path>
+            <path data-section="business" class="connector exception-path" d="M 675 778 C 600 805 480 805 405 786"></path>
+            <path data-section="business" class="connector strong" d="M 790 740 C 830 640 835 500 850 411"></path>
+            <path data-section="business" class="connector" d="M 1060 411 C 1178 412 1310 411 1460 411"></path>
+            <path data-section="business" class="connector" d="M 1060 563 C 1088 563 1107 563 1135 563"></path>
+            <path data-section="business" class="connector strong" d="M 1380 563 C 1410 563 1430 563 1460 563"></path>
+            <path data-section="business" class="connector" d="M 1730 563 C 1760 563 1782 563 1810 563"></path>
+            <path data-section="business" class="connector" d="M 1595 518 C 1595 490 1595 476 1595 448"></path>
+            <path data-section="business" class="connector" d="M 1730 411 C 1775 480 1814 600 1900 692"></path>
+            <path data-section="business" class="connector strong" d="M 1810 740 C 1786 740 1765 740 1740 740"></path>
+            <path data-section="business" class="connector" d="M 1490 740 C 1465 740 1428 740 1395 740"></path>
+            <path data-section="business" class="connector" d="M 1150 740 C 1125 740 1100 740 1070 740"></path>
+            <path data-section="business" class="connector exception-path" d="M 1490 773 C 1180 850 700 842 510 766"></path>
+            <path data-section="business" class="connector exception-path" d="M 1460 600 C 1100 650 690 660 510 726"></path>
+          </g>
+
+          <!-- Section 2: Data responsibility diagram -->
+          <g data-section="data">
+            <rect x="50" y="900" width="2300" height="470" rx="8" class="section-bg"></rect>
+            <text x="80" y="947" class="section-title">2. Data responsibility diagram</text>
+            <text x="80" y="975" class="note-text">Phân biệt dữ liệu cấu hình, giao dịch, lịch sử/snapshot, source of truth, và dữ liệu derived/display-only.</text>
+
+            <g class="node config" data-id="data-config" data-section="data" transform="translate(95 1015)">
+              <rect width="405" height="245" rx="8" class="node-bg"></rect>
+              <circle cx="366" cy="28" r="15" class="badge-config"></circle><text x="366" y="32" text-anchor="middle" class="badge-label">CFG</text>
+              <text x="22" y="36" class="node-title">Configuration data</text>
+              <text x="22" y="70" class="node-subtitle">departments.head_user_id</text>
+              <text x="22" y="95" class="node-subtitle">roles, permissions, user_roles</text>
+              <text x="22" y="120" class="node-subtitle">skills, job_skills requirements</text>
+              <text x="22" y="145" class="node-subtitle">offer_templates, currencies, benefits</text>
+              <text x="22" y="184" class="small">Rule: thay đổi config ảnh hưởng flow mới.</text>
+              <text x="22" y="204" class="small">Application đã snapshot owner thì không reroute lùi.</text>
+            </g>
+
+            <g class="node source" data-id="data-transaction" data-section="data" transform="translate(565 1015)">
+              <rect width="405" height="245" rx="8" class="node-bg"></rect>
+              <circle cx="366" cy="28" r="15" class="badge-source"></circle><text x="366" y="32" text-anchor="middle" class="badge-label">SOT</text>
+              <text x="22" y="36" class="node-title">Transaction source of truth</text>
+              <text x="22" y="70" class="node-subtitle">jobs.status quyết định public/apply-able</text>
+              <text x="22" y="95" class="node-subtitle">applications.status quyết định pipeline</text>
+              <text x="22" y="120" class="node-subtitle">interviews.status gates Offer/Reject</text>
+              <text x="22" y="145" class="node-subtitle">application_offers.status gates response</text>
+              <text x="22" y="184" class="small">Rule: API/FE branch theo enum English canonical.</text>
+            </g>
+
+            <g class="node history" data-id="data-history" data-section="data" transform="translate(1035 1015)">
+              <rect width="405" height="245" rx="8" class="node-bg"></rect>
+              <circle cx="366" cy="28" r="15" class="badge-history"></circle><text x="366" y="32" text-anchor="middle" class="badge-label">HIST</text>
+              <text x="22" y="36" class="node-title">Historical / snapshot data</text>
+              <text x="22" y="70" class="node-subtitle">closed applications: Rejected, Withdrawn...</text>
+              <text x="22" y="95" class="node-subtitle">assigned_recruiter_id</text>
+              <text x="22" y="120" class="node-subtitle">assigned_department_head_id</text>
+              <text x="22" y="145" class="node-subtitle">department_head_review_requested_at</text>
+              <text x="22" y="184" class="small">Rule: re-apply insert row mới, không re-open row cũ.</text>
+              <text x="22" y="204" class="small">Requested date set once, legacy null chỉ fallback display.</text>
+            </g>
+
+            <g class="node derived" data-id="data-derived" data-section="data" transform="translate(1505 1015)">
+              <rect width="360" height="245" rx="8" class="node-bg"></rect>
+              <circle cx="321" cy="28" r="15" class="badge-derived"></circle><text x="321" y="32" text-anchor="middle" class="badge-label">DRV</text>
+              <text x="22" y="36" class="node-title">Derived / display-only</text>
+              <text x="22" y="70" class="node-subtitle">statusLabel, displayStatus, nextStep</text>
+              <text x="22" y="95" class="node-subtitle">dashboard and analytics counts</text>
+              <text x="22" y="120" class="node-subtitle">AI final score presentation</text>
+              <text x="22" y="145" class="node-subtitle">notification url/deep link display</text>
+              <text x="22" y="184" class="small">Rule: không parse label tiếng Việt để quyết định.</text>
+            </g>
+
+            <g class="node transaction" data-id="data-ai-noti" data-section="data" transform="translate(1930 1015)">
+              <rect width="360" height="245" rx="8" class="node-bg"></rect>
+              <circle cx="321" cy="28" r="15" class="badge-transaction"></circle><text x="321" y="32" text-anchor="middle" class="badge-label">TX</text>
+              <text x="22" y="36" class="node-title">Async and audit data</text>
+              <text x="22" y="70" class="node-subtitle">notifications table = truth</text>
+              <text x="22" y="95" class="node-subtitle">SSE stream = best-effort transport</text>
+              <text x="22" y="120" class="node-subtitle">candidate/job embedding vectors</text>
+              <text x="22" y="145" class="node-subtitle">ai_run_telemetry, prompt versions</text>
+              <text x="22" y="184" class="small">Rule: AI/notification lỗi không phá business commit.</text>
+            </g>
+
+            <path data-section="data" class="connector future-path" d="M 500 1135 C 530 1135 540 1135 565 1135"></path>
+            <path data-section="data" class="connector history-path" d="M 970 1135 C 1000 1135 1010 1135 1035 1135"></path>
+            <path data-section="data" class="connector" d="M 1440 1135 C 1470 1135 1480 1135 1505 1135"></path>
+            <path data-section="data" class="connector" d="M 1865 1135 C 1895 1135 1905 1135 1930 1135"></path>
+          </g>
+
+          <!-- Section 3: Current vs expected behavior -->
+          <g data-section="gap">
+            <rect x="50" y="1415" width="2300" height="355" rx="8" class="section-bg"></rect>
+            <text x="80" y="1462" class="section-title">3. Current vs expected behavior / gap map</text>
+            <text x="80" y="1490" class="note-text">Các điểm code và docs đã khớp, cộng với điểm cần confirm nếu DepartmentHead phải thao tác mà không có role Manager.</text>
+
+            <g class="node ok" data-id="gap-aligned" data-section="gap" transform="translate(120 1530)">
+              <rect width="520" height="165" rx="8" class="node-bg"></rect>
+              <circle cx="476" cy="28" r="15" class="badge-ok"></circle><text x="476" y="32" text-anchor="middle" class="badge-label">OK</text>
+              <text x="22" y="36" class="node-title">Đã khớp current/expected</text>
+              <text x="22" y="70" class="node-subtitle">Offer/Reject bị chặn ở decision endpoint</text>
+              <text x="22" y="95" class="node-subtitle">Email send OK mới đổi status Offer/Rejected</text>
+              <text x="22" y="120" class="node-subtitle">Apply commit trước, notification/AI chạy best-effort</text>
+              <text x="22" y="145" class="node-subtitle">Closed application là history; active duplicate có DB guard</text>
+            </g>
+
+            <g class="node gap" data-id="gap-headdepartment-route" data-section="gap" transform="translate(765 1530)">
+              <rect width="520" height="165" rx="8" class="node-bg"></rect>
+              <circle cx="476" cy="28" r="15" class="badge-gap"></circle><text x="476" y="32" text-anchor="middle" class="badge-label">GAP</text>
+              <text x="22" y="36" class="node-title">Potential route role gap</text>
+              <text x="22" y="70" class="node-subtitle">Docs: DepartmentHead owns ManagerReview</text>
+              <text x="22" y="95" class="node-subtitle">Code controller: review queue/decision still lists Manager</text>
+              <text x="22" y="120" class="node-subtitle">Service guard checks AssignedDepartmentHead</text>
+              <text x="22" y="145" class="node-subtitle">Risk: pure HeadDepartment may hit 403 before service</text>
+            </g>
+
+            <g class="node gap" data-id="gap-ui-terms" data-section="gap" transform="translate(1410 1530)">
+              <rect width="390" height="165" rx="8" class="node-bg"></rect>
+              <circle cx="346" cy="28" r="15" class="badge-gap"></circle><text x="346" y="32" text-anchor="middle" class="badge-label">TERM</text>
+              <text x="22" y="36" class="node-title">Naming compatibility</text>
+              <text x="22" y="70" class="node-subtitle">Code status remains ManagerReview</text>
+              <text x="22" y="95" class="node-subtitle">Business label = Head Review</text>
+              <text x="22" y="120" class="node-subtitle">Do not rename enum casually</text>
+              <text x="22" y="145" class="node-subtitle">FE should map presentation only</text>
+            </g>
+
+            <g class="node ok" data-id="gap-change-needed" data-section="gap" transform="translate(1905 1530)">
+              <rect width="360" height="165" rx="8" class="node-bg"></rect>
+              <circle cx="320" cy="28" r="15" class="badge-ok"></circle><text x="320" y="32" text-anchor="middle" class="badge-label">TODO</text>
+              <text x="22" y="36" class="node-title">What to verify/change</text>
+              <text x="22" y="70" class="node-subtitle">Confirm intended actor for review routes</text>
+              <text x="22" y="95" class="node-subtitle">If needed: add HeadDepartment to auth attrs</text>
+              <text x="22" y="120" class="node-subtitle">Keep service ownership guard as final rule</text>
+              <text x="22" y="145" class="node-subtitle">Add integration/E2E for pure HeadDepartment</text>
+            </g>
+
+            <path data-section="gap" class="connector strong" d="M 640 1612 C 690 1612 715 1612 765 1612"></path>
+            <path data-section="gap" class="connector exception-path" d="M 1285 1612 C 1330 1612 1360 1612 1410 1612"></path>
+            <path data-section="gap" class="connector strong" d="M 1800 1612 C 1840 1612 1865 1612 1905 1612"></path>
+          </g>
+        </g>
+      </svg>
+    </main>
+
+    <section class="rules">
+      <div class="rules-inner">
+        <div>
+          <h2>4. Rule summary</h2>
+          <p>
+            RecruitPro dùng trạng thái canonical trong DB/API làm nguồn sự thật. Các label tiếng Việt,
+            badge, next step, dashboard và deep link chỉ là lớp trình bày. Khi cấu hình thay đổi, hệ thống
+            áp dụng cho dữ liệu mới; dữ liệu đã snapshot hoặc đã đóng phải được giữ như lịch sử.
+          </p>
+        </div>
+        <div class="rule-grid">
+          <div class="rule-card"><strong>Job approval</strong><span>HR tạo job ở PendingApproval. Job chỉ public/apply-able khi DepartmentHead của department duyệt sang Approved.</span></div>
+          <div class="rule-card"><strong>Apply eligibility</strong><span>Candidate chỉ apply khi job Approved, chưa quá hạn, profile/CV đủ, và không có application active cho cùng job.</span></div>
+          <div class="rule-card"><strong>Historical applications</strong><span>Rejected, Withdrawn, OfferDeclined là lịch sử và có thể re-apply bằng row mới. Hired là terminal cho cùng job.</span></div>
+          <div class="rule-card"><strong>Owner snapshot</strong><span>Khi apply, application lưu assigned recruiter và assigned department head. Đổi config sau đó không tự sửa owner cũ.</span></div>
+          <div class="rule-card"><strong>Email-gated outcomes</strong><span>Offer và Rejected không đi qua decision endpoint. Email gửi thành công trước, sau đó status mới đổi.</span></div>
+          <div class="rule-card"><strong>Interview gate</strong><span>Offer/Reject từ Interview cần có interview không bị hủy và đã Completed. Withdraw/Reject sẽ hủy pending interview.</span></div>
+          <div class="rule-card"><strong>Notifications</strong><span>Notification được lưu DB trước và SSE chỉ push realtime. Lỗi push hoặc notification không làm fail business action.</span></div>
+          <div class="rule-card"><strong>AI scoring</strong><span>Apply trả kết quả nhanh bằng rule score. Semantic score chạy nền, có cache/hash; lỗi semantic giữ rule score và đánh dấu failed.</span></div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const details = {
+      "department-config": {
+        type: "Configuration",
+        title: "Department Head configuration",
+        body: [
+          "Bảng chính: departments.head_user_id.",
+          "Đây là cấu hình routing cho job approval và default DepartmentHead review.",
+          "Thay đổi head nên ảnh hưởng job/application mới. Application đã apply giữ assigned_department_head_id như snapshot lịch sử."
+        ]
+      },
+      "job-create": {
+        type: "Transaction",
+        title: "HR creates job",
+        body: [
+          "Service: JobService.CreateJobAsync.",
+          "Job cần department hợp lệ, recruiter hợp lệ hoặc fallback về người tạo.",
+          "Status ban đầu là PendingApproval; sau commit mới publish job_submitted_for_approval."
+        ]
+      },
+      "job-approval": {
+        type: "Source of truth",
+        title: "DepartmentHead approves job",
+        body: [
+          "Source of truth: jobs.status.",
+          "Approve/reject được guard bằng departments.head_user_id. Người không phải head nhận Forbidden.",
+          "approved_by là audit actor, không phải owner dài hạn."
+        ]
+      },
+      "job-public": {
+        type: "Source of truth",
+        title: "Approved job becomes public",
+        body: [
+          "Public listing và apply chỉ hợp lệ khi JobStatus = Approved.",
+          "Deadline vẫn là blocker riêng: job Approved nhưng hết hạn thì candidate không apply được.",
+          "Draft, PendingApproval, Closed, Rejected đều không nhận application mới."
+        ]
+      },
+      "profile-cv": {
+        type: "Candidate data",
+        title: "Profile and CV readiness",
+        body: [
+          "Candidate cần contact info và current resume.",
+          "CV parsing enrich candidate_profiles, nhưng apply không nên phụ thuộc cứng vào AI parser.",
+          "Parsed data, skills, experience và resume text phục vụ scoring/search."
+        ]
+      },
+      "apply-check": {
+        type: "Decision",
+        title: "Apply eligibility check",
+        body: [
+          "Service: ApplicationService.BuildApplyEligibility.",
+          "Blockers: job không nhận apply, deadline passed, profile thiếu, resume thiếu, active duplicate, đã Hired cho cùng job.",
+          "Duplicate active trả 409. Các business blocker khác trả 422 với lý do cụ thể."
+        ]
+      },
+      "application-created": {
+        type: "Source of truth + history",
+        title: "Application row created",
+        body: [
+          "Source of truth: applications.status.",
+          "Tạo row mới với Applied, rule_score, final_score ban đầu, ScoreStatus = PendingSemantic.",
+          "assigned_recruiter_id và assigned_department_head_id được snapshot tại thời điểm apply.",
+          "DB partial unique index ux_applications_active_user_job chặn duplicate active."
+        ]
+      },
+      "post-commit-side-effects": {
+        type: "Side effect",
+        title: "Notifications and semantic queue",
+        body: [
+          "Apply commit thành công trước. Sau đó notification và enqueue semantic chạy best-effort.",
+          "Lỗi notification hoặc queue được log, không đổi response thành 500.",
+          "Notification table là source of truth; SSE chỉ là kênh realtime."
+        ]
+      },
+      "screening": {
+        type: "Workflow",
+        title: "HR screening",
+        body: [
+          "Transition chính: Applied -> Screening.",
+          "HR là owner giai đoạn đầu. DepartmentHead chưa bị spam bởi mỗi application mới.",
+          "Khi pass screening, HR chuyển Screening -> ManagerReview và stamp hand-off date."
+        ]
+      },
+      "head-review": {
+        type: "Workflow + history",
+        title: "DepartmentHead review",
+        body: [
+          "Code status canonical vẫn là ManagerReview; business label nên là Head Review.",
+          "department_head_review_requested_at set một lần khi vào stage.",
+          "Decision ManagerReview -> Interview/Rejected được service guard theo assigned DepartmentHead."
+        ]
+      },
+      "interview": {
+        type: "Workflow",
+        title: "Interview gate",
+        body: [
+          "Interview có thể schedule khi application ở ManagerReview hoặc Interview.",
+          "Schedule sẽ đẩy application sang Interview nếu transition hợp lệ.",
+          "Offer/Reject từ Interview cần ít nhất một interview Completed; Scheduled chưa đủ."
+        ]
+      },
+      "offer-email": {
+        type: "Email-gated transaction",
+        title: "Offer email flow",
+        body: [
+          "PUT offer chỉ lưu Draft, không đổi application status.",
+          "POST offer/send gửi email trước. Nếu email fail, status giữ nguyên.",
+          "Email gửi thành công thì application -> Offer và offer.status -> Sent."
+        ]
+      },
+      "final-outcome": {
+        type: "Source of truth",
+        title: "Candidate offer response",
+        body: [
+          "Candidate accept offer: application -> Hired, offer -> Accepted.",
+          "Candidate decline offer: application -> OfferDeclined, offer -> Declined.",
+          "Reviewer decision endpoint không được tự chuyển Offer -> Hired."
+        ]
+      },
+      "exception-flow": {
+        type: "Exception",
+        title: "Reject, withdraw, and stale interview handling",
+        body: [
+          "Rejection đi qua rejection email flow, không đi trực tiếp bằng decision endpoint.",
+          "Candidate có thể withdraw từ Applied, Screening, ManagerReview, Interview.",
+          "Withdraw/Reject sẽ cancel Scheduled interviews. Closed application là history, không sửa lại để re-open."
+        ]
+      },
+      "data-config": {
+        type: "Data responsibility",
+        title: "Configuration data",
+        body: [
+          "Cấu hình gồm roles/permissions, departments.head_user_id, skills/job skill requirements, offer master data.",
+          "Dữ liệu này định tuyến hoặc hỗ trợ giao dịch mới.",
+          "Không dùng config hiện tại để viết lại owner của application đã snapshot."
+        ]
+      },
+      "data-transaction": {
+        type: "Data responsibility",
+        title: "Transaction source of truth",
+        body: [
+          "jobs.status quyết định job có public/apply-able hay không.",
+          "applications.status quyết định pipeline và actions.",
+          "interviews.status và application_offers.status là dependent records, dùng để gate action."
+        ]
+      },
+      "data-history": {
+        type: "Data responsibility",
+        title: "Historical data",
+        body: [
+          "Closed application rows lưu lịch sử và phục vụ audit/re-apply.",
+          "assigned owner fields và DepartmentHead review requested date là snapshot lịch sử.",
+          "Rule QA quan trọng: config change không làm đổi ý nghĩa lịch sử."
+        ]
+      },
+      "data-derived": {
+        type: "Data responsibility",
+        title: "Derived/display-only data",
+        body: [
+          "statusLabel/displayStatus/nextStep chỉ phục vụ giao diện.",
+          "Frontend phải branch theo canonical status, không parse label tiếng Việt.",
+          "Dashboard counts phải derive từ state group canonical."
+        ]
+      },
+      "data-ai-noti": {
+        type: "Data responsibility",
+        title: "Async, notification, and AI audit data",
+        body: [
+          "notifications table là record click-ready và là source of truth cho bell/list/count.",
+          "SSE stream best-effort; client reconnect thì sync lại REST.",
+          "Embedding vectors, AI telemetry, prompt versions phục vụ scoring/search/audit, không khóa apply flow."
+        ]
+      },
+      "gap-aligned": {
+        type: "Current vs expected",
+        title: "Behaviors aligned with the contract",
+        body: [
+          "Email-gated Offer/Reject đã được enforce.",
+          "Apply commit không bị rollback bởi notification/semantic side effects.",
+          "Active duplicate có service check và DB partial unique index.",
+          "Closed application rows được giữ làm history."
+        ]
+      },
+      "gap-headdepartment-route": {
+        type: "Potential gap",
+        title: "DepartmentHead route authorization should be confirmed",
+        body: [
+          "Docs/source-of-truth nói DepartmentHead là owner của ManagerReview.",
+          "Service guard đã kiểm tra assigned_department_head_id.",
+          "Nhưng một số ApplicationController routes hiện dùng Authorize Roles = HR,Manager hoặc Manager.",
+          "Nếu user chỉ có HeadDepartment mà không có Manager, request có thể bị chặn trước khi vào service."
+        ]
+      },
+      "gap-ui-terms": {
+        type: "Compatibility",
+        title: "ManagerReview naming compatibility",
+        body: [
+          "Không nên rename enum vội vì DB/API/FE contract đang dùng ManagerReview.",
+          "Business/UI có thể hiển thị Head Review.",
+          "QA nên kiểm tra status canonical là English enum, label là presentation."
+        ]
+      },
+      "gap-change-needed": {
+        type: "Action",
+        title: "Suggested verification/change",
+        body: [
+          "Xác nhận DepartmentHead có cần dùng review queue/decision mà không cần role Manager hay không.",
+          "Nếu có, thêm HeadDepartment vào Authorize attributes liên quan và giữ service ownership guard.",
+          "Thêm test cho pure HeadDepartment account để bắt regression."
+        ]
+      }
+    };
+
+    const svg = document.getElementById("diagram");
+    const content = document.getElementById("svg-content");
+    const zoomLabel = document.getElementById("zoomLabel");
+    const resetZoom = document.getElementById("resetZoom");
+    const detailPanel = document.getElementById("detailPanel");
+    const detailTitle = document.getElementById("detailTitle");
+    const detailType = document.getElementById("detailType");
+    const detailBody = document.getElementById("detailBody");
+    const closeDetail = document.getElementById("closeDetail");
+    const themeToggle = document.getElementById("themeToggle");
+    const focusButtons = document.querySelectorAll("[data-focus]");
+
+    let scale = 1;
+    let tx = 0;
+    let ty = 0;
+    let dragging = false;
+    let pointerStart = null;
+    let moved = false;
+    let suppressNextClick = false;
+
+    function applyTransform() {
+      content.setAttribute("transform", `translate(${tx} ${ty}) scale(${scale})`);
+      zoomLabel.textContent = `${Math.round(scale * 100)}%`;
+    }
+
+    function clientToSvg(event) {
+      const point = svg.createSVGPoint();
+      point.x = event.clientX;
+      point.y = event.clientY;
+      return point.matrixTransform(svg.getScreenCTM().inverse());
+    }
+
+    svg.addEventListener("pointerdown", (event) => {
+      dragging = true;
+      moved = false;
+      pointerStart = { x: event.clientX, y: event.clientY, tx, ty };
+      svg.setPointerCapture(event.pointerId);
+      svg.classList.add("grabbing");
+    });
+
+    svg.addEventListener("pointermove", (event) => {
+      if (!dragging || !pointerStart) return;
+      const dx = event.clientX - pointerStart.x;
+      const dy = event.clientY - pointerStart.y;
+      if (Math.hypot(dx, dy) > 5) moved = true;
+      tx = pointerStart.tx + dx;
+      ty = pointerStart.ty + dy;
+      applyTransform();
+    });
+
+    function endDrag(event) {
+      if (!dragging) return;
+      dragging = false;
+      svg.classList.remove("grabbing");
+      if (moved) {
+        suppressNextClick = true;
+        setTimeout(() => { suppressNextClick = false; }, 0);
+      }
+      try { svg.releasePointerCapture(event.pointerId); } catch (_) {}
+    }
+
+    svg.addEventListener("pointerup", endDrag);
+    svg.addEventListener("pointercancel", endDrag);
+
+    svg.addEventListener("click", (event) => {
+      if (suppressNextClick) {
+        event.stopPropagation();
+        suppressNextClick = false;
+      }
+    }, true);
+
+    svg.addEventListener("wheel", (event) => {
+      event.preventDefault();
+      const before = clientToSvg(event);
+      const oldScale = scale;
+      const factor = event.deltaY < 0 ? 1.1 : 0.9;
+      scale = Math.min(2.4, Math.max(0.48, scale * factor));
+      const afterContentX = (before.x - tx) / oldScale;
+      const afterContentY = (before.y - ty) / oldScale;
+      tx = before.x - afterContentX * scale;
+      ty = before.y - afterContentY * scale;
+      applyTransform();
+    }, { passive: false });
+
+    resetZoom.addEventListener("click", () => {
+      scale = 1;
+      tx = 0;
+      ty = 0;
+      applyTransform();
+    });
+
+    function showDetails(id) {
+      const info = details[id];
+      if (!info) return;
+      document.querySelectorAll(".node.active").forEach((node) => node.classList.remove("active"));
+      const node = document.querySelector(`.node[data-id="${id}"]`);
+      if (node) node.classList.add("active");
+      detailTitle.textContent = info.title;
+      detailType.textContent = info.type;
+      detailBody.innerHTML = `<ul>${info.body.map((item) => `<li>${item}</li>`).join("")}</ul>`;
+      detailPanel.hidden = false;
+    }
+
+    document.querySelectorAll(".node[data-id]").forEach((node) => {
+      node.addEventListener("click", (event) => {
+        if (suppressNextClick) return;
+        event.stopPropagation();
+        showDetails(node.dataset.id);
+      });
+    });
+
+    closeDetail.addEventListener("click", () => {
+      detailPanel.hidden = true;
+      document.querySelectorAll(".node.active").forEach((node) => node.classList.remove("active"));
+    });
+
+    function focusSection(section) {
+      focusButtons.forEach((button) => button.classList.toggle("active", button.dataset.focus === section));
+      const elements = document.querySelectorAll("#svg-content [data-section]");
+      elements.forEach((element) => {
+        const sections = (element.getAttribute("data-section") || "").split(/\s+/);
+        const visible = section === "all" || sections.includes(section);
+        element.classList.toggle("focus-hidden", !visible);
+        element.classList.toggle("active-path", visible && section !== "all" && element.classList.contains("connector"));
+      });
+
+      if (section === "business") {
+        scale = 0.98; tx = 0; ty = -70;
+      } else if (section === "data") {
+        scale = 1.16; tx = -120; ty = -780;
+      } else if (section === "gap") {
+        scale = 1.32; tx = -190; ty = -1580;
+      } else {
+        scale = 0.78; tx = 40; ty = 40;
+      }
+      applyTransform();
+    }
+
+    focusButtons.forEach((button) => {
+      button.addEventListener("click", () => focusSection(button.dataset.focus));
+    });
+
+    function syncThemeLabel() {
+      themeToggle.textContent = document.documentElement.classList.contains("dark") ? "Light" : "Dark";
+    }
+
+    themeToggle.addEventListener("click", () => {
+      const dark = !document.documentElement.classList.contains("dark");
+      document.documentElement.classList.toggle("dark", dark);
+      localStorage.setItem("rp-flow-theme", dark ? "dark" : "light");
+      syncThemeLabel();
+    });
+
+    syncThemeLabel();
+    focusSection("all");
+  </script>
+</body>
+</html>
