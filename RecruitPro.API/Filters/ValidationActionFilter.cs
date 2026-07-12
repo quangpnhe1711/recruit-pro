@@ -33,11 +33,13 @@ public class ValidationActionFilter : IAsyncActionFilter
                 continue;
             }
 
-            Type validationContextType = typeof(ValidationContext<>).MakeGenericType(argument.GetType());
-            IValidationContext validationContext = (IValidationContext)(Activator.CreateInstance(validationContextType, argument)
-                ?? throw new InvalidOperationException($"Unable to create validation context for {argument.GetType().Name}."));
-
-            ValidationResult validationResult = await validator.ValidateAsync(validationContext, context.HttpContext.RequestAborted);
+            // Wrap the argument in a non-generic ValidationContext<object>. FluentValidation unwraps
+            // InstanceToValidate and builds the correct ValidationContext<T> internally. Building a typed
+            // ValidationContext<T> here (via reflection) instead double-wrapped the instance and threw
+            // "Cannot validate instances of type 'ValidationContext`1'".
+            ValidationResult validationResult = await validator.ValidateAsync(
+                new ValidationContext<object>(argument),
+                context.HttpContext.RequestAborted);
 
             if (!validationResult.IsValid)
             {
