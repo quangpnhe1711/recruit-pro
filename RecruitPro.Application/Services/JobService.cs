@@ -86,18 +86,23 @@ public class JobService : IJobService
     /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
     public async Task<ApiResponse<JobSearchResponseDto>> SearchJobsAsync(JobQueryRequest request)
     {
+        // BUG-UAT-008: clamp pagination so zero/negative values can't produce a negative Skip()/Take()
+        // (which threw → 500 on this anonymous endpoint).
+        int page = ClampPage(request.Page);
+        int pageSize = ClampPageSize(request.PageSize);
+
         (IReadOnlyList<Job> jobs, int total) = await _jobRepository.SearchApprovedAsync(
             request.Keyword,
             request.EmploymentTypes,
             request.Skills,
             request.SortBy,
-            request.Page,
-            request.PageSize);
+            page,
+            pageSize);
 
         return ApiResponse<JobSearchResponseDto>.Ok(new JobSearchResponseDto
         {
             Items = jobs.Select(MapJobListItem).ToList(),
-            Meta = PaginationMetaBuilder.Build(request.Page, request.PageSize, total)
+            Meta = PaginationMetaBuilder.Build(page, pageSize, total)
         });
     }
 
@@ -129,8 +134,16 @@ public class JobService : IJobService
     public async Task<ApiResponse<IReadOnlyList<DepartmentResponseDto>>> GetDepartmentsAsync()
     {
         IReadOnlyList<Department> departments = await _jobRepository.GetDepartmentsAsync();
+        // BUG-UAT-012: this lookup is anonymous. Do NOT expose the internal head user's email (PII) to
+        // unauthenticated callers. Name is retained for the create/edit dropdown; the authenticated
+        // GET /api/departments/{id} still returns the full DTO incl. email.
         return ApiResponse<IReadOnlyList<DepartmentResponseDto>>.Ok(
-            departments.Select(MapDepartment).ToList());
+            departments.Select(department =>
+            {
+                DepartmentResponseDto dto = MapDepartment(department);
+                dto.HeadUserEmail = null;
+                return dto;
+            }).ToList());
     }
 
     /// <summary>
@@ -237,6 +250,15 @@ public class JobService : IJobService
     public async Task<ApiResponse<JobDetailScreenDto>> GetJobScreenDetailAsync(string jobId)
     {
         Job job = await GetJobAsync(jobId);
+
+        // BUG-UAT-002: this is the anonymous public detail endpoint. Only publicly-visible statuses may be
+        // returned — Draft / PendingApproval / Rejected are internal postings and must 404 (consistent with
+        // the public list, which excludes them). Approved and Closed remain viewable.
+        if (job.Status is not (JobStatus.Approved or JobStatus.Closed))
+        {
+            return ApiResponse<JobDetailScreenDto>.NotFound(ErrorCodes.JobNotFound);
+        }
+
         IReadOnlyList<Domain.Entities.Application> applications = await _applicationRepository.GetAllByJobIdAsync(job.Id);
 
         return ApiResponse<JobDetailScreenDto>.Ok(new JobDetailScreenDto
@@ -323,11 +345,13 @@ public class JobService : IJobService
         // Phase 2.2c: scope the HR job list to jobs the caller owns (created, assigned recruiter, or
         // department head). SystemAdmin is blocked at [Authorize] and cannot reach this method.
         Guid? ownerScopeUserId = OwnershipScope.ResolveListScopeUserId(currentUserId, currentUserRoles);
+        int page = ClampPage(request.Page);
+        int pageSize = ClampPageSize(request.PageSize);
         (IReadOnlyList<Job> jobs, int total) = await _jobRepository.GetPagedAsync(
             normalizedDepartment,
             normalizedStatus,
-            request.Page,
-            request.PageSize,
+            page,
+            pageSize,
             createdByUserId,
             ownerScopeUserId);
         (IReadOnlyList<Job> allMatchingJobs, _) = await _jobRepository.GetPagedAsync(
@@ -362,7 +386,7 @@ public class JobService : IJobService
                 EffectiveDepartmentHeadId = (job.Department?.HeadUserId ?? job.ApprovedBy)?.ToString(),
                 EffectiveDepartmentHeadName = (job.Department?.HeadUser ?? job.ApprovedByNavigation)?.FullName
             }).ToList(),
-            Meta = PaginationMetaBuilder.Build(request.Page, request.PageSize, total),
+            Meta = PaginationMetaBuilder.Build(page, pageSize, total),
             Stats = new HrJobStatsDto
             {
                 ActiveJobs = allMatchingJobs.Count(job => job.Status == JobStatus.Approved),
@@ -387,12 +411,14 @@ public class JobService : IJobService
         // A non-head Manager therefore sees an empty queue — generic Manager role no longer grants
         // cross-department approval visibility. Phase 2.2c: SystemAdmin bypass removed.
         Guid? departmentHeadFilter = ResolveApprovalQueueHeadFilter(currentUserId, currentUserRoles);
+        int page = ClampPage(request.Page);
+        int pageSize = ClampPageSize(request.PageSize);
 
         (IReadOnlyList<Job> jobs, int total) = await _jobRepository.GetPendingApprovalPagedAsync(
             normalizedKeyword,
             normalizedDepartment,
-            request.Page,
-            request.PageSize,
+            page,
+            pageSize,
             departmentHeadFilter);
 
         IReadOnlyList<Job> allPendingJobs = await _jobRepository.GetPendingApprovalJobsAsync(int.MaxValue, departmentHeadFilter);
@@ -415,7 +441,7 @@ public class JobService : IJobService
                 ApplicationsCount = job.Applications.Count,
                 IsOverdue = IsApprovalOverdue(job)
             }).ToList(),
-            Meta = PaginationMetaBuilder.Build(request.Page, request.PageSize, total),
+            Meta = PaginationMetaBuilder.Build(page, pageSize, total),
             Summary = new ManagerJobApprovalSummaryDto
             {
                 PendingApprovals = allPendingJobs.Count,
@@ -882,6 +908,12 @@ public class JobService : IJobService
         {
         }
     }
+
+    // Pagination guards (BUG-UAT-008): a zero/negative page or pageSize otherwise reaches the repository
+    // as a negative Skip()/Take() and throws a 500.
+    private static int ClampPage(int page) => page < 1 ? 1 : page;
+
+    private static int ClampPageSize(int pageSize) => pageSize < 1 ? 10 : (pageSize > 100 ? 100 : pageSize);
 
     private static JobListItemDto MapJobListItem(Job job)
     {

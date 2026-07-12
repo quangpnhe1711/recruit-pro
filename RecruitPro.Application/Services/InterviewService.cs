@@ -157,6 +157,14 @@ public class InterviewService : IInterviewService
             return ApiResponse<InterviewCreatedResponseDto>.BadRequest(ErrorCodes.InvalidInput);
         }
 
+        // BUG-UAT-007: StartMinutes is minutes-from-midnight and is used to build a DateTime below
+        // (hour = StartMinutes / 60). An out-of-range value threw ArgumentOutOfRangeException → 500.
+        // Reject it as a 400 before constructing the time.
+        if (request.StartMinutes < 0 || request.StartMinutes > 1439)
+        {
+            return ApiResponse<InterviewCreatedResponseDto>.BadRequest(ErrorCodes.InvalidInput);
+        }
+
         Domain.Entities.Application? application = await _applicationRepository.GetTrackedByIdAsync(applicationGuid);
         if (application == null)
         {

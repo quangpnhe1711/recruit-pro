@@ -23,24 +23,21 @@ public class ValidationActionFilter : IAsyncActionFilter
             }
 
             Type validatorType = typeof(IValidator<>).MakeGenericType(argument.GetType());
-            object? validator = _serviceProvider.GetService(validatorType);
-            if (validator == null)
+            // The DI-registered FluentValidation validator implements both IValidator<T> and the
+            // non-generic IValidator. Call the non-generic ValidateAsync(IValidationContext, …) overload
+            // directly. (Previously this resolved the overload via reflection on IValidator<T>, where
+            // Type.GetMethod does not surface the base-interface member and returned null — so the filter
+            // silently skipped validation for EVERY request.)
+            if (_serviceProvider.GetService(validatorType) is not IValidator validator)
             {
                 continue;
             }
 
-            var validationContextType = typeof(ValidationContext<>).MakeGenericType(argument.GetType());
-            object validationContext = Activator.CreateInstance(validationContextType, argument)
-                ?? throw new InvalidOperationException($"Unable to create validation context for {argument.GetType().Name}.");
+            Type validationContextType = typeof(ValidationContext<>).MakeGenericType(argument.GetType());
+            IValidationContext validationContext = (IValidationContext)(Activator.CreateInstance(validationContextType, argument)
+                ?? throw new InvalidOperationException($"Unable to create validation context for {argument.GetType().Name}."));
 
-            var validateAsyncMethod = validatorType.GetMethod(nameof(IValidator.ValidateAsync), [typeof(IValidationContext), typeof(CancellationToken)]);
-            if (validateAsyncMethod == null)
-            {
-                continue;
-            }
-
-            var validationTask = (Task<ValidationResult>)validateAsyncMethod.Invoke(validator, [validationContext, context.HttpContext.RequestAborted])!;
-            ValidationResult validationResult = await validationTask;
+            ValidationResult validationResult = await validator.ValidateAsync(validationContext, context.HttpContext.RequestAborted);
 
             if (!validationResult.IsValid)
             {
