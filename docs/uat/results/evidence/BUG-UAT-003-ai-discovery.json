@@ -1,0 +1,5 @@
+{
+  "request": "GET /api/hr/talent-pool/search?Query=java (HR)",
+  "status": 400,
+  "errorCode": "INVALID_INPUT"
+}

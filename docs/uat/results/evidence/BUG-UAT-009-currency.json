@@ -1,0 +1,23 @@
+{
+  "request": "GET /api/jobs?pageSize=3 (anon)",
+  "responseSample": [
+    {
+      "title": "Java Backend Developer",
+      "salaryMin": 25000000,
+      "salaryMax": 40000000,
+      "currency": "USD"
+    },
+    {
+      "title": "Senior Frontend Developer",
+      "salaryMin": 30000000,
+      "salaryMax": 45000000,
+      "currency": "USD"
+    },
+    {
+      "title": "DevOps Engineer",
+      "salaryMin": 35000000,
+      "salaryMax": 55000000,
+      "currency": "USD"
+    }
+  ]
+}

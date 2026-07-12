@@ -1,0 +1,23 @@
+{
+  "request": "GET /api/jobs?page=0&pageSize=5 (anon)",
+  "status": 500,
+  "body": {
+    "success": false,
+    "statusCode": 500,
+    "message": "Hệ thống đang gặp lỗi. Vui lòng thử lại sau.",
+    "errorCode": "SERVER_ERROR",
+    "data": null,
+    "errors": null,
+    "extra": {
+      "traceId": "00-249d71007b4018a92cfffc39e0d3b0c5-d0b1ca5a511d6438-00"
+    },
+    "error": {
+      "type": "SERVER_ERROR",
+      "code": "SERVER_ERROR",
+      "message": "Hệ thống đang gặp lỗi. Vui lòng thử lại sau.",
+      "fieldErrors": [],
+      "globalErrors": [],
+      "traceId": "00-249d71007b4018a92cfffc39e0d3b0c5-d0b1ca5a511d6438-00"
+    }
+  }
+}

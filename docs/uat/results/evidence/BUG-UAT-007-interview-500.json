@@ -1,0 +1,6 @@
+{
+  "request": "POST /api/hr/interviews {startMinutes:9999} (HR)",
+  "status": 500,
+  "errorCode": "SERVER_ERROR",
+  "note": "validator range 0..1439 bypassed → 500; no row created (rolled back)"
+}

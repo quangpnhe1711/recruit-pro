@@ -1,0 +1,11 @@
+{
+  "request": "GET / (anon)",
+  "securityHeaders": {
+    "strict-transport-security": "MISSING",
+    "x-frame-options": "MISSING",
+    "x-content-type-options": "MISSING",
+    "content-security-policy": "MISSING",
+    "referrer-policy": "MISSING",
+    "server": "nginx/1.24.0 (Ubuntu)"
+  }
+}
