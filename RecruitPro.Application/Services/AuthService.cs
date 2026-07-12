@@ -188,13 +188,13 @@ namespace RecruitPro.Application.Services
         }
 
         /// <summary>
-        /// Issues an access token (carrying the current TokenVersion) and a fresh opaque refresh token,
+        /// Issues an access token (carrying the current TokenVersion) and a fresh refresh JWT,
         /// persisting only the refresh token's hash, then projects both into the login response.
         /// </summary>
         private async Task<LoginResponseDto> IssueTokensAsync(User user)
         {
             string accessToken = _jwtService.GenerateAccessToken(user);
-            (string rawRefresh, string refreshHash) = _jwtService.CreateRefreshToken();
+            (string rawRefresh, string refreshHash) = _jwtService.CreateRefreshToken(user);
 
             await _refreshTokenRepository.AddAsync(new RefreshToken
             {

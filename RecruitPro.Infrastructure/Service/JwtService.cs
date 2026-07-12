@@ -55,11 +55,29 @@ namespace RecruitPro.Infrastructure.Service
         }
 
         /// <inheritdoc />
-        public (string Raw, string Hash) CreateRefreshToken()
+        public (string Raw, string Hash) CreateRefreshToken(User user)
         {
-            // 256 bits of CSPRNG entropy, url-safe. The raw value only ever leaves in the login/refresh
-            // response; the DB stores the hash.
-            string raw = Base64UrlEncoder.Encode(RandomNumberGenerator.GetBytes(32));
+            var claims = new List<Claim>
+            {
+                new Claim(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
+                new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
+                new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+                new Claim(TokenVersionClaim, user.TokenVersion.ToString()),
+                new Claim("token_type", "refresh"),
+            };
+
+            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwtSettings.Key));
+            var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+
+            var token = new JwtSecurityToken(
+                issuer: _jwtSettings.Issuer,
+                audience: _jwtSettings.Audience,
+                claims: claims,
+                expires: DateTime.Now.AddMinutes(_jwtSettings.RefreshTokenExpiryMinutes),
+                signingCredentials: credentials
+            );
+
+            string raw = new JwtSecurityTokenHandler().WriteToken(token);
             return (raw, HashRefreshToken(raw));
         }
 
