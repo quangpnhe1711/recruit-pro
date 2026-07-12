@@ -53,7 +53,12 @@ public class SemanticDiscoveryService : ISemanticDiscoveryService
             queryText = BuildJobEmbeddingText(job);
         }
 
-        IReadOnlyList<double> queryVector = await BuildTransientEmbeddingAsync(queryText);
+        IReadOnlyList<double>? queryVector = await BuildTransientEmbeddingAsync(queryText);
+        if (queryVector == null)
+        {
+            return ApiResponse<SemanticCandidatesResponseDto>.BadRequest(ErrorCodes.InvalidInput);
+        }
+
         IReadOnlyList<CandidateProfile> candidates = await _candidateProfileRepository.GetAllForSemanticSearchAsync();
 
         List<SemanticCandidateCardDto> ranked = [];
@@ -84,7 +89,12 @@ public class SemanticDiscoveryService : ISemanticDiscoveryService
             return ApiResponse<SemanticCandidatesResponseDto>.BadRequest(ErrorCodes.InvalidInput);
         }
 
-        IReadOnlyList<double> queryVector = await BuildTransientEmbeddingAsync(request.Query);
+        IReadOnlyList<double>? queryVector = await BuildTransientEmbeddingAsync(request.Query);
+        if (queryVector == null)
+        {
+            return ApiResponse<SemanticCandidatesResponseDto>.BadRequest(ErrorCodes.InvalidInput);
+        }
+
         IReadOnlyList<CandidateProfile> candidates = await _candidateProfileRepository.GetAllForSemanticSearchAsync();
 
         List<SemanticCandidateCardDto> ranked = [];
@@ -246,12 +256,16 @@ public class SemanticDiscoveryService : ISemanticDiscoveryService
         _ = await EnsureJobVectorAsync(jobId);
     }
 
-    private async Task<IReadOnlyList<double>> BuildTransientEmbeddingAsync(string text)
+    // Returns null (not throws) when the embedding provider is unavailable/failed — callers degrade
+    // gracefully to a BadRequest, mirroring the Ensure*VectorAsync null path. Prevents a 500 when the
+    // AI provider is disabled (e.g. no API key) instead of the handled "semantic unavailable" response.
+    private async Task<IReadOnlyList<double>?> BuildTransientEmbeddingAsync(string text)
     {
         EmbeddingGenerationResult result = await _embeddingProvider.GenerateEmbeddingAsync(text);
         if (!result.Succeeded || result.Vector.Count == 0)
         {
-            throw new InvalidOperationException(result.FailureReason ?? "Tạo embedding thất bại.");
+            _logger.LogWarning("Transient embedding generation failed: {Reason}", result.FailureReason);
+            return null;
         }
 
         return result.Vector;

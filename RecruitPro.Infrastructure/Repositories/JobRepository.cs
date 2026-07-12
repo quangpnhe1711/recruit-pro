@@ -331,7 +331,8 @@ namespace RecruitPro.Infrastructure.Repositories
         {
             return _context.Jobs
                 .Include(job => job.Department)
-                .Include(job => job.JobSkills);
+                .Include(job => job.JobSkills)
+                    .ThenInclude(jobSkill => jobSkill.Skill);
         }
 
         private static EmploymentType? ParseEmploymentType(string value)
