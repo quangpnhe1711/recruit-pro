@@ -1172,6 +1172,18 @@ ON CONFLICT (id) DO UPDATE SET
     resume_extracted_text = EXCLUDED.resume_extracted_text,
     resume_parse_status = EXCLUDED.resume_parse_status;
 
+-- CV/resume seed intentionally EMPTY: every candidate starts with NO resume (they upload their own).
+-- Runs before the candidate_resumes derivation below, so no resume rows are generated.
+UPDATE public.candidate_profiles SET
+    resume_url = NULL,
+    resume_extracted_text = NULL,
+    resume_parse_status = NULL,
+    parsed_resume_json = NULL,
+    resume_parse_error = NULL,
+    resume_parse_model = NULL,
+    resume_parser_warnings_json = NULL,
+    resume_parsed_at = NULL;
+
 -- ---------------------------------------------------------------------------
 -- Candidate skills
 -- ---------------------------------------------------------------------------
@@ -1808,6 +1820,10 @@ ALTER TABLE ONLY public.candidate_profile_sections
 ALTER TABLE ONLY public.candidate_profile_section_items
     ADD CONSTRAINT candidate_profile_section_items_section_id_fkey
     FOREIGN KEY (section_id) REFERENCES public.candidate_profile_sections(id) ON DELETE CASCADE;
+
+-- CV seed always empty: clear any derived resume rows (re-seed safety); the SELECT below inserts
+-- nothing because every candidate_profiles.resume_url was nulled above.
+DELETE FROM public.candidate_resumes;
 
 INSERT INTO public.candidate_resumes (
     id,
@@ -2877,3 +2893,108 @@ ON CONFLICT (id) DO UPDATE SET
     denied_reason = EXCLUDED.denied_reason,
     latency_ms = EXCLUDED.latency_ms,
     created_at = EXCLUDED.created_at;
+
+-- ===========================================================================
+-- CV-matching demo data (added): 3 candidate accounts mirroring the CVs in the cv/ folder
+-- (all Java/Spring Boot backend), Java/Spring Boot jobs that strongly match them, and a rich
+-- Screening pool for the AI copilot. CVs stay EMPTY (candidates upload their own); skills carry
+-- explicit years for matching. Password = Password@123 (login by username).
+-- ===========================================================================
+
+-- Extra skills referenced by the CVs
+INSERT INTO public.skills (id, name) VALUES
+    ('90000000-0000-4000-8000-000000000021', 'Vue.js'),
+    ('90000000-0000-4000-8000-000000000022', 'MySQL'),
+    ('90000000-0000-4000-8000-000000000023', 'JPA'),
+    ('90000000-0000-4000-8000-000000000024', 'Thymeleaf')
+ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name;
+
+-- CV-owner candidate accounts (nhatquang already exists as the Phung Nhat Quang CV)
+INSERT INTO public.users (id, username, email, password_hash, full_name, phone, avatar_url, status, created_at, updated_at) VALUES
+    ('11000000-0000-4000-8000-000000000001', 'anhhuy', 'anhhuy.nguyen@recruitpro.vn', crypt('Password@123', gen_salt('bf', 6)), 'Nguyen Anh Huy', '0900000301', NULL, 'Active', '2026-07-05 09:00:00', '2026-07-05 09:00:00'),
+    ('11000000-0000-4000-8000-000000000002', 'vanphong', 'vanphong.pham@recruitpro.vn', crypt('Password@123', gen_salt('bf', 6)), 'Pham Van Phong', '0900000302', NULL, 'Active', '2026-07-05 09:05:00', '2026-07-05 09:05:00'),
+    ('11000000-0000-4000-8000-000000000003', 'nguyenliem', 'liem.nguyen@recruitpro.vn', crypt('Password@123', gen_salt('bf', 6)), 'Nguyen Liem', '0900000303', NULL, 'Active', '2026-07-05 09:10:00', '2026-07-05 09:10:00')
+ON CONFLICT (id) DO UPDATE SET username = EXCLUDED.username, full_name = EXCLUDED.full_name, status = EXCLUDED.status;
+
+INSERT INTO public.user_roles (user_id, role_id, assigned_at) VALUES
+    ('11000000-0000-4000-8000-000000000001', 'ef574bf3-08e1-4f25-932c-2d83ed8afd88', '2026-07-05 09:00:00'),
+    ('11000000-0000-4000-8000-000000000002', 'ef574bf3-08e1-4f25-932c-2d83ed8afd88', '2026-07-05 09:05:00'),
+    ('11000000-0000-4000-8000-000000000003', 'ef574bf3-08e1-4f25-932c-2d83ed8afd88', '2026-07-05 09:10:00')
+ON CONFLICT (user_id, role_id) DO NOTHING;
+
+-- Candidate profiles -- resume EMPTY (upload required); github/linkedin only.
+INSERT INTO public.candidate_profiles (id, user_id, current_position, experience_years, education, address, bio, resume_url, github_url, linkedin_url, resume_extracted_text, resume_parse_status) VALUES
+    ('21000000-0000-4000-8000-000000000001', '11000000-0000-4000-8000-000000000001', 'Java Backend Developer (Fresher)', 1, 'Hanoi University of Industrial Economics and Technology', 'Dong Da, Ha Noi', 'Java Spring Boot backend fresher: Spring Boot, JPA, MySQL, RESTful API, Thymeleaf, Spring Security.', NULL, 'https://github.com/nah-coder', 'https://linkedin.com/in/anh-huy-nguyen', NULL, NULL),
+    ('21000000-0000-4000-8000-000000000002', '11000000-0000-4000-8000-000000000002', 'Software Developer Intern', 1, 'FPT University', 'Ha Noi', 'Intern developer with Java, Spring Boot, SQL and REST API basics.', NULL, 'https://github.com/vanphong-dev', 'https://linkedin.com/in/van-phong-pham', NULL, NULL),
+    ('21000000-0000-4000-8000-000000000003', '11000000-0000-4000-8000-000000000003', 'Java Backend Developer', 2, 'Hanoi University of Science and Technology', 'Ha Noi', 'Backend developer: Java, Spring Boot, microservices, MySQL/PostgreSQL, REST API.', NULL, 'https://github.com/liem-nguyen', 'https://linkedin.com/in/liem-nguyen', NULL, NULL)
+ON CONFLICT (id) DO NOTHING;
+
+-- Skills with explicit years (matching the CVs). Vue.js added to nhatquang to match the fullstack job.
+INSERT INTO public.candidate_skills (candidate_id, skill_id, years_of_experience) VALUES
+    ('21000000-0000-4000-8000-000000000001', 'b2f56bd0-c4b6-4442-b6e4-d341563c1e7a', 1),
+    ('21000000-0000-4000-8000-000000000001', 'e70f15bc-9e3c-4dc1-92db-4b53028d5c67', 1),
+    ('21000000-0000-4000-8000-000000000001', '90000000-0000-4000-8000-000000000023', 1),
+    ('21000000-0000-4000-8000-000000000001', '90000000-0000-4000-8000-000000000022', 1),
+    ('21000000-0000-4000-8000-000000000001', '90000000-0000-4000-8000-000000000016', 1),
+    ('21000000-0000-4000-8000-000000000001', '90000000-0000-4000-8000-000000000024', 1),
+    ('21000000-0000-4000-8000-000000000002', 'b2f56bd0-c4b6-4442-b6e4-d341563c1e7a', 1),
+    ('21000000-0000-4000-8000-000000000002', 'e70f15bc-9e3c-4dc1-92db-4b53028d5c67', 1),
+    ('21000000-0000-4000-8000-000000000002', '90000000-0000-4000-8000-000000000007', 1),
+    ('21000000-0000-4000-8000-000000000002', '90000000-0000-4000-8000-000000000016', 1),
+    ('21000000-0000-4000-8000-000000000003', 'b2f56bd0-c4b6-4442-b6e4-d341563c1e7a', 2),
+    ('21000000-0000-4000-8000-000000000003', 'e70f15bc-9e3c-4dc1-92db-4b53028d5c67', 2),
+    ('21000000-0000-4000-8000-000000000003', '90000000-0000-4000-8000-000000000022', 2),
+    ('21000000-0000-4000-8000-000000000003', 'b1779c35-b7c4-47bb-a69b-43131c084a0f', 1),
+    ('21000000-0000-4000-8000-000000000003', '90000000-0000-4000-8000-000000000016', 2),
+    ('21000000-0000-4000-8000-000000000003', '90000000-0000-4000-8000-000000000015', 1),
+    ('366cb75c-aecd-4f54-aedb-b76cf475d81a', '90000000-0000-4000-8000-000000000021', 1)
+ON CONFLICT (candidate_id, skill_id) DO UPDATE SET years_of_experience = EXCLUDED.years_of_experience;
+
+-- Java/Spring Boot jobs that strongly match the CVs (junior-friendly, Approved, Engineering dept).
+INSERT INTO public.jobs (id, department_id, created_by, approved_by, title, short_pitch, description, requirements, benefits, location, work_mode, employment_type, min_experience_years, vacancy_count, salary_min, salary_max, deadline, status, created_at) VALUES
+    ('31000000-0000-4000-8000-000000000001', 'fafe312f-0c2f-4e69-a009-4ae38fd1218f', 'e781ccd9-e6f8-4ce1-b15d-e142f8977a4e', '721b1851-349a-48aa-acae-feed1c1843ed', 'Java Backend Developer (Fresher)', 'Kick off your backend career building Spring Boot REST APIs.', 'Build backend REST APIs with Spring Boot; write SQL; use Git.', 'Java, Spring Boot, REST API, SQL, Git', 'Mentorship, training budget, hybrid', 'Ha Noi', 'Hybrid', 'FullTime', 0, 2, 12000000.00, 20000000.00, '2026-09-30 18:00:00', 'Approved', '2026-07-05 08:30:00'),
+    ('31000000-0000-4000-8000-000000000002', 'fafe312f-0c2f-4e69-a009-4ae38fd1218f', 'e781ccd9-e6f8-4ce1-b15d-e142f8977a4e', '721b1851-349a-48aa-acae-feed1c1843ed', 'Spring Boot Backend Developer (Junior)', 'Own backend services with Spring Boot, JPA and MySQL.', 'Design and implement Spring Boot services with JPA/Hibernate and MySQL.', 'Java, Spring Boot, JPA, MySQL, REST API', 'Annual bonus, laptop allowance, hybrid', 'Ha Noi', 'Hybrid', 'FullTime', 1, 2, 18000000.00, 30000000.00, '2026-09-30 18:00:00', 'Approved', '2026-07-05 08:35:00'),
+    ('31000000-0000-4000-8000-000000000003', 'fafe312f-0c2f-4e69-a009-4ae38fd1218f', 'e781ccd9-e6f8-4ce1-b15d-e142f8977a4e', '721b1851-349a-48aa-acae-feed1c1843ed', 'Java Web Developer (Spring Boot, Thymeleaf)', 'Build server-rendered Java web apps with Spring Boot + Thymeleaf.', 'Develop MVC web features with Spring Boot, Thymeleaf, Spring Security and MySQL.', 'Java, Spring Boot, Thymeleaf, MySQL, MVC', 'Onsite team, learning budget', 'Ha Noi', 'Onsite', 'FullTime', 0, 1, 14000000.00, 24000000.00, '2026-09-30 18:00:00', 'Approved', '2026-07-05 08:40:00'),
+    ('31000000-0000-4000-8000-000000000004', 'fafe312f-0c2f-4e69-a009-4ae38fd1218f', 'e781ccd9-e6f8-4ce1-b15d-e142f8977a4e', '721b1851-349a-48aa-acae-feed1c1843ed', 'Java Fullstack Developer (Spring Boot + Vue.js)', 'Work across Spring Boot APIs and a Vue.js frontend.', 'Build end-to-end features with Spring Boot backend and Vue.js frontend.', 'Java, Spring Boot, Vue.js, REST API, PostgreSQL', 'Flexible hours, hybrid, annual bonus', 'Ha Noi', 'Hybrid', 'FullTime', 1, 2, 20000000.00, 34000000.00, '2026-09-30 18:00:00', 'Approved', '2026-07-05 08:45:00')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.job_skills (job_id, skill_id, min_years_experience, is_required) VALUES
+    ('31000000-0000-4000-8000-000000000001', 'b2f56bd0-c4b6-4442-b6e4-d341563c1e7a', 0, true),
+    ('31000000-0000-4000-8000-000000000001', 'e70f15bc-9e3c-4dc1-92db-4b53028d5c67', 0, true),
+    ('31000000-0000-4000-8000-000000000001', '90000000-0000-4000-8000-000000000016', 0, true),
+    ('31000000-0000-4000-8000-000000000001', '90000000-0000-4000-8000-000000000007', 0, false),
+    ('31000000-0000-4000-8000-000000000002', 'b2f56bd0-c4b6-4442-b6e4-d341563c1e7a', 1, true),
+    ('31000000-0000-4000-8000-000000000002', 'e70f15bc-9e3c-4dc1-92db-4b53028d5c67', 1, true),
+    ('31000000-0000-4000-8000-000000000002', '90000000-0000-4000-8000-000000000023', 0, true),
+    ('31000000-0000-4000-8000-000000000002', '90000000-0000-4000-8000-000000000022', 0, false),
+    ('31000000-0000-4000-8000-000000000002', '90000000-0000-4000-8000-000000000016', 1, false),
+    ('31000000-0000-4000-8000-000000000003', 'b2f56bd0-c4b6-4442-b6e4-d341563c1e7a', 0, true),
+    ('31000000-0000-4000-8000-000000000003', 'e70f15bc-9e3c-4dc1-92db-4b53028d5c67', 0, true),
+    ('31000000-0000-4000-8000-000000000003', '90000000-0000-4000-8000-000000000024', 0, true),
+    ('31000000-0000-4000-8000-000000000003', '90000000-0000-4000-8000-000000000022', 0, false),
+    ('31000000-0000-4000-8000-000000000004', 'b2f56bd0-c4b6-4442-b6e4-d341563c1e7a', 1, true),
+    ('31000000-0000-4000-8000-000000000004', 'e70f15bc-9e3c-4dc1-92db-4b53028d5c67', 1, true),
+    ('31000000-0000-4000-8000-000000000004', '90000000-0000-4000-8000-000000000021', 0, true),
+    ('31000000-0000-4000-8000-000000000004', '90000000-0000-4000-8000-000000000016', 1, false),
+    ('31000000-0000-4000-8000-000000000004', 'b1779c35-b7c4-47bb-a69b-43131c084a0f', 0, false)
+ON CONFLICT (job_id, skill_id) DO UPDATE SET min_years_experience = EXCLUDED.min_years_experience, is_required = EXCLUDED.is_required;
+
+-- Rich Screening pool (status Screening, scored) across the matching jobs for the AI copilot.
+INSERT INTO public.applications (id, user_id, job_id, reviewed_by, status, applied_at, cover_letter, rule_score, semantic_score, final_score, score_status, scored_at) VALUES
+    ('42000000-0000-4000-8000-000000000001', '11000000-0000-4000-8000-000000000001', '31000000-0000-4000-8000-000000000001', 'e781ccd9-e6f8-4ce1-b15d-e142f8977a4e', 'Screening', '2026-07-06 09:00:00', 'Spring Boot backend fresher.', 82.00, 80.00, 81.20, 'Completed', '2026-07-06 09:30:00'),
+    ('42000000-0000-4000-8000-000000000002', '11000000-0000-4000-8000-000000000002', '31000000-0000-4000-8000-000000000001', 'e781ccd9-e6f8-4ce1-b15d-e142f8977a4e', 'Screening', '2026-07-06 09:05:00', 'Intern Java, Spring Boot va SQL.', 74.00, 72.00, 72.80, 'Completed', '2026-07-06 09:35:00'),
+    ('42000000-0000-4000-8000-000000000003', '10000000-0000-4000-8000-000000000101', '31000000-0000-4000-8000-000000000001', 'e781ccd9-e6f8-4ce1-b15d-e142f8977a4e', 'Screening', '2026-07-06 09:10:00', 'Java microservices backend.', 88.00, 85.00, 85.80, 'Completed', '2026-07-06 09:40:00'),
+    ('42000000-0000-4000-8000-000000000004', 'a1b2c3d4-e5f6-4701-9802-abcdefabcdef', '31000000-0000-4000-8000-000000000001', 'e781ccd9-e6f8-4ce1-b15d-e142f8977a4e', 'Screening', '2026-07-06 09:15:00', 'Full stack Java, focus backend.', 79.00, 77.00, 77.80, 'Completed', '2026-07-06 09:45:00'),
+    ('42000000-0000-4000-8000-000000000005', '11000000-0000-4000-8000-000000000003', '31000000-0000-4000-8000-000000000002', 'e781ccd9-e6f8-4ce1-b15d-e142f8977a4e', 'Screening', '2026-07-06 09:20:00', 'Java backend 2 years, Spring Boot + JPA + MySQL.', 90.00, 88.00, 88.80, 'Completed', '2026-07-06 09:50:00'),
+    ('42000000-0000-4000-8000-000000000006', '4071353e-5816-4746-a8b6-c0bc3113c44d', '31000000-0000-4000-8000-000000000002', 'e781ccd9-e6f8-4ce1-b15d-e142f8977a4e', 'Screening', '2026-07-06 09:25:00', 'Java Developer, Spring Boot va Vue.js.', 84.00, 82.00, 82.80, 'Completed', '2026-07-06 09:55:00'),
+    ('42000000-0000-4000-8000-000000000007', 'b2c3d4e5-f6a7-4802-9903-fedcbafedcba', '31000000-0000-4000-8000-000000000002', 'e781ccd9-e6f8-4ce1-b15d-e142f8977a4e', 'Screening', '2026-07-06 09:30:00', 'DevOps voi nen tang Java.', 68.00, 66.00, 66.80, 'Completed', '2026-07-06 10:00:00'),
+    ('42000000-0000-4000-8000-000000000008', '10000000-0000-4000-8000-000000000103', '31000000-0000-4000-8000-000000000002', 'e781ccd9-e6f8-4ce1-b15d-e142f8977a4e', 'Screening', '2026-07-06 09:35:00', 'SQL, muon hoc backend Java.', 65.00, 63.00, 63.80, 'Completed', '2026-07-06 10:05:00'),
+    ('42000000-0000-4000-8000-000000000009', '10000000-0000-4000-8000-000000000105', '31000000-0000-4000-8000-000000000003', 'e781ccd9-e6f8-4ce1-b15d-e142f8977a4e', 'Screening', '2026-07-06 09:40:00', '.NET backend, OOP va SQL.', 70.00, 68.00, 68.80, 'Completed', '2026-07-06 10:10:00'),
+    ('42000000-0000-4000-8000-000000000010', 'c3d4e5f6-a7b8-4903-9a04-001122334455', '31000000-0000-4000-8000-000000000003', 'e781ccd9-e6f8-4ce1-b15d-e142f8977a4e', 'Screening', '2026-07-06 09:45:00', 'Biet Java web co ban.', 60.00, 58.00, 58.80, 'Completed', '2026-07-06 10:15:00'),
+    ('42000000-0000-4000-8000-000000000011', '10000000-0000-4000-8000-000000000106', '31000000-0000-4000-8000-000000000003', 'e781ccd9-e6f8-4ce1-b15d-e142f8977a4e', 'Screening', '2026-07-06 09:50:00', 'Java web MVC voi Thymeleaf.', 76.00, 74.00, 74.80, 'Completed', '2026-07-06 10:20:00'),
+    ('42000000-0000-4000-8000-000000000012', '4071353e-5816-4746-a8b6-c0bc3113c44d', '31000000-0000-4000-8000-000000000004', 'e781ccd9-e6f8-4ce1-b15d-e142f8977a4e', 'Screening', '2026-07-06 09:55:00', 'Spring Boot + Vue.js.', 89.00, 87.00, 87.80, 'Completed', '2026-07-06 10:25:00'),
+    ('42000000-0000-4000-8000-000000000013', '11000000-0000-4000-8000-000000000003', '31000000-0000-4000-8000-000000000004', 'e781ccd9-e6f8-4ce1-b15d-e142f8977a4e', 'Screening', '2026-07-06 10:00:00', 'Java fullstack, manh backend Spring Boot.', 80.00, 78.00, 78.80, 'Completed', '2026-07-06 10:30:00'),
+    ('42000000-0000-4000-8000-000000000014', '10000000-0000-4000-8000-000000000107', '31000000-0000-4000-8000-000000000004', 'e781ccd9-e6f8-4ce1-b15d-e142f8977a4e', 'Screening', '2026-07-06 10:05:00', 'Hoc them lap trinh.', 55.00, 53.00, 53.80, 'Completed', '2026-07-06 10:35:00'),
+    ('42000000-0000-4000-8000-000000000015', '11000000-0000-4000-8000-000000000001', '31000000-0000-4000-8000-000000000002', 'e781ccd9-e6f8-4ce1-b15d-e142f8977a4e', 'Screening', '2026-07-06 10:10:00', 'Spring Boot + JPA + MySQL.', 81.00, 79.00, 79.80, 'Completed', '2026-07-06 10:40:00'),
+    ('42000000-0000-4000-8000-000000000016', '11000000-0000-4000-8000-000000000002', '31000000-0000-4000-8000-000000000003', 'e781ccd9-e6f8-4ce1-b15d-e142f8977a4e', 'Screening', '2026-07-06 10:15:00', 'Java web co ban, Spring Boot + Thymeleaf.', 72.00, 70.00, 70.80, 'Completed', '2026-07-06 10:45:00')
+ON CONFLICT (id) DO NOTHING;
