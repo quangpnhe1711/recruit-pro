@@ -178,7 +178,7 @@ public class ResumeParsingService : IResumeParsingService
             ParsingMode = "Heuristic",
             Profile = new CandidateResumeParseProfileDto
             {
-                Name = name,
+                Name = TextNormalizationHelper.NormalizePersonName(name) ?? string.Empty,
                 Headline = headline,
                 Email = email,
                 Phone = phone,
@@ -245,7 +245,7 @@ public class ResumeParsingService : IResumeParsingService
             ModelName = modelName,
             Profile = new CandidateResumeParseProfileDto
             {
-                Name = aiPreview.Profile.Name ?? string.Empty,
+                Name = TextNormalizationHelper.NormalizePersonName(aiPreview.Profile.Name) ?? string.Empty,
                 Headline = aiPreview.Profile.Headline ?? string.Empty,
                 Email = aiPreview.Profile.Email ?? string.Empty,
                 Phone = aiPreview.Profile.Phone ?? string.Empty,

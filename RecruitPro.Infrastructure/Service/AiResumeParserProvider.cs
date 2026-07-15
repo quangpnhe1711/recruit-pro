@@ -74,7 +74,7 @@ public class AiResumeParserProvider : IResumeParsingAiProvider
                 Do not hallucinate facts not supported by the resume.
                 Use null or empty arrays when information is missing.
                 Skills must prefer names that exist in the provided master skill list whenever possible.
-                Years of experience for skills should be conservative and only included when the resume strongly implies them.
+                Set a skill's yearsOfExperience to null unless the resume explicitly states a duration for that specific skill. Never estimate, average, or invent it.
                 """,
             userPrompt: BuildPrompt(extractedText, skillNames),
             requireJson: true);
@@ -205,7 +205,7 @@ public class AiResumeParserProvider : IResumeParsingAiProvider
           "skills": [
             {
               "name": "skill from master list when possible",
-              "yearsOfExperience": 0.5
+              "yearsOfExperience": null
             }
           ],
           "experienceEntries": [
