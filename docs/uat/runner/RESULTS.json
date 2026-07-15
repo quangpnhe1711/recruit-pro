@@ -1,0 +1,63 @@
+{
+  "at": "2026-07-15T03:27:49.706Z",
+  "base": "https://www.recruitpro.site/api",
+  "sum": {
+    "total": 5,
+    "pass": 5,
+    "fail": 0,
+    "blocked": 0,
+    "na": 0
+  },
+  "cases": [
+    {
+      "suite": "AI",
+      "id": "UAT-AI-001",
+      "title": "Copilot job picker is role-gated (HR 200, candidate 403, guest 401)",
+      "priority": "P2",
+      "result": "PASS",
+      "actualApi": "HR→200, candidate→403, guest→401",
+      "actualData": "",
+      "notes": ""
+    },
+    {
+      "suite": "AI",
+      "id": "UAT-AI-006",
+      "title": "Unknown ranking session → 404/400 (no leak)",
+      "priority": "P3",
+      "result": "PASS",
+      "actualApi": "unknown ranking session → 404 ENTITY_NOT_FOUND",
+      "actualData": "",
+      "notes": ""
+    },
+    {
+      "suite": "AI",
+      "id": "UAT-AI-016",
+      "title": "Copilot conversation isolation/IDOR — unknown/other id → 403/404",
+      "priority": "P0",
+      "result": "PASS",
+      "actualApi": "foreign/unknown conversation → 404 ENTITY_NOT_FOUND",
+      "actualData": "",
+      "notes": "cross-HR real-session IDOR needs two live sessions — see MANUAL-CHECKLIST"
+    },
+    {
+      "suite": "AI",
+      "id": "UAT-AI-017",
+      "title": "Candidate pool for unknown job → 404/400 (negative)",
+      "priority": "P2",
+      "result": "PASS",
+      "actualApi": "unknown-job pool → 404 JOB_NOT_FOUND",
+      "actualData": "",
+      "notes": ""
+    },
+    {
+      "suite": "AI",
+      "id": "UAT-AI-015",
+      "title": "No secret leakage in copilot responses",
+      "priority": "P1",
+      "result": "PASS",
+      "actualApi": "copilot/jobs: no apiKey/systemPrompt/secret fields",
+      "actualData": "",
+      "notes": ""
+    }
+  ]
+}
