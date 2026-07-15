@@ -78,7 +78,7 @@ Portal separation verified: candidate portal rejects internal users and vice-ver
 |---|---|---|---|---|---|---|
 | POST | /api/auth/candidate/login | Candidate | valid | 200 | 200 | PASS |
 | POST | /api/auth/candidate/login | — | wrong pw | 401 | 401 `INVALID_CREDENTIALS` | PASS |
-| POST | /api/auth/candidate/login | yennhi | disabled | 401 | 401 `ACCOUNT_DISABLED` | PASS |
+| POST | /api/auth/candidate/login | yennhiP | disabled | 401 | 401 `ACCOUNT_DISABLED` | PASS |
 | POST | /api/auth/candidate/login | thucuyen | wrong portal | 401 | 401 | PASS |
 | GET | /api/hr/applications | Candidate | forbidden | 403 | 403 | PASS |
 | GET | /api/sysadmin/users | HR | forbidden | 403 | 403 | PASS |
