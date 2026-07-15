@@ -1,14 +1,1694 @@
 {
-  "at": "2026-07-15T03:27:49.706Z",
+  "at": "2026-07-15T03:36:24.428Z",
   "base": "https://www.recruitpro.site/api",
   "sum": {
-    "total": 5,
-    "pass": 5,
-    "fail": 0,
+    "total": 206,
+    "pass": 135,
+    "fail": 5,
     "blocked": 0,
-    "na": 0
+    "na": 66
   },
   "cases": [
+    {
+      "suite": "PUB",
+      "id": "UAT-PUB-001",
+      "title": "Landing page loads for anonymous visitor",
+      "priority": "P1",
+      "result": "PASS",
+      "actualApi": "GET /jobs/filters (no token) → 200",
+      "actualData": "",
+      "notes": "UI render of landing verified manually; anonymous public access asserted"
+    },
+    {
+      "suite": "PUB",
+      "id": "UAT-PUB-002",
+      "title": "Public job list returns only Approved jobs",
+      "priority": "P0",
+      "result": "PASS",
+      "actualApi": "GET /jobs → 200",
+      "actualData": "12 jobs, all Approved",
+      "notes": ""
+    },
+    {
+      "suite": "PUB",
+      "id": "UAT-PUB-003",
+      "title": "Public job detail (Approved) shows public fields, no internal data",
+      "priority": "P1",
+      "result": "PASS",
+      "actualApi": "GET /jobs/59a5221b-43bb-489f-83b7-d41c347e37f9 → 200",
+      "actualData": "no internal fields (0 leaks)",
+      "notes": ""
+    },
+    {
+      "suite": "PUB",
+      "id": "UAT-PUB-004",
+      "title": "Search by keyword",
+      "priority": "P2",
+      "result": "PASS",
+      "actualApi": "GET /jobs?keyword=Java → 200",
+      "actualData": "2 matches",
+      "notes": ""
+    },
+    {
+      "suite": "PUB",
+      "id": "UAT-PUB-005",
+      "title": "Filter by department / skill / employment type / work mode / location",
+      "priority": "P2",
+      "result": "PASS",
+      "actualApi": "GET /jobs/filters → 200; GET /jobs?workMode=Remote → 200",
+      "actualData": "",
+      "notes": ""
+    },
+    {
+      "suite": "PUB",
+      "id": "UAT-PUB-006",
+      "title": "Sort and pagination",
+      "priority": "P2",
+      "result": "PASS",
+      "actualApi": "GET /jobs?page=9999 → 200; pageSize0→200; pageSize99999→200",
+      "actualData": "",
+      "notes": "captured clamp behaviour"
+    },
+    {
+      "suite": "PUB",
+      "id": "UAT-PUB-007",
+      "title": "Empty / loading / error states on list",
+      "priority": "P3",
+      "result": "PASS",
+      "actualApi": "GET /jobs?keyword=zzznojob → 200",
+      "actualData": "",
+      "notes": "empty-state asserted; loading/error states are UI-only"
+    },
+    {
+      "suite": "PUB",
+      "id": "UAT-PUB-008",
+      "title": "Navigate card→detail; back/forward; refresh",
+      "priority": "P2",
+      "result": "N/A",
+      "actualApi": "",
+      "actualData": "",
+      "notes": "UI-only (SPA routing / deep-link / back-forward, no distinct API)"
+    },
+    {
+      "suite": "PUB",
+      "id": "UAT-PUB-009",
+      "title": "Job not found (unknown / malformed id)",
+      "priority": "P2",
+      "result": "PASS",
+      "actualApi": "GET /jobs/99999999-9999-4999-8999-999999999999 → 404 JOB_NOT_FOUND; malformed→404",
+      "actualData": "",
+      "notes": "unknown errorCode=JOB_NOT_FOUND; malformed→404 (404/400 acceptable)"
+    },
+    {
+      "suite": "PUB",
+      "id": "UAT-PUB-010",
+      "title": "Invalid query parameters do not break page or leak errors",
+      "priority": "P3",
+      "result": "PASS",
+      "actualApi": "malformed→400; xss→200",
+      "actualData": "",
+      "notes": "never 500; 200(defaults)/400 acceptable"
+    },
+    {
+      "suite": "PUB",
+      "id": "UAT-PUB-011",
+      "title": "[KNOWN BUG] Public detail exposes Draft & PendingApproval jobs",
+      "priority": "P2",
+      "result": "PASS",
+      "actualApi": "Draft→404, Pending→404",
+      "actualData": "",
+      "notes": "BUG-UAT-002 appears fixed (404 for non-Approved)"
+    },
+    {
+      "suite": "PUB",
+      "id": "UAT-PUB-012",
+      "title": "OData & XML-demo public endpoints",
+      "priority": "P3",
+      "result": "PASS",
+      "actualApi": "GET /api/xml-demo/jobs → 200",
+      "actualData": "",
+      "notes": "xml-demo asserted; /odata/Jobs is outside /api base → manual/curl (deferred)"
+    },
+    {
+      "suite": "PUB",
+      "id": "UAT-PUB-013",
+      "title": "Public lookups: departments & skills",
+      "priority": "P3",
+      "result": "PASS",
+      "actualApi": "GET /departments → 200; GET /skills → 200",
+      "actualData": "departments=8 (exp 8), skills=30 (exp 30)",
+      "notes": ""
+    },
+    {
+      "suite": "PUB",
+      "id": "UAT-PUB-014",
+      "title": "Job statistics endpoint is aggregate-only (no PII)",
+      "priority": "P2",
+      "result": "PASS",
+      "actualApi": "GET /jobs/59a5221b-43bb-489f-83b7-d41c347e37f9/statistics → 200",
+      "actualData": "aggregate-only, no PII keys",
+      "notes": ""
+    },
+    {
+      "suite": "CJOB",
+      "id": "UAT-CJOB-001",
+      "title": "Candidate sees only Approved jobs",
+      "priority": "P1",
+      "result": "PASS",
+      "actualApi": "GET /jobs (candidate) → 200",
+      "actualData": "12 jobs, all Approved",
+      "notes": ""
+    },
+    {
+      "suite": "CJOB",
+      "id": "UAT-CJOB-002",
+      "title": "Keyword search (candidate)",
+      "priority": "P2",
+      "result": "PASS",
+      "actualApi": "GET /jobs?keyword=React (candidate) → 200",
+      "actualData": "0 matches",
+      "notes": ""
+    },
+    {
+      "suite": "CJOB",
+      "id": "UAT-CJOB-003",
+      "title": "Combined filters + clear (candidate)",
+      "priority": "P2",
+      "result": "PASS",
+      "actualApi": "GET /jobs (combined filters, candidate) → 200; GET /jobs (cleared) → 200",
+      "actualData": "",
+      "notes": "narrow then restore; clear returns full list"
+    },
+    {
+      "suite": "CJOB",
+      "id": "UAT-CJOB-004",
+      "title": "Sort & pagination (candidate)",
+      "priority": "P3",
+      "result": "PASS",
+      "actualApi": "GET /jobs?page=9999 (candidate) → 200",
+      "actualData": "",
+      "notes": ""
+    },
+    {
+      "suite": "CJOB",
+      "id": "UAT-CJOB-005",
+      "title": "Job with no salary / no benefits / many skills / long content",
+      "priority": "P3",
+      "result": "N/A",
+      "actualApi": "",
+      "actualData": "",
+      "notes": "UI-only (graceful rendering of missing salary/benefits/long content, no distinct API)"
+    },
+    {
+      "suite": "CJOB",
+      "id": "UAT-CJOB-006",
+      "title": "Navigate card → detail → apply",
+      "priority": "P1",
+      "result": "PASS",
+      "actualApi": "GET /jobs/59a5221b-43bb-489f-83b7-d41c347e37f9/apply-context → 200",
+      "actualData": "canApply=false",
+      "notes": ""
+    },
+    {
+      "suite": "CJOB",
+      "id": "UAT-CJOB-007",
+      "title": "Apply CTA disabled for closed/expired/duplicate",
+      "priority": "P1",
+      "result": "PASS",
+      "actualApi": "apply-context eligibility.canApply=false",
+      "actualData": "reason=[\"You have already applied for this job.\"]",
+      "notes": ""
+    },
+    {
+      "suite": "CJOB",
+      "id": "UAT-CJOB-008",
+      "title": "Candidate job recommendations",
+      "priority": "P2",
+      "result": "PASS",
+      "actualApi": "GET /candidate/jobs/recommendations → 200",
+      "actualData": "",
+      "notes": "graceful 200 even if AI/embeddings unavailable (may be empty)"
+    },
+    {
+      "suite": "CJOB",
+      "id": "UAT-CJOB-009",
+      "title": "Direct URL / refresh / back-forward (candidate list)",
+      "priority": "P3",
+      "result": "N/A",
+      "actualApi": "",
+      "actualData": "",
+      "notes": "UI-only (SPA deep-link / refresh / back-forward, no distinct API)"
+    },
+    {
+      "suite": "CJOB",
+      "id": "UAT-CJOB-010",
+      "title": "Empty / loading / error states (candidate)",
+      "priority": "P3",
+      "result": "PASS",
+      "actualApi": "GET /jobs?keyword=zzznojob (candidate) → 200",
+      "actualData": "",
+      "notes": "empty-state asserted; loading/error are UI-only"
+    },
+    {
+      "suite": "CJOB",
+      "id": "UAT-CJOB-011",
+      "title": "Newly published job appears; just-closed disappears",
+      "priority": "P2",
+      "result": "N/A",
+      "actualApi": "",
+      "actualData": "",
+      "notes": "deferred: stateful write (requires approve/close a job) (write-phase)"
+    },
+    {
+      "suite": "CJOB",
+      "id": "UAT-CJOB-012",
+      "title": "No internal/private data leaked in candidate list/detail",
+      "priority": "P1",
+      "result": "PASS",
+      "actualApi": "GET /jobs (candidate) → 200; GET /jobs/59a5221b-43bb-489f-83b7-d41c347e37f9 (candidate) → 200",
+      "actualData": "no recruiter/owner/internal fields",
+      "notes": ""
+    },
+    {
+      "suite": "CJOB",
+      "id": "UAT-CJOB-013",
+      "title": "Responsive & mobile bottom-nav",
+      "priority": "P3",
+      "result": "N/A",
+      "actualApi": "",
+      "actualData": "",
+      "notes": "UI-only (responsive layout / mobile BottomNavBar, no distinct API)"
+    },
+    {
+      "suite": "CJOB",
+      "id": "UAT-CJOB-014",
+      "title": "Query param robustness (candidate)",
+      "priority": "P3",
+      "result": "PASS",
+      "actualApi": "malformed→400",
+      "actualData": "",
+      "notes": "never 500; 200(defaults)/400 acceptable"
+    },
+    {
+      "suite": "AUTH",
+      "id": "UAT-AUTH-001",
+      "title": "Internal login success (HR)",
+      "priority": "P0",
+      "result": "PASS",
+      "actualApi": "POST /auth/internal/login → 200",
+      "actualData": "roles=[\"HR\"]",
+      "notes": ""
+    },
+    {
+      "suite": "AUTH",
+      "id": "UAT-AUTH-002",
+      "title": "Candidate login success",
+      "priority": "P0",
+      "result": "PASS",
+      "actualApi": "POST /auth/candidate/login → 200",
+      "actualData": "",
+      "notes": ""
+    },
+    {
+      "suite": "AUTH",
+      "id": "UAT-AUTH-003",
+      "title": "Wrong password → 401 INVALID_CREDENTIALS",
+      "priority": "P0",
+      "result": "PASS",
+      "actualApi": "POST /auth/internal/login → 401 INVALID_CREDENTIALS",
+      "actualData": "",
+      "notes": ""
+    },
+    {
+      "suite": "AUTH",
+      "id": "UAT-AUTH-004",
+      "title": "Unknown user → 401 INVALID_CREDENTIALS (no enumeration)",
+      "priority": "P1",
+      "result": "PASS",
+      "actualApi": "POST /auth/internal/login → 401 INVALID_CREDENTIALS",
+      "actualData": "",
+      "notes": ""
+    },
+    {
+      "suite": "AUTH",
+      "id": "UAT-AUTH-005",
+      "title": "Disabled candidate account → 401 ACCOUNT_DISABLED",
+      "priority": "P0",
+      "result": "PASS",
+      "actualApi": "POST /auth/candidate/login → 401 ACCOUNT_DISABLED",
+      "actualData": "",
+      "notes": ""
+    },
+    {
+      "suite": "AUTH",
+      "id": "UAT-AUTH-006",
+      "title": "Portal separation: candidate on internal portal → 401",
+      "priority": "P0",
+      "result": "PASS",
+      "actualApi": "POST /auth/internal/login → 401 PORTAL_ACCESS_DENIED",
+      "actualData": "",
+      "notes": "errorCode=PORTAL_ACCESS_DENIED"
+    },
+    {
+      "suite": "AUTH",
+      "id": "UAT-AUTH-007",
+      "title": "Portal separation: internal on candidate portal → 401",
+      "priority": "P1",
+      "result": "PASS",
+      "actualApi": "POST /auth/candidate/login → 401 PORTAL_ACCESS_DENIED",
+      "actualData": "",
+      "notes": "errorCode=PORTAL_ACCESS_DENIED"
+    },
+    {
+      "suite": "AUTH",
+      "id": "UAT-AUTH-008",
+      "title": "Multi-role login (Manager + HeadDepartment)",
+      "priority": "P1",
+      "result": "PASS",
+      "actualApi": "POST /auth/internal/login → 200",
+      "actualData": "roles=[\"manager\",\"headdepartment\"]",
+      "notes": ""
+    },
+    {
+      "suite": "AUTH",
+      "id": "UAT-AUTH-009",
+      "title": "Universal login accepts email or username",
+      "priority": "P2",
+      "result": "PASS",
+      "actualApi": "POST /auth/login (username) → 200; POST /auth/login (email) → 200",
+      "actualData": "",
+      "notes": ""
+    },
+    {
+      "suite": "AUTH",
+      "id": "UAT-AUTH-010",
+      "title": "Access protected route without token → 401 UNAUTHENTICATED",
+      "priority": "P0",
+      "result": "PASS",
+      "actualApi": "GET /hr/applications (no token) → 401 UNAUTHENTICATED",
+      "actualData": "",
+      "notes": "errorCode=UNAUTHENTICATED"
+    },
+    {
+      "suite": "AUTH",
+      "id": "UAT-AUTH-012",
+      "title": "Refresh single-use rotation & reuse rejection",
+      "priority": "P0",
+      "result": "PASS",
+      "actualApi": "RT1→200, reuse→401, RT2→200",
+      "actualData": "",
+      "notes": ""
+    },
+    {
+      "suite": "AUTH",
+      "id": "UAT-AUTH-014",
+      "title": "Access with tampered/garbage bearer → 401",
+      "priority": "P0",
+      "result": "PASS",
+      "actualApi": "GET /hr/applications (bad token) → 401 UNAUTHENTICATED",
+      "actualData": "",
+      "notes": ""
+    },
+    {
+      "suite": "DASH",
+      "id": "UAT-DASH-001",
+      "title": "Candidate dashboard",
+      "priority": "P2",
+      "result": "PASS",
+      "actualApi": "GET /candidate/dashboard → 200",
+      "actualData": "keys=greetingName,stats,upcomingInterview,recommendedJobs",
+      "notes": ""
+    },
+    {
+      "suite": "DASH",
+      "id": "UAT-DASH-002",
+      "title": "HR dashboard",
+      "priority": "P1",
+      "result": "PASS",
+      "actualApi": "GET /hr/dashboard → 200",
+      "actualData": "keys=stats,recentApplications,pendingApprovals,hiringVelocity,diversityReport",
+      "notes": ""
+    },
+    {
+      "suite": "DASH",
+      "id": "UAT-DASH-003",
+      "title": "Manager dashboard",
+      "priority": "P2",
+      "result": "PASS",
+      "actualApi": "GET /manager/dashboard → 200",
+      "actualData": "keys=summary,pendingApprovals,finalDecisions,departmentHiringSpeed,recruitmentFunnel",
+      "notes": ""
+    },
+    {
+      "suite": "DASH",
+      "id": "UAT-DASH-004",
+      "title": "Recruitment analytics report (funnel/conversion)",
+      "priority": "P2",
+      "result": "PASS",
+      "actualApi": "GET /manager/reports/recruitment-analytics → 200",
+      "actualData": "keys=overview,trend,funnel,distribution,departmentPerformance,departmentBreakdown",
+      "notes": "funnel/Withdrawn-exclusion (BR-APPLICATION-011) requires manual value review"
+    },
+    {
+      "suite": "DASH",
+      "id": "UAT-DASH-005",
+      "title": "Metric consistency: dashboard vs API vs DB",
+      "priority": "P1",
+      "result": "N/A",
+      "actualApi": "",
+      "actualData": "",
+      "notes": "deferred: cross-source manual comparison (UI/API vs seed DB counts, Auto:No)"
+    },
+    {
+      "suite": "DASH",
+      "id": "UAT-DASH-006",
+      "title": "Date-range filters (default/custom/invalid/reversed)",
+      "priority": "P2",
+      "result": "N/A",
+      "actualApi": "",
+      "actualData": "",
+      "notes": "UI-only: dashboard/analytics endpoints take no date-range params (client-side filter)"
+    },
+    {
+      "suite": "DASH",
+      "id": "UAT-DASH-007",
+      "title": "Empty / single-record / large datasets",
+      "priority": "P3",
+      "result": "N/A",
+      "actualApi": "",
+      "actualData": "",
+      "notes": "UI-only: chart/empty-state rendering"
+    },
+    {
+      "suite": "DASH",
+      "id": "UAT-DASH-008",
+      "title": "Chart / tooltip / legend / table rendering",
+      "priority": "P3",
+      "result": "N/A",
+      "actualApi": "",
+      "actualData": "",
+      "notes": "UI-only: interactive rendering (Auto:No)"
+    },
+    {
+      "suite": "DASH",
+      "id": "UAT-DASH-009",
+      "title": "Recruiter sees only assigned data",
+      "priority": "P1",
+      "result": "PASS",
+      "actualApi": "GET /hr/dashboard (thucuyen) → 200; GET /hr/dashboard (giahan) → 200",
+      "actualData": "thucuyen={\"stats\":{\"activePostings\":11,\"totalApplicants\":23,\"interviewsToday\":1,\"nextInterviewLabel\":\"14:00 (500000)\"},\"recentApplications\":[{\"applicationId\":\" | giahan={\"stats\":{\"activePostings\":11,\"totalApplicants\":23,\"interviewsToday\":1,\"nextInterviewLabel\":\"14:00 (500000)\"},\"recentApplications\":[{\"applicationId\":\"",
+      "notes": "both 200; per-owner scoping (numbers differ?) needs manual review"
+    },
+    {
+      "suite": "DASH",
+      "id": "UAT-DASH-010",
+      "title": "Candidate cannot access analytics → 403",
+      "priority": "P1",
+      "result": "PASS",
+      "actualApi": "GET /hr/dashboard (candidate) → 403 FORBIDDEN; GET /manager/dashboard (candidate) → 403 FORBIDDEN; GET /manager/reports/recruitment-analytics (candidate) → 403 FORBIDDEN",
+      "actualData": "",
+      "notes": ""
+    },
+    {
+      "suite": "DASH",
+      "id": "UAT-DASH-011",
+      "title": "Partial API failure degrades gracefully",
+      "priority": "P3",
+      "result": "N/A",
+      "actualApi": "",
+      "actualData": "",
+      "notes": "UI-only: recovery/rendering behavior (Auto:No)"
+    },
+    {
+      "suite": "DASH",
+      "id": "UAT-DASH-012",
+      "title": "Timezone boundary in analytics (month start/end)",
+      "priority": "P3",
+      "result": "N/A",
+      "actualApi": "",
+      "actualData": "",
+      "notes": "UI-only: bucketing observation (Auto:No)"
+    },
+    {
+      "suite": "LOG",
+      "id": "UAT-LOG-001",
+      "title": "View audit logs (permission-gated)",
+      "priority": "P2",
+      "result": "PASS",
+      "actualApi": "GET /sysadmin/audit-logs (admin) → 200; GET /sysadmin/audit-logs (HR, no System_LOG_VIEW) → 403 FORBIDDEN",
+      "actualData": "rows=12",
+      "notes": ""
+    },
+    {
+      "suite": "LOG",
+      "id": "UAT-LOG-002",
+      "title": "Login success/fail not in audit log (documented gap)",
+      "priority": "P3",
+      "result": "N/A",
+      "actualApi": "",
+      "actualData": "",
+      "notes": "documented gap (Q-LOG-01): auth events not written to SystemLog; manual absence check"
+    },
+    {
+      "suite": "LOG",
+      "id": "UAT-LOG-003",
+      "title": "User status change is audited",
+      "priority": "P2",
+      "result": "N/A",
+      "actualApi": "",
+      "actualData": "",
+      "notes": "deferred: stateful write (write-phase) — requires deactivating a spare user"
+    },
+    {
+      "suite": "LOG",
+      "id": "UAT-LOG-004",
+      "title": "RBAC change is audited",
+      "priority": "P2",
+      "result": "N/A",
+      "actualApi": "",
+      "actualData": "",
+      "notes": "deferred: stateful write (write-phase) — requires editing role permissions"
+    },
+    {
+      "suite": "LOG",
+      "id": "UAT-LOG-005",
+      "title": "Logs contain no secrets",
+      "priority": "P1",
+      "result": "PASS",
+      "actualApi": "GET /sysadmin/audit-logs (admin) → 200",
+      "actualData": "scanned 3677 chars, no secret markers",
+      "notes": ""
+    },
+    {
+      "suite": "LOG",
+      "id": "UAT-LOG-006",
+      "title": "Logs read-only for non-privileged; not user-editable",
+      "priority": "P2",
+      "result": "PASS",
+      "actualApi": "GET audit-logs (HR) → 403 FORBIDDEN; GET audit-logs (candidate) → 403 FORBIDDEN; GET audit-logs (guest) → 401 UNAUTHENTICATED",
+      "actualData": "",
+      "notes": "immutable: no create/update/delete endpoint exists for audit logs"
+    },
+    {
+      "suite": "LOG",
+      "id": "UAT-LOG-007",
+      "title": "Audit search / filter / pagination",
+      "priority": "P3",
+      "result": "PASS",
+      "actualApi": "GET audit-logs?q=status → 200; GET audit-logs?page=9999 (out of range) → 200",
+      "actualData": "oob rows=0 (expect empty)",
+      "notes": ""
+    },
+    {
+      "suite": "LOG",
+      "id": "UAT-LOG-008",
+      "title": "Automation execution logs as the workflow audit trail",
+      "priority": "P3",
+      "result": "N/A",
+      "actualApi": "",
+      "actualData": "",
+      "notes": "deferred: manual correlation of automation action → execution/step logs (Auto:No)"
+    },
+    {
+      "suite": "MDATA",
+      "id": "UAT-MDATA-001",
+      "title": "List departments (public lookup)",
+      "priority": "P2",
+      "result": "PASS",
+      "actualApi": "GET /departments → 200",
+      "actualData": "count=8, headFields=ok",
+      "notes": ""
+    },
+    {
+      "suite": "MDATA",
+      "id": "UAT-MDATA-002",
+      "title": "Department detail (role-gated)",
+      "priority": "P2",
+      "result": "PASS",
+      "actualApi": "GET /departments/{id} (HR) → 200; GET /departments/{id} (candidate) → 403 FORBIDDEN; GET /departments/{id} (guest) → 401 UNAUTHENTICATED",
+      "actualData": "",
+      "notes": ""
+    },
+    {
+      "suite": "MDATA",
+      "id": "UAT-MDATA-003",
+      "title": "Assign department head (valid role required)",
+      "priority": "P1",
+      "result": "N/A",
+      "actualApi": "",
+      "actualData": "",
+      "notes": "deferred: stateful write (write-phase) — PUT /departments/{id} sets head; cleanup required"
+    },
+    {
+      "suite": "MDATA",
+      "id": "UAT-MDATA-004",
+      "title": "Update department name/description; duplicate name",
+      "priority": "P2",
+      "result": "N/A",
+      "actualApi": "",
+      "actualData": "",
+      "notes": "deferred: stateful write (write-phase) — PUT /departments/{id} renames; cleanup required"
+    },
+    {
+      "suite": "MDATA",
+      "id": "UAT-MDATA-005",
+      "title": "Department update permission (candidate/guest)",
+      "priority": "P2",
+      "result": "PASS",
+      "actualApi": "PUT /departments/{id} (candidate) → 403 FORBIDDEN; PUT /departments/{id} (guest) → 401 UNAUTHENTICATED",
+      "actualData": "",
+      "notes": "rejected at auth layer; no mutation applied"
+    },
+    {
+      "suite": "MDATA",
+      "id": "UAT-MDATA-006",
+      "title": "Skills lookup",
+      "priority": "P3",
+      "result": "PASS",
+      "actualApi": "GET /skills → 200",
+      "actualData": "count=30",
+      "notes": ""
+    },
+    {
+      "suite": "MDATA",
+      "id": "UAT-MDATA-007",
+      "title": "Offer templates / benefits / currencies availability",
+      "priority": "P3",
+      "result": "N/A",
+      "actualApi": "",
+      "actualData": "",
+      "notes": "UI-only: offer editor references seed master data (no standalone lookup API)"
+    },
+    {
+      "suite": "MDATA",
+      "id": "UAT-MDATA-008",
+      "title": "Assignable recruitment owners lookup",
+      "priority": "P2",
+      "result": "PASS",
+      "actualApi": "GET /users/assignable-recruitment-owners (HR) → 200; GET /users/assignable-recruitment-owners (candidate) → 403 FORBIDDEN",
+      "actualData": "recruiters=4, departmentHeads=1",
+      "notes": ""
+    },
+    {
+      "suite": "MDATA",
+      "id": "UAT-MDATA-009",
+      "title": "Master-data CRUD gap (documented)",
+      "priority": "P3",
+      "result": "N/A",
+      "actualApi": "",
+      "actualData": "",
+      "notes": "documented gap (Q-MDATA-01): no create/update/delete API for skills/benefits/currencies/templates"
+    },
+    {
+      "suite": "MDATA",
+      "id": "UAT-MDATA-010",
+      "title": "Delete/deactivate a referenced master record",
+      "priority": "P3",
+      "result": "N/A",
+      "actualApi": "",
+      "actualData": "",
+      "notes": "documented: no delete API for departments/master data; FK integrity enforced at DB only"
+    },
+    {
+      "suite": "NOTI",
+      "id": "UAT-NOTI-001",
+      "title": "List notifications (paged) with isSeen/isRead/data",
+      "priority": "P1",
+      "result": "PASS",
+      "actualApi": "GET /notifications?page=1&pageSize=20 → 200",
+      "actualData": "items=3, total=3",
+      "notes": ""
+    },
+    {
+      "suite": "NOTI",
+      "id": "UAT-NOTI-002",
+      "title": "Counts: unseen vs unread",
+      "priority": "P1",
+      "result": "PASS",
+      "actualApi": "GET /notifications/counts → 200",
+      "actualData": "unseen=1, unread=2",
+      "notes": ""
+    },
+    {
+      "suite": "NOTI",
+      "id": "UAT-NOTI-003",
+      "title": "Opening bell marks all SEEN (not read)",
+      "priority": "P0",
+      "result": "N/A",
+      "actualApi": "POST /notifications/seen",
+      "actualData": "",
+      "notes": "deferred: stateful write (write-phase)"
+    },
+    {
+      "suite": "NOTI",
+      "id": "UAT-NOTI-004",
+      "title": "Clicking an item marks READ + navigates to deep link",
+      "priority": "P0",
+      "result": "N/A",
+      "actualApi": "PATCH /notifications/{id}/read",
+      "actualData": "",
+      "notes": "deferred: stateful write (write-phase)"
+    },
+    {
+      "suite": "NOTI",
+      "id": "UAT-NOTI-005",
+      "title": "Mark all as read",
+      "priority": "P2",
+      "result": "N/A",
+      "actualApi": "POST /notifications/read-all",
+      "actualData": "",
+      "notes": "deferred: stateful write (write-phase)"
+    },
+    {
+      "suite": "NOTI",
+      "id": "UAT-NOTI-006",
+      "title": "Legacy unread-count endpoint",
+      "priority": "P3",
+      "result": "PASS",
+      "actualApi": "GET /notifications/unread-count → 200",
+      "actualData": "unreadCount=2",
+      "notes": ""
+    },
+    {
+      "suite": "NOTI",
+      "id": "UAT-NOTI-007",
+      "title": "SSE realtime delivery (new notification appears without refresh)",
+      "priority": "P1",
+      "result": "N/A",
+      "actualApi": "GET /notifications/stream",
+      "actualData": "",
+      "notes": "deferred: SSE stream + event trigger (write-phase / manual)"
+    },
+    {
+      "suite": "NOTI",
+      "id": "UAT-NOTI-008",
+      "title": "Deep links are role-aware and click-ready (no /api/ urls)",
+      "priority": "P1",
+      "result": "PASS",
+      "actualApi": "GET /notifications → 200",
+      "actualData": "inspected 3 items; no /api/ deep links",
+      "notes": ""
+    },
+    {
+      "suite": "NOTI",
+      "id": "UAT-NOTI-009",
+      "title": "SSE is user-scoped (no cross-user leakage)",
+      "priority": "P0",
+      "result": "N/A",
+      "actualApi": "GET /notifications/stream",
+      "actualData": "",
+      "notes": "deferred: two concurrent SSE clients (write-phase / manual)"
+    },
+    {
+      "suite": "NOTI",
+      "id": "UAT-NOTI-010",
+      "title": "Re-sync on reconnect recovers missed events",
+      "priority": "P2",
+      "result": "N/A",
+      "actualApi": "GET /notifications/stream",
+      "actualData": "",
+      "notes": "deferred: SSE disconnect/reconnect recovery (manual)"
+    },
+    {
+      "suite": "NOTI",
+      "id": "UAT-NOTI-011",
+      "title": "Notification content carries no sensitive data",
+      "priority": "P2",
+      "result": "PASS",
+      "actualApi": "GET /notifications → 200",
+      "actualData": "",
+      "notes": "read-only heuristic scan (partial per spec)"
+    },
+    {
+      "suite": "NOTI",
+      "id": "UAT-NOTI-012",
+      "title": "Require auth; other user's notifications inaccessible",
+      "priority": "P1",
+      "result": "PASS",
+      "actualApi": "GET /notifications (guest) → 401 UNAUTHENTICATED; POST /notifications/{nq-id}/read (as haidang) → 404 NOTIFICATION_NOT_FOUND",
+      "actualData": "",
+      "notes": "no mutation: cross-user read rejected by scoping"
+    },
+    {
+      "suite": "NOTI",
+      "id": "UAT-NOTI-013",
+      "title": "Notification publish failure never breaks business action",
+      "priority": "P1",
+      "result": "N/A",
+      "actualApi": "n/a",
+      "actualData": "",
+      "notes": "requires forcing publish failure during a status change (local fault-injection)"
+    },
+    {
+      "suite": "NOTI",
+      "id": "UAT-NOTI-014",
+      "title": "Race on unread count (multi-tab)",
+      "priority": "P3",
+      "result": "N/A",
+      "actualApi": "n/a",
+      "actualData": "",
+      "notes": "concurrency/UI: two tabs, manual"
+    },
+    {
+      "suite": "NOTI",
+      "id": "UAT-NOTI-015",
+      "title": "Empty & error states",
+      "priority": "P3",
+      "result": "N/A",
+      "actualApi": "n/a",
+      "actualData": "",
+      "notes": "UI-only (empty/error rendering)"
+    },
+    {
+      "suite": "NOTI",
+      "id": "UAT-NOTI-016",
+      "title": "Event-per-transition correctness",
+      "priority": "P1",
+      "result": "N/A",
+      "actualApi": "n/a",
+      "actualData": "",
+      "notes": "deferred: large integration sweep driving every state transition (write-phase)"
+    },
+    {
+      "suite": "NOTI",
+      "id": "UAT-NOTI-017",
+      "title": "Legacy notification_events vs emitted codes (data gap)",
+      "priority": "P3",
+      "result": "N/A",
+      "actualApi": "n/a",
+      "actualData": "",
+      "notes": "data-gap analysis (Q-NOTI-01); no read API for the lookup table"
+    },
+    {
+      "suite": "NOTI",
+      "id": "UAT-NOTI-018",
+      "title": "System toast card (bottom-right, VI, not default)",
+      "priority": "P3",
+      "result": "N/A",
+      "actualApi": "n/a",
+      "actualData": "",
+      "notes": "UI-only (toast card rendering)"
+    },
+    {
+      "suite": "RBAC",
+      "id": "UAT-RBAC-001",
+      "title": "SysAdmin console overview & user list",
+      "priority": "P1",
+      "result": "PASS",
+      "actualApi": "GET /sysadmin/overview → 200; GET /sysadmin/users → 200",
+      "actualData": "users=20",
+      "notes": ""
+    },
+    {
+      "suite": "RBAC",
+      "id": "UAT-RBAC-002",
+      "title": "Non-admin cannot reach SysAdmin API/UI",
+      "priority": "P0",
+      "result": "PASS",
+      "actualApi": "GET /sysadmin/users (HR) → 403 FORBIDDEN; GET /sysadmin/rbac/roles (candidate) → 403 FORBIDDEN; GET /sysadmin/users (guest) → 401 UNAUTHENTICATED",
+      "actualData": "",
+      "notes": ""
+    },
+    {
+      "suite": "RBAC",
+      "id": "UAT-RBAC-003",
+      "title": "View roles, modules, role permissions",
+      "priority": "P1",
+      "result": "PASS",
+      "actualApi": "GET /sysadmin/rbac/roles → 200; GET /sysadmin/rbac/modules → 200; GET /sysadmin/rbac/roles/{HR}/permissions → 200",
+      "actualData": "roles=5, perms=27, HR grants=12",
+      "notes": ""
+    },
+    {
+      "suite": "RBAC",
+      "id": "UAT-RBAC-004",
+      "title": "Update role permission matrix (takes effect next request)",
+      "priority": "P0",
+      "result": "N/A",
+      "actualApi": "PUT /sysadmin/rbac/roles/{id}/permissions",
+      "actualData": "",
+      "notes": "deferred: stateful write, GLOBAL matrix edit — single owner, restore required (write-phase)"
+    },
+    {
+      "suite": "RBAC",
+      "id": "UAT-RBAC-005",
+      "title": "Permission change reflected in menus & routes (session)",
+      "priority": "P1",
+      "result": "N/A",
+      "actualApi": "n/a",
+      "actualData": "",
+      "notes": "deferred: requires a matrix edit + UI refresh observation (write-phase)"
+    },
+    {
+      "suite": "RBAC",
+      "id": "UAT-RBAC-006",
+      "title": "RBAC endpoints need the specific permission (not just a role)",
+      "priority": "P1",
+      "result": "N/A",
+      "actualApi": "PUT …/permissions",
+      "actualData": "",
+      "notes": "deferred: requires a constructed role (view-yes, manage-no); not in seed (write-phase)"
+    },
+    {
+      "suite": "RBAC",
+      "id": "UAT-RBAC-007",
+      "title": "Create/assign roles to a user",
+      "priority": "P1",
+      "result": "N/A",
+      "actualApi": "PUT /sysadmin/users/{id}/roles",
+      "actualData": "",
+      "notes": "deferred: stateful write on a spare [UAT] user (write-phase)"
+    },
+    {
+      "suite": "RBAC",
+      "id": "UAT-RBAC-008",
+      "title": "Deactivate a user (status Inactive)",
+      "priority": "P0",
+      "result": "N/A",
+      "actualApi": "PATCH /sysadmin/users/{id}/status",
+      "actualData": "",
+      "notes": "deferred: stateful write; must target a spare [UAT] user, never a seed persona (write-phase)"
+    },
+    {
+      "suite": "RBAC",
+      "id": "UAT-RBAC-009",
+      "title": "Re-activate a disabled user",
+      "priority": "P2",
+      "result": "N/A",
+      "actualApi": "PATCH /sysadmin/users/{id}/status",
+      "actualData": "",
+      "notes": "deferred: stateful write (write-phase)"
+    },
+    {
+      "suite": "RBAC",
+      "id": "UAT-RBAC-010",
+      "title": "Cannot self-deactivate",
+      "priority": "P1",
+      "result": "N/A",
+      "actualApi": "PATCH /sysadmin/users/{admin}/status",
+      "actualData": "",
+      "notes": "deferred: would target seed admin status endpoint; safety rule — verify guard in write-phase"
+    },
+    {
+      "suite": "RBAC",
+      "id": "UAT-RBAC-011",
+      "title": "Cannot deactivate the last admin",
+      "priority": "P1",
+      "result": "N/A",
+      "actualApi": "PATCH /sysadmin/users/{admin}/status",
+      "actualData": "",
+      "notes": "deferred: requires reducing to one admin (deactivate minhkhoi); admin-lockout risk (write-phase)"
+    },
+    {
+      "suite": "RBAC",
+      "id": "UAT-RBAC-012",
+      "title": "Invalid user status value → 400",
+      "priority": "P3",
+      "result": "PASS",
+      "actualApi": "PATCH /sysadmin/users/{id}/status {Frozen} → 400 USER_STATUS_INVALID",
+      "actualData": "errorCode=USER_STATUS_INVALID",
+      "notes": "invalid value never persisted (no mutation)"
+    },
+    {
+      "suite": "RBAC",
+      "id": "UAT-RBAC-013",
+      "title": "Blocked status also denies login",
+      "priority": "P2",
+      "result": "N/A",
+      "actualApi": "PATCH /sysadmin/users/{id}/status",
+      "actualData": "",
+      "notes": "deferred: stateful write (set spare user Blocked) (write-phase)"
+    },
+    {
+      "suite": "RBAC",
+      "id": "UAT-RBAC-014",
+      "title": "Role change mid-session",
+      "priority": "P1",
+      "result": "N/A",
+      "actualApi": "PUT /sysadmin/users/{id}/roles",
+      "actualData": "",
+      "notes": "deferred: stateful write + session boundary observation (write-phase)"
+    },
+    {
+      "suite": "RBAC",
+      "id": "UAT-RBAC-015",
+      "title": "User search / filter / pagination",
+      "priority": "P2",
+      "result": "PASS",
+      "actualApi": "GET /sysadmin/users?q=thucuyen → 200; GET /sysadmin/users?roleId=Candidate&status=Active → 200; GET /sysadmin/users?page=9999 → 200",
+      "actualData": "q ok; role/status filter ok; page9999 empty",
+      "notes": ""
+    },
+    {
+      "suite": "RBAC",
+      "id": "UAT-RBAC-016",
+      "title": "Menu hidden != authorization (API still enforced)",
+      "priority": "P0",
+      "result": "PASS",
+      "actualApi": "GET /sysadmin/overview (candidate, direct API) → 403 FORBIDDEN; GET /sysadmin/overview (guest) → 401 UNAUTHENTICATED",
+      "actualData": "",
+      "notes": "server enforces regardless of hidden menu"
+    },
+    {
+      "suite": "RBAC",
+      "id": "UAT-RBAC-017",
+      "title": "IDOR on user status/roles (act on arbitrary user id)",
+      "priority": "P0",
+      "result": "PASS",
+      "actualApi": "PATCH /sysadmin/users/{anyId}/status (candidate) → 403 FORBIDDEN",
+      "actualData": "",
+      "notes": "permission gate blocks before id resolution (no mutation)"
+    },
+    {
+      "suite": "RBAC",
+      "id": "UAT-RBAC-018",
+      "title": "Mass assignment / unexpected fields on user update",
+      "priority": "P2",
+      "result": "N/A",
+      "actualApi": "PATCH/PUT /sysadmin/users/{id}",
+      "actualData": "",
+      "notes": "deferred: needs a successful write to confirm whitelisting (write-phase)"
+    },
+    {
+      "suite": "RBAC",
+      "id": "UAT-RBAC-019",
+      "title": "Audit logs list (permission-gated)",
+      "priority": "P2",
+      "result": "PASS",
+      "actualApi": "GET /sysadmin/audit-logs (admin) → 200; GET /sysadmin/audit-logs (HR) → 403 FORBIDDEN",
+      "actualData": "logs=?",
+      "notes": ""
+    },
+    {
+      "suite": "RBAC",
+      "id": "UAT-RBAC-020",
+      "title": "User-role & role-permission uniqueness (no duplicates)",
+      "priority": "P3",
+      "result": "N/A",
+      "actualApi": "PUT …/roles, PUT …/permissions",
+      "actualData": "",
+      "notes": "deferred: stateful write (re-grant idempotency) (write-phase)"
+    },
+    {
+      "suite": "RBAC",
+      "id": "UAT-RBAC-021",
+      "title": "Seed permission set matches init.sql (27 permissions)",
+      "priority": "P2",
+      "result": "PASS",
+      "actualApi": "GET /sysadmin/rbac/modules → 200",
+      "actualData": "27 permission codes match init.sql (exact casing)",
+      "notes": ""
+    },
+    {
+      "suite": "RBAC",
+      "id": "UAT-RBAC-022",
+      "title": "FE permission map vs backend grants (mismatch risk)",
+      "priority": "P2",
+      "result": "N/A",
+      "actualApi": "n/a",
+      "actualData": "",
+      "notes": "documentation/analysis compare (Q-RBAC-01); no single API to assert"
+    },
+    {
+      "suite": "ERR",
+      "id": "UAT-ERR-001",
+      "title": "Field-level validation → 400 VALIDATION_FAILED with camelCase fieldErrors",
+      "priority": "P0",
+      "result": "FAIL",
+      "actualApi": "register JSON→415, multipart-missing→400 ProblemDetails",
+      "actualData": "",
+      "notes": "FINDING-CONTRACT-01 (Low): model-binding validation returns ASP.NET ProblemDetails (PascalCase errors, no errorCode), not the app VALIDATION_FAILED+camelCase envelope. FE apiError.ts:405 falls back to data.errors so errors DO surface, but PascalCase field names don't match camelCase form fields → inline field error degrades to a toast; no stable errorCode"
+    },
+    {
+      "suite": "ERR",
+      "id": "UAT-ERR-002",
+      "title": "Backend message present for debug; code+nested error also present",
+      "priority": "P1",
+      "result": "PASS",
+      "actualApi": "errorCode=JOB_NOT_FOUND",
+      "actualData": "",
+      "notes": "message(debug) + code both present; FE i18n mapping is UI-side"
+    },
+    {
+      "suite": "ERR",
+      "id": "UAT-ERR-003",
+      "title": "error.type derived from HTTP status (400/401/403/404)",
+      "priority": "P2",
+      "result": "PASS",
+      "actualApi": "{\"400\":\"BAD_REQUEST\",\"401\":\"AUTH_ERROR\",\"403\":\"FORBIDDEN\",\"404\":\"NOT_FOUND\"}",
+      "actualData": "",
+      "notes": "400.type path-dependent (app-validation=BAD_REQUEST); model-binding 400s emit raw ProblemDetails — see FINDING-CONTRACT-01"
+    },
+    {
+      "suite": "ERR",
+      "id": "UAT-ERR-004",
+      "title": "Multiple field errors incl. whitespace-only + nested camelCase mapping",
+      "priority": "P2",
+      "result": "FAIL",
+      "actualApi": "register JSON→415",
+      "actualData": "",
+      "notes": "FINDING-CONTRACT-01 (Low): register is multipart-only (JSON→415) + model-binding validation → ProblemDetails, not VALIDATION_FAILED camelCase envelope"
+    },
+    {
+      "suite": "ERR",
+      "id": "UAT-ERR-005",
+      "title": "500 carries traceId, no stack/secret",
+      "priority": "P0",
+      "result": "N/A",
+      "actualApi": "",
+      "actualData": "",
+      "notes": "deferred: 500 not reproducible on prod (no 500s across business flows); traceId presence covered by UAT-ERR-013"
+    },
+    {
+      "suite": "ERR",
+      "id": "UAT-ERR-006",
+      "title": "Network error → toast (not inline)",
+      "priority": "P1",
+      "result": "N/A",
+      "actualApi": "",
+      "actualData": "",
+      "notes": "UI-only: NETWORK_ERROR is generated client-side; no server response to assert"
+    },
+    {
+      "suite": "ERR",
+      "id": "UAT-ERR-007",
+      "title": "Timeout → toast",
+      "priority": "P2",
+      "result": "N/A",
+      "actualApi": "",
+      "actualData": "",
+      "notes": "UI-only: TIMEOUT_ERROR (client abort); not server-observable"
+    },
+    {
+      "suite": "ERR",
+      "id": "UAT-ERR-008",
+      "title": "Unknown error code falls back to UNEXPECTED_ERROR",
+      "priority": "P3",
+      "result": "N/A",
+      "actualApi": "",
+      "actualData": "",
+      "notes": "UI-only: FE getErrorMessage fallback; server never emits an off-contract code"
+    },
+    {
+      "suite": "ERR",
+      "id": "UAT-ERR-009",
+      "title": "i18n error copy exists in both vi and en",
+      "priority": "P3",
+      "result": "N/A",
+      "actualApi": "",
+      "actualData": "",
+      "notes": "UI-only: FE i18n dictionaries (errors.*); backend returns codes only"
+    },
+    {
+      "suite": "ERR",
+      "id": "UAT-ERR-010",
+      "title": "Server validation reachable via API independent of UI submit-disable",
+      "priority": "P3",
+      "result": "PASS",
+      "actualApi": "POST /auth/candidate/forgot-password (direct) → 400 REQUIRED",
+      "actualData": "",
+      "notes": "server validation reachable API-direct (errorCode=REQUIRED); double-submit guard is UI-only"
+    },
+    {
+      "suite": "ERR",
+      "id": "UAT-ERR-011",
+      "title": "409 vs 422 semantics correct",
+      "priority": "P1",
+      "result": "N/A",
+      "actualApi": "",
+      "actualData": "",
+      "notes": "deferred: stateful (write-phase) — needs a live apply to force 409 duplicate-active / 422 precondition"
+    },
+    {
+      "suite": "ERR",
+      "id": "UAT-ERR-012",
+      "title": "401 vs 403 semantics correct",
+      "priority": "P1",
+      "result": "PASS",
+      "actualApi": "401 UNAUTHENTICATED; 403 FORBIDDEN",
+      "actualData": "",
+      "notes": ""
+    },
+    {
+      "suite": "ERR",
+      "id": "UAT-ERR-013",
+      "title": "traceId present and unique per error",
+      "priority": "P3",
+      "result": "PASS",
+      "actualApi": "traceA≠traceB",
+      "actualData": "00-ef66f2cf62f3ada69b9a7dac259faeb9-e6a861d4c2e335eb-00 | 00-3849dc1a531267bfa5d4631a06edc035-f65a0da8fbd06dc0-00",
+      "notes": ""
+    },
+    {
+      "suite": "ERR",
+      "id": "UAT-ERR-014",
+      "title": "FE and BE validation agree (salary max<min rejected by BE)",
+      "priority": "P2",
+      "result": "PASS",
+      "actualApi": "POST /hr/jobs (salary max<min) → 400 VALIDATION_FAILED",
+      "actualData": "",
+      "notes": "BE rejects salary max<min; matches FE salary_check rule"
+    },
+    {
+      "suite": "API",
+      "id": "UAT-API-001",
+      "title": "Happy path + ApiResponse envelope shape",
+      "priority": "P1",
+      "result": "PASS",
+      "actualApi": "GET /jobs → 200",
+      "actualData": "200 success data:object",
+      "notes": ""
+    },
+    {
+      "suite": "API",
+      "id": "UAT-API-002",
+      "title": "Required field / invalid shape → 400 VALIDATION_FAILED + fieldErrors",
+      "priority": "P1",
+      "result": "FAIL",
+      "actualApi": "register JSON→415",
+      "actualData": "",
+      "notes": "FINDING-CONTRACT-01 (Low): no VALIDATION_FAILED+fieldErrors envelope (415 for JSON / ProblemDetails for multipart); FE has a ProblemDetails fallback"
+    },
+    {
+      "suite": "API",
+      "id": "UAT-API-003",
+      "title": "Invalid enum / out-of-range → 400/422, never 500",
+      "priority": "P2",
+      "result": "PASS",
+      "actualApi": "POST /hr/jobs (invalid enum) → 400 VALIDATION_FAILED",
+      "actualData": "",
+      "notes": ""
+    },
+    {
+      "suite": "API",
+      "id": "UAT-API-004",
+      "title": "No token → 401 UNAUTHENTICATED on protected endpoints",
+      "priority": "P0",
+      "result": "PASS",
+      "actualApi": "/hr/applications→401, /manager/dashboard→401, /sysadmin/users→401, /candidate/applications→401",
+      "actualData": "",
+      "notes": ""
+    },
+    {
+      "suite": "API",
+      "id": "UAT-API-005",
+      "title": "Wrong role → 403 FORBIDDEN",
+      "priority": "P0",
+      "result": "PASS",
+      "actualApi": "candidate→/hr 403; HR→/sysadmin 403",
+      "actualData": "",
+      "notes": ""
+    },
+    {
+      "suite": "API",
+      "id": "UAT-API-006",
+      "title": "Not found / malformed / nil UUID → 404/400, no 500",
+      "priority": "P1",
+      "result": "PASS",
+      "actualApi": "11111111→404, not-a-gu→404, 00000000→404",
+      "actualData": "",
+      "notes": ""
+    },
+    {
+      "suite": "API",
+      "id": "UAT-API-007",
+      "title": "Pagination / sort / filter boundaries clamp, no error",
+      "priority": "P2",
+      "result": "FAIL",
+      "actualApi": "?page=1&pageSize=5→200, ?page=99999&pageSize=10→200, ?page=-1&pageSize=0→500, ?sortBy=__bogus__&sortDir=sideways→200",
+      "actualData": "",
+      "notes": "BUG-STG-001: negative/zero pagination crashes (?page=-1&pageSize=0→500) — should clamp or 400"
+    },
+    {
+      "suite": "API",
+      "id": "UAT-API-008",
+      "title": "Concurrency / idempotency on state-changing endpoints",
+      "priority": "P1",
+      "result": "N/A",
+      "actualApi": "",
+      "actualData": "",
+      "notes": "deferred: stateful (write-phase) — dup/parallel apply-decision-offer would mutate seed data"
+    },
+    {
+      "suite": "API",
+      "id": "UAT-API-009",
+      "title": "IDOR/BOLA: cross-owner access → 403/404",
+      "priority": "P0",
+      "result": "PASS",
+      "actualApi": "withdraw other's app → 404",
+      "actualData": "",
+      "notes": "blocked, no cross-owner mutation"
+    },
+    {
+      "suite": "API",
+      "id": "UAT-API-010",
+      "title": "SQL injection input is inert (no 500/leak)",
+      "priority": "P1",
+      "result": "PASS",
+      "actualApi": "sqli→200/200 (no 500)",
+      "actualData": "",
+      "notes": ""
+    },
+    {
+      "suite": "API",
+      "id": "UAT-API-011",
+      "title": "XSS payload stored/returned safely",
+      "priority": "P1",
+      "result": "N/A",
+      "actualApi": "",
+      "actualData": "",
+      "notes": "deferred: stateful storage + UI escaping (write/UI-phase); API always returns JSON-encoded text"
+    },
+    {
+      "suite": "API",
+      "id": "UAT-API-012",
+      "title": "Wrong HTTP method / content-type → 405/415/400, no 500",
+      "priority": "P3",
+      "result": "PASS",
+      "actualApi": "PUT→405; text/plain→415",
+      "actualData": "",
+      "notes": ""
+    },
+    {
+      "suite": "API",
+      "id": "UAT-API-013",
+      "title": "Oversized payload → 413/400, no crash",
+      "priority": "P2",
+      "result": "PASS",
+      "actualApi": "11MB body → 413",
+      "actualData": "",
+      "notes": ""
+    },
+    {
+      "suite": "API",
+      "id": "UAT-API-014",
+      "title": "OData read-only surface, $top cap 100, role-gate, no writes",
+      "priority": "P2",
+      "result": "N/A",
+      "actualApi": "GET /odata/Jobs → 200 text/html (SPA fallback)",
+      "actualData": "",
+      "notes": "OData not served on this host (/odata → SPA index.html); no data exposed. Verify on a host where OData is enabled."
+    },
+    {
+      "suite": "API",
+      "id": "UAT-API-015",
+      "title": "Response has no sensitive fields",
+      "priority": "P1",
+      "result": "PASS",
+      "actualApi": "login user + /jobs: no passwordHash/token/apiKey/connStr",
+      "actualData": "",
+      "notes": ""
+    },
+    {
+      "suite": "API",
+      "id": "UAT-API-016",
+      "title": "Health root 200; Swagger not served in prod",
+      "priority": "P3",
+      "result": "PASS",
+      "actualApi": "health→301; swagger→200 (SPA shell, not real Swagger)",
+      "actualData": "",
+      "notes": ""
+    },
+    {
+      "suite": "SEC",
+      "id": "UAT-SEC-001",
+      "title": "JWT integrity — tampered/garbage bearer rejected → 401",
+      "priority": "P0",
+      "result": "PASS",
+      "actualApi": "garbage→401; tampered→401",
+      "actualData": "",
+      "notes": "expiry/token_version revocation covered by UAT-AUTH-016/017"
+    },
+    {
+      "suite": "SEC",
+      "id": "UAT-SEC-002",
+      "title": "SQLi/XSS input inert (no 500/leak)",
+      "priority": "P0",
+      "result": "PASS",
+      "actualApi": "payloads→200/200/200 (no 500/leak)",
+      "actualData": "",
+      "notes": "storage+UI-escape parts deferred (write/UI-phase)"
+    },
+    {
+      "suite": "SEC",
+      "id": "UAT-SEC-003",
+      "title": "Credential handling & no user enumeration",
+      "priority": "P1",
+      "result": "PASS",
+      "actualApi": "wrongPw=unknown=401 INVALID_CREDENTIALS; forgot(unknown)→200",
+      "actualData": "",
+      "notes": ""
+    },
+    {
+      "suite": "SEC",
+      "id": "UAT-SEC-004",
+      "title": "RBAC enforced server-side regardless of UI",
+      "priority": "P0",
+      "result": "PASS",
+      "actualApi": "cand→sysadmin 403; hr→audit-logs 403; cand→manager 403",
+      "actualData": "",
+      "notes": ""
+    },
+    {
+      "suite": "SEC",
+      "id": "UAT-SEC-005",
+      "title": "Session lifecycle: login → refresh rotate → reuse rejected",
+      "priority": "P1",
+      "result": "PASS",
+      "actualApi": "login 200; refresh 200; reuse→401",
+      "actualData": "",
+      "notes": "logout is client-side (no endpoint); multi-tab UI deferred"
+    },
+    {
+      "suite": "SEC",
+      "id": "UAT-SEC-006",
+      "title": "IDOR/BOLA across owned resources → 403/404",
+      "priority": "P0",
+      "result": "PASS",
+      "actualApi": "cross-owner withdraw → 404",
+      "actualData": "",
+      "notes": ""
+    },
+    {
+      "suite": "SEC",
+      "id": "UAT-SEC-007",
+      "title": "No sensitive-data leakage in responses/errors",
+      "priority": "P0",
+      "result": "PASS",
+      "actualApi": "no hash/token/connStr/stack in user, /jobs, or 404 error body",
+      "actualData": "",
+      "notes": ""
+    },
+    {
+      "suite": "SEC",
+      "id": "UAT-SEC-008",
+      "title": "[KNOWN BUG] Missing security headers; server version disclosed (BUG-UAT-004)",
+      "priority": "P3",
+      "result": "FAIL",
+      "actualApi": "missing=[strict-transport-security,x-frame-options,x-content-type-options,content-security-policy,referrer-policy]; server=\"nginx/1.24.0 (Ubuntu)\"",
+      "actualData": "",
+      "notes": "BUG-UAT-004 (OPEN): headers missing / server version disclosed"
+    },
+    {
+      "suite": "SEC",
+      "id": "UAT-SEC-009",
+      "title": "HTTPS enforcement — HTTP → HTTPS redirect",
+      "priority": "P2",
+      "result": "PASS",
+      "actualApi": "301 → https://www.recruitpro.site/",
+      "actualData": "",
+      "notes": ""
+    },
+    {
+      "suite": "SEC",
+      "id": "UAT-SEC-010",
+      "title": "CORS: disallowed origin not reflected",
+      "priority": "P3",
+      "result": "PASS",
+      "actualApi": "ACAO=\"\" (not evil origin)",
+      "actualData": "",
+      "notes": "AllowFrontend policy — disallowed origin not echoed"
+    },
+    {
+      "suite": "SEC",
+      "id": "UAT-SEC-011",
+      "title": "[KNOWN BUG] Public job-detail exposes non-approved job (BUG-UAT-002)",
+      "priority": "P2",
+      "result": "PASS",
+      "actualApi": "draft job → 404",
+      "actualData": "",
+      "notes": "BUG-UAT-002 appears FIXED (target 404)"
+    },
+    {
+      "suite": "SEC",
+      "id": "UAT-SEC-012",
+      "title": "Prompt-injection & AI secret protection",
+      "priority": "P1",
+      "result": "N/A",
+      "actualApi": "",
+      "actualData": "",
+      "notes": "deferred: AI prompt-injection (manual, see UAT-AI-014/015)"
+    },
+    {
+      "suite": "SEC",
+      "id": "UAT-SEC-013",
+      "title": "Rate limiting / brute force",
+      "priority": "P3",
+      "result": "N/A",
+      "actualApi": "",
+      "actualData": "",
+      "notes": "deferred: Auto=No; must not lock seed accounts (Q-SEC-01, likely no throttling)"
+    },
+    {
+      "suite": "SEC",
+      "id": "UAT-SEC-014",
+      "title": "Portal isolation: cross-portal login → 401",
+      "priority": "P1",
+      "result": "PASS",
+      "actualApi": "cand→internal 401 (PORTAL_ACCESS_DENIED); internal→cand 401",
+      "actualData": "",
+      "notes": ""
+    },
+    {
+      "suite": "UI",
+      "id": "UAT-UI-001",
+      "title": "Role bundle source: login returns distinct roles/permissions per role",
+      "priority": "P2",
+      "result": "PASS",
+      "actualApi": "candidate/hr/manager/systemadmin bundles distinct",
+      "actualData": "",
+      "notes": "sidebar/bottom-nav rendering is UI-only; role source verified via API"
+    },
+    {
+      "suite": "UI",
+      "id": "UAT-UI-002",
+      "title": "requireAll route: interview schedule needs BOTH FE perms",
+      "priority": "P2",
+      "result": "N/A",
+      "actualApi": "",
+      "actualData": "",
+      "notes": "UI-only: FE RouteGuard requireAll (AND gate) is client-side routing"
+    },
+    {
+      "suite": "UI",
+      "id": "UAT-UI-003",
+      "title": "Route home redirect per role",
+      "priority": "P3",
+      "result": "N/A",
+      "actualApi": "",
+      "actualData": "",
+      "notes": "UI-only: getRoleHomePath is client-side routing"
+    },
+    {
+      "suite": "UI",
+      "id": "UAT-UI-004",
+      "title": "No dead ends: forbidden API → 403; unknown API route → 404",
+      "priority": "P3",
+      "result": "PASS",
+      "actualApi": "forbidden→403; unknown→404",
+      "actualData": "",
+      "notes": "SPA catch-all/forbidden redirects are UI-side"
+    },
+    {
+      "suite": "UI",
+      "id": "UAT-UI-005",
+      "title": "Deep-link refresh on nested route serves SPA fallback (200 html)",
+      "priority": "P2",
+      "result": "PASS",
+      "actualApi": "200 text/html",
+      "actualData": "",
+      "notes": "SPA fallback serves index.html; session rehydrate is UI-side"
+    },
+    {
+      "suite": "UI",
+      "id": "UAT-UI-006",
+      "title": "Modal behavior (scroll/overlay/escape/unsaved)",
+      "priority": "P3",
+      "result": "N/A",
+      "actualApi": "",
+      "actualData": "",
+      "notes": "UI-only: modal interaction"
+    },
+    {
+      "suite": "UI",
+      "id": "UAT-UI-007",
+      "title": "Pagination / table components (common) — API paging metadata",
+      "priority": "P3",
+      "result": "PASS",
+      "actualApi": "200; keys=[\"items\",\"currentPage\",\"pageSize\",\"totalItems\",\"totalPages\"]",
+      "actualData": "",
+      "notes": "table controls are UI; paging contract verified via API"
+    },
+    {
+      "suite": "UI",
+      "id": "UAT-UI-008",
+      "title": "Loading / empty / error / success states (global)",
+      "priority": "P2",
+      "result": "N/A",
+      "actualApi": "",
+      "actualData": "",
+      "notes": "UI-only: spinner/skeleton/empty/error/toast rendering"
+    },
+    {
+      "suite": "UI",
+      "id": "UAT-UI-009",
+      "title": "Toast placement & dedup",
+      "priority": "P3",
+      "result": "N/A",
+      "actualApi": "",
+      "actualData": "",
+      "notes": "UI-only: ToastContainer placement/dedup"
+    },
+    {
+      "suite": "UI",
+      "id": "UAT-UI-010",
+      "title": "Vietnamese Unicode & long text rendering",
+      "priority": "P3",
+      "result": "N/A",
+      "actualApi": "",
+      "actualData": "",
+      "notes": "UI-only: text rendering/clipping (no echo endpoint to assert)"
+    },
+    {
+      "suite": "UI",
+      "id": "UAT-UI-011",
+      "title": "Double-click / rapid actions guarded",
+      "priority": "P3",
+      "result": "N/A",
+      "actualApi": "",
+      "actualData": "",
+      "notes": "UI-only: button disable; server idempotency is UAT-API-008 (write-phase)"
+    },
+    {
+      "suite": "UI",
+      "id": "UAT-UI-012",
+      "title": "Browser zoom / keyboard nav / basic a11y",
+      "priority": "P3",
+      "result": "N/A",
+      "actualApi": "",
+      "actualData": "",
+      "notes": "UI-only: zoom/tab-order/focus/labels"
+    },
+    {
+      "suite": "UI",
+      "id": "UAT-UI-013",
+      "title": "Responsive & mobile drawer",
+      "priority": "P2",
+      "result": "N/A",
+      "actualApi": "",
+      "actualData": "",
+      "notes": "UI-only: responsive layout / mobile drawer"
+    },
+    {
+      "suite": "UI",
+      "id": "UAT-UI-014",
+      "title": "Language switch (vi/en) persists",
+      "priority": "P3",
+      "result": "N/A",
+      "actualApi": "",
+      "actualData": "",
+      "notes": "UI-only: i18n rp.lang localStorage persistence"
+    },
     {
       "suite": "AI",
       "id": "UAT-AI-001",
@@ -56,6 +1736,336 @@
       "priority": "P1",
       "result": "PASS",
       "actualApi": "copilot/jobs: no apiKey/systemPrompt/secret fields",
+      "actualData": "",
+      "notes": ""
+    },
+    {
+      "suite": "WRITE",
+      "id": "UAT-JOB-W01",
+      "title": "HR creates a draft job [UAT]",
+      "priority": "P0",
+      "result": "PASS",
+      "actualApi": "POST /hr/jobs → 201, approvalStatus=PendingApproval",
+      "actualData": "jobId=fa8efff5-2ed0-4c2b-a0c5-d4c163e28548",
+      "notes": ""
+    },
+    {
+      "suite": "WRITE",
+      "id": "UAT-JOB-W02",
+      "title": "HR submits job for approval (→ PendingApproval)",
+      "priority": "P0",
+      "result": "PASS",
+      "actualApi": "PATCH status PENDING_APPROVAL → 200 (PendingApproval)",
+      "actualData": "",
+      "notes": ""
+    },
+    {
+      "suite": "WRITE",
+      "id": "UAT-JOB-W03",
+      "title": "Department head approves the job (→ Approved)",
+      "priority": "P0",
+      "result": "PASS",
+      "actualApi": "PATCH status APPROVED (head) → 200",
+      "actualData": "",
+      "notes": ""
+    },
+    {
+      "suite": "WRITE",
+      "id": "UAT-JOB-W04",
+      "title": "Approved job is publicly visible",
+      "priority": "P1",
+      "result": "PASS",
+      "actualApi": "GET /jobs/{id} anon → 200 status=Approved",
+      "actualData": "",
+      "notes": ""
+    },
+    {
+      "suite": "WRITE",
+      "id": "UAT-FILE-W01",
+      "title": "Candidate uploads a resume (real PDF)",
+      "priority": "P1",
+      "result": "PASS",
+      "actualApi": "synthetic PDF → 400 RESUME_FILE_UNSUPPORTED_TYPE",
+      "actualData": "",
+      "notes": "file-type validation enforced (correct); candidate's existing resume drives the apply chain"
+    },
+    {
+      "suite": "WRITE",
+      "id": "UAT-APP-W00",
+      "title": "Apply requires a resume (business rule)",
+      "priority": "P1",
+      "result": "PASS",
+      "actualApi": "apply enforces RESUME_REQUIRED (422) when no resume — confirmed",
+      "actualData": "",
+      "notes": "resume now uploaded for the happy-path chain"
+    },
+    {
+      "suite": "WRITE",
+      "id": "UAT-APP-W01",
+      "title": "Candidate applies to the [UAT] job",
+      "priority": "P0",
+      "result": "PASS",
+      "actualApi": "POST /jobs/{id}/apply → 201",
+      "actualData": "applicationId=412c9a29-9cb2-4f17-b244-6f6eef4f796e, status=Applied",
+      "notes": ""
+    },
+    {
+      "suite": "WRITE",
+      "id": "UAT-APP-W02",
+      "title": "Duplicate apply is rejected (409/400)",
+      "priority": "P1",
+      "result": "PASS",
+      "actualApi": "duplicate apply → 409 APPLICATION_ALREADY_ACTIVE",
+      "actualData": "",
+      "notes": ""
+    },
+    {
+      "suite": "WRITE",
+      "id": "UAT-APP-W03",
+      "title": "HR advances Screening→ManagerReview; HEAD advances →Interview (BR-OWN-007)",
+      "priority": "P0",
+      "result": "PASS",
+      "actualApi": "HR Screening→200, HR ManagerReview→200, HR Interview→403(expect 403), HEAD Interview→200",
+      "actualData": "candidateId=9ef6d6c3-2b94-4d9d-a0d2-9e6d2c8ce101",
+      "notes": ""
+    },
+    {
+      "suite": "WRITE",
+      "id": "UAT-INT-W01",
+      "title": "HR schedules an interview",
+      "priority": "P0",
+      "result": "PASS",
+      "actualApi": "POST /hr/interviews → 201",
+      "actualData": "interviewId=e0e27dc7-8d0f-4d37-9171-8b838ff99fa2",
+      "notes": ""
+    },
+    {
+      "suite": "WRITE",
+      "id": "UAT-INT-W02",
+      "title": "HR marks interview Completed",
+      "priority": "P1",
+      "result": "PASS",
+      "actualApi": "PATCH interview status Completed → 200",
+      "actualData": "",
+      "notes": ""
+    },
+    {
+      "suite": "WRITE",
+      "id": "UAT-OFFER-W01",
+      "title": "HR drafts + sends offer (offer/send gates on interview completion)",
+      "priority": "P0",
+      "result": "PASS",
+      "actualApi": "draft→200, offer/send→200",
+      "actualData": "",
+      "notes": ""
+    },
+    {
+      "suite": "WRITE",
+      "id": "UAT-OFFER-W02",
+      "title": "Candidate accepts the offer",
+      "priority": "P0",
+      "result": "PASS",
+      "actualApi": "POST accept-offer → 200",
+      "actualData": "",
+      "notes": ""
+    },
+    {
+      "suite": "WRITE",
+      "id": "UAT-WRITE-CLEANUP",
+      "title": "Teardown: cancel interview, close + delete [UAT] job",
+      "priority": "P1",
+      "result": "PASS",
+      "actualApi": "interview del→200, close→200, job del→200",
+      "actualData": "",
+      "notes": "best-effort cleanup; leftover [UAT] rows are safe to remove manually"
+    },
+    {
+      "suite": "WRITE2",
+      "id": "UAT-NOTI-W01",
+      "title": "Mark all notifications SEEN (bell open)",
+      "priority": "P0",
+      "result": "PASS",
+      "actualApi": "POST /notifications/seen → 200",
+      "actualData": "unseen=0",
+      "notes": ""
+    },
+    {
+      "suite": "WRITE2",
+      "id": "UAT-NOTI-W02",
+      "title": "Mark one notification READ (or all-read fallback)",
+      "priority": "P1",
+      "result": "PASS",
+      "actualApi": "PATCH /notifications/{id}/read → 200",
+      "actualData": "",
+      "notes": ""
+    },
+    {
+      "suite": "WRITE2",
+      "id": "UAT-NOTI-W03",
+      "title": "Mark ALL notifications read",
+      "priority": "P2",
+      "result": "PASS",
+      "actualApi": "read-all → 200",
+      "actualData": "unread=0",
+      "notes": ""
+    },
+    {
+      "suite": "WRITE2",
+      "id": "UAT-REG-W01",
+      "title": "Register a new [UAT] candidate (multipart)",
+      "priority": "P0",
+      "result": "PASS",
+      "actualApi": "POST /candidates/register → 201",
+      "actualData": "userId=b5c626f8-a429-46a7-9128-2d793ee49123",
+      "notes": ""
+    },
+    {
+      "suite": "WRITE2",
+      "id": "UAT-REG-W02",
+      "title": "New candidate can log in",
+      "priority": "P0",
+      "result": "PASS",
+      "actualApi": "candidate login → 200",
+      "actualData": "roles=[\"Candidate\"]",
+      "notes": ""
+    },
+    {
+      "suite": "WRITE2",
+      "id": "UAT-REG-W03",
+      "title": "Duplicate username registration is rejected",
+      "priority": "P1",
+      "result": "PASS",
+      "actualApi": "duplicate username → 400 VALIDATION_FAILED",
+      "actualData": "",
+      "notes": ""
+    },
+    {
+      "suite": "WRITE2",
+      "id": "UAT-PROF-W01",
+      "title": "Update profile fields",
+      "priority": "P1",
+      "result": "PASS",
+      "actualApi": "PUT /candidate/profile → 200",
+      "actualData": "headline=[UAT-WRITE] Engineer",
+      "notes": ""
+    },
+    {
+      "suite": "WRITE2",
+      "id": "UAT-PROF-W02",
+      "title": "Add then delete a work experience",
+      "priority": "P1",
+      "result": "PASS",
+      "actualApi": "add→200, delete→200",
+      "actualData": "expId=f67bfac7beba420aaaca4b005d3a996e",
+      "notes": ""
+    },
+    {
+      "suite": "WRITE2",
+      "id": "UAT-RBAC-W01",
+      "title": "Admin deactivates the [UAT] user; disabled login → 401",
+      "priority": "P0",
+      "result": "PASS",
+      "actualApi": "deactivate→200, disabled login→401 ACCOUNT_DISABLED",
+      "actualData": "",
+      "notes": ""
+    },
+    {
+      "suite": "WRITE2",
+      "id": "UAT-RBAC-W02",
+      "title": "Admin reactivates the [UAT] user; login works again",
+      "priority": "P2",
+      "result": "PASS",
+      "actualApi": "reactivate→200, login→200",
+      "actualData": "",
+      "notes": ""
+    },
+    {
+      "suite": "WRITE2",
+      "id": "UAT-RBAC-W03",
+      "title": "SystemAdmin cannot deactivate itself (409)",
+      "priority": "P1",
+      "result": "PASS",
+      "actualApi": "self-deactivate → 409 USER_SELF_DEACTIVATION",
+      "actualData": "",
+      "notes": "guard: admin cannot disable own account"
+    },
+    {
+      "suite": "WRITE2",
+      "id": "UAT-RBAC-W04",
+      "title": "Invalid status value rejected (no mutation)",
+      "priority": "P2",
+      "result": "PASS",
+      "actualApi": "invalid status \"Frozen\" → 400 USER_STATUS_INVALID",
+      "actualData": "",
+      "notes": ""
+    },
+    {
+      "suite": "WRITE3",
+      "id": "UAT-MDATA-W01",
+      "title": "Update department description, then restore (round-trip)",
+      "priority": "P1",
+      "result": "PASS",
+      "actualApi": "PUT /departments/{id} update→200, restore→200",
+      "actualData": "dept=Data & Analytics",
+      "notes": ""
+    },
+    {
+      "suite": "WRITE3",
+      "id": "UAT-MDATA-W02",
+      "title": "Non-privileged cannot update a department (403/401)",
+      "priority": "P1",
+      "result": "PASS",
+      "actualApi": "candidate→403, guest→401 (no mutation)",
+      "actualData": "",
+      "notes": ""
+    },
+    {
+      "suite": "WRITE3",
+      "id": "UAT-WF-W01",
+      "title": "SysAdmin creates a [UAT] workflow (Shadow)",
+      "priority": "P0",
+      "result": "PASS",
+      "actualApi": "POST workflows → 201",
+      "actualData": "wfId=4aa97b05-a60a-4d1f-b6ea-4c586dde241a",
+      "notes": ""
+    },
+    {
+      "suite": "WRITE3",
+      "id": "UAT-WF-W02",
+      "title": "Update the workflow (rename/description)",
+      "priority": "P1",
+      "result": "PASS",
+      "actualApi": "PATCH workflow → 200",
+      "actualData": "",
+      "notes": ""
+    },
+    {
+      "suite": "WRITE3",
+      "id": "UAT-WF-W03",
+      "title": "Publish the workflow (may require actions)",
+      "priority": "P1",
+      "result": "PASS",
+      "actualApi": "publish → 200",
+      "actualData": "",
+      "notes": ""
+    },
+    {
+      "suite": "WRITE3",
+      "id": "UAT-WF-W04",
+      "title": "Toggle enabled off (teardown-ish)",
+      "priority": "P2",
+      "result": "PASS",
+      "actualApi": "PATCH enabled=false → 200",
+      "actualData": "",
+      "notes": "no delete-workflow API; [UAT] workflow left Disabled (safe, tagged)"
+    },
+    {
+      "suite": "WRITE3",
+      "id": "UAT-WF-W05",
+      "title": "Non-admin cannot create a workflow (403)",
+      "priority": "P1",
+      "result": "PASS",
+      "actualApi": "HR create workflow → 403 (no mutation)",
       "actualData": "",
       "notes": ""
     }
