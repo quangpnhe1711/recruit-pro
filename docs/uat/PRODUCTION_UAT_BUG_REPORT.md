@@ -303,6 +303,63 @@ Add at the nginx/edge layer: `Strict-Transport-Security: max-age=63072000; inclu
 `X-Frame-Options: DENY` (or CSP `frame-ancestors 'none'`), `X-Content-Type-Options: nosniff`,
 a baseline `Content-Security-Policy`, `Referrer-Policy: strict-origin-when-cross-origin`, and `server_tokens off`.
 
+### BUG-UAT-005 (BUG-STG-001): Negative/zero pagination crashes with HTTP 500
+
+- **Severity:** Medium
+- **Priority:** P2
+- **Module:** HR applications list (paged query) — likely shared paging helper
+- **Reproducibility:** 100%
+- **Status:** OPEN
+- **Found:** automated re-run 2026-07-14 (`docs/uat/runner`, case UAT-API-007)
+
+#### Steps to reproduce
+1. Log in `thucuyen` (HR), capture access token.
+2. `GET /api/hr/applications?page=-1&pageSize=0` with the token.
+
+#### Expected result
+Out-of-range paging is clamped to valid bounds → `200` (empty/first page), or rejected with
+`400 VALIDATION_FAILED`.
+
+#### Actual result
+`500 SERVER_ERROR` — the request crashes.
+
+#### API evidence
+```
+GET /api/hr/applications?page=-1&pageSize=0  → 500
+{"success":false,"statusCode":500,"errorCode":"SERVER_ERROR",
+ "error":{"type":"SERVER_ERROR","traceId":"00-74474807eb9a5bf41d700963bde4e003-2c444035c9c2cd1f-00"}}
+```
+(Well-formed boundaries pass: `?page=1&pageSize=5`, `?page=99999&pageSize=10`, and a bogus
+`?sortBy=__bogus__&sortDir=sideways` all return `200`.)
+
+#### Impact
+A crafted or malformed pagination query returns a 500 (poor UX + noise in logs; low-effort DoS surface).
+No data leak observed.
+
+#### Suspected cause
+Unguarded `Skip((page-1)*pageSize)` / `Take(0)` (or a divide/`EF` translation on `pageSize=0`) in the
+paged query. A single lower-bound clamp (`page = max(1,page)`, `pageSize ∈ [1..max]`) at the shared
+paging boundary fixes this and every other paged list at once.
+
+#### Recommendation
+Clamp paging inputs in the shared list helper; add a boundary test. Audit other paged endpoints for the
+same guard (only `/hr/applications` was probed here).
+
+---
+
+### Re-test addendum (automated re-run, 2026-07-14/15)
+
+An automated API+lifecycle re-run (`docs/uat/runner`, 206 cases) against the same environment found:
+- **BUG-UAT-001 (auth session): appears RESOLVED** — refresh-token rotation + reuse-rejection work, and
+  protected routes reject missing/garbage bearers. (Session persistence is a client-storage concern;
+  API-side session lifecycle is correct.)
+- **BUG-UAT-002 (draft/pending job exposure): appears RESOLVED** — anonymous & candidate job-detail for
+  Draft/PendingApproval now returns `404`.
+- **BUG-UAT-004: still OPEN** (headers/version) — see above.
+- **BUG-UAT-003 (AI discovery):** not re-verified end-to-end (generative AI deferred — see
+  `runner/MANUAL-CHECKLIST.md`); AI permission/IDOR/negative gates pass.
+- **New:** BUG-UAT-005 above.
+
 ## 9. Blocked Tests
 
 | Test | Reason | Dependency |
