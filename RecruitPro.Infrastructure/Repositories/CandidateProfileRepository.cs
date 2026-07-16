@@ -156,7 +156,9 @@ namespace RecruitPro.Infrastructure.Repositories
                 .Include(profile => profile.Sections.OrderBy(section => section.DisplayOrder))
                     .ThenInclude(section => section.Items.OrderBy(item => item.DisplayOrder))
                 .Where(profile =>
-                    !string.IsNullOrWhiteSpace(profile.CandidateEmbeddingVectorJson)
+                    // candidate_embedding_vector is jsonb — IsNullOrWhiteSpace would emit btrim(jsonb)
+                    // which Postgres has no overload for (42883). A null check is the valid jsonb test.
+                    profile.CandidateEmbeddingVectorJson != null
                     || !string.IsNullOrWhiteSpace(profile.CurrentPosition)
                     || !string.IsNullOrWhiteSpace(profile.Bio)
                     || profile.CandidateSkills.Any())

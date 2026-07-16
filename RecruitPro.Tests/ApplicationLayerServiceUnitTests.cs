@@ -174,7 +174,7 @@ public sealed class AuthServiceUnitTests
 
         userRepository.Setup(repository => repository.GetByUsernameAsync(user.Username)).ReturnsAsync(user);
         jwtService.Setup(service => service.GenerateAccessToken(user)).Returns("access-token");
-        jwtService.Setup(service => service.CreateRefreshToken()).Returns(("raw-refresh", "refresh-hash"));
+        jwtService.Setup(service => service.CreateRefreshToken(user)).Returns(("raw-refresh", "refresh-hash"));
 
         var service = new AuthService(
             userRepository.Object,

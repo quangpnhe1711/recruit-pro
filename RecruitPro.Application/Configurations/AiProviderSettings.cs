@@ -5,7 +5,7 @@ public class AiProviderSettings
     public string ApiKey { get; set; } = string.Empty;
     public string BaseUrl { get; set; } = "https://generativelanguage.googleapis.com/v1beta/openai";
     public string Model { get; set; } = "gemini-2.5-flash-lite";
-    public string EmbeddingModel { get; set; } = "text-embedding-004";
+    public string EmbeddingModel { get; set; } = "gemini-embedding-001";
     public int MaxCandidatesForAi { get; set; } = 50;
     public int MaxResumeCharsPerCandidate { get; set; } = 6000;
     public int MaxResumeParseChars { get; set; } = 12000;
