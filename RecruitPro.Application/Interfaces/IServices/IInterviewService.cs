@@ -11,4 +11,7 @@ public interface IInterviewService
     Task<ApiResponse<InterviewCreatedResponseDto>> CreateInterviewAsync(CreateInterviewRequest request);
     Task<ApiResponse<string>> UpdateInterviewStatusAsync(string interviewId, UpdateInterviewStatusRequest request);
     Task<ApiResponse<string>> DeleteInterviewAsync(string interviewId);
+    Task<ApiResponse<string>> ConfirmCandidateInterviewAsync(string interviewId, Guid userId);
+    Task<ApiResponse<InterviewEvaluationDto>> GetInterviewEvaluationAsync(string interviewId);
+    Task<ApiResponse<InterviewEvaluationDto>> UpsertInterviewEvaluationAsync(string interviewId, Guid? evaluatorId, UpsertInterviewEvaluationRequest request);
 }

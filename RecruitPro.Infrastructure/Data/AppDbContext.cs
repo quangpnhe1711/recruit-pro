@@ -59,6 +59,8 @@ public partial class AppDbContext : DbContext
 
     public virtual DbSet<Interview> Interviews { get; set; }
 
+    public virtual DbSet<InterviewEvaluation> InterviewEvaluations { get; set; }
+
     public virtual DbSet<Job> Jobs { get; set; }
 
     public virtual DbSet<JobSkill> JobSkills { get; set; }
@@ -758,10 +760,56 @@ public partial class AppDbContext : DbContext
                 .HasMaxLength(50)
                 .HasColumnType("character varying(50)")
                 .HasColumnName("status");
+            entity.Property(e => e.CandidateConfirmedAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("candidate_confirmed_at");
 
             entity.HasOne(d => d.Application).WithMany(p => p.Interviews)
                 .HasForeignKey(d => d.ApplicationId)
                 .HasConstraintName("interviews_application_id_fkey");
+        });
+
+        modelBuilder.Entity<InterviewEvaluation>(entity =>
+        {
+            entity.HasKey(e => e.Id).HasName("interview_evaluations_pkey");
+
+            entity.ToTable("interview_evaluations");
+
+            entity.HasIndex(e => e.InterviewId, "interview_evaluations_interview_id_key").IsUnique();
+
+            entity.Property(e => e.Id)
+                .HasDefaultValueSql("gen_random_uuid()")
+                .HasColumnName("id");
+            entity.Property(e => e.InterviewId).HasColumnName("interview_id");
+            entity.Property(e => e.EvaluatorId).HasColumnName("evaluator_id");
+            entity.Property(e => e.TechnicalScore).HasColumnName("technical_score");
+            entity.Property(e => e.CommunicationScore).HasColumnName("communication_score");
+            entity.Property(e => e.ProblemSolvingScore).HasColumnName("problem_solving_score");
+            entity.Property(e => e.CultureFitScore).HasColumnName("culture_fit_score");
+            entity.Property(e => e.OverallScore).HasColumnName("overall_score");
+            entity.Property(e => e.Recommendation)
+                .HasConversion<string>()
+                .HasMaxLength(50)
+                .HasColumnType("character varying(50)")
+                .HasColumnName("recommendation");
+            entity.Property(e => e.Strengths).HasColumnName("strengths");
+            entity.Property(e => e.Concerns).HasColumnName("concerns");
+            entity.Property(e => e.Notes).HasColumnName("notes");
+            entity.Property(e => e.CreatedAt)
+                .HasDefaultValueSql("now()")
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("created_at");
+            entity.Property(e => e.UpdatedAt)
+                .HasColumnType("timestamp without time zone")
+                .HasColumnName("updated_at");
+
+            entity.HasOne(d => d.Interview).WithOne(p => p.Evaluation)
+                .HasForeignKey<InterviewEvaluation>(d => d.InterviewId)
+                .HasConstraintName("interview_evaluations_interview_id_fkey");
+
+            entity.HasOne(d => d.Evaluator).WithMany()
+                .HasForeignKey(d => d.EvaluatorId)
+                .HasConstraintName("interview_evaluations_evaluator_id_fkey");
         });
 
         modelBuilder.Entity<Job>(entity =>

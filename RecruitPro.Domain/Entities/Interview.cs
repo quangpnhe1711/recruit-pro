@@ -22,5 +22,11 @@ public partial class Interview
 
     public InterviewStatus? Status { get; set; }
 
+    // Candidate attendance confirmation (interview:confirm-own). Null = not confirmed yet.
+    public DateTime? CandidateConfirmedAt { get; set; }
+
     public virtual Application Application { get; set; } = null!;
+
+    // Post-interview scorecard (one per interview, internal to HR/Manager).
+    public virtual InterviewEvaluation? Evaluation { get; set; }
 }

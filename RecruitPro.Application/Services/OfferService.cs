@@ -73,6 +73,59 @@ public class OfferService : IOfferService
     }
 
     /// <summary>
+    /// Retrieves the offer for the owning candidate (read-only). Draft offers are internal HR
+    /// working state and are reported as not-found; the candidate only ever sees an offer once
+    /// it has been sent (BR-APPLICATION-009 / INV-009).
+    /// </summary>
+    /// <param name="applicationId">The <paramref name="applicationId"/> value.</param>
+    /// <param name="callerUserId">The <paramref name="callerUserId"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
+    public async Task<ApiResponse<CandidateOfferViewDto>> GetCandidateOfferAsync(string applicationId, Guid? callerUserId)
+    {
+        Domain.Entities.Application? application = await GetApplicationAsync(applicationId);
+        if (application == null)
+        {
+            return ApiResponse<CandidateOfferViewDto>.NotFound(ErrorCodes.ApplicationNotFound);
+        }
+
+        // Ownership: only the candidate who owns the application may view its offer.
+        if (!callerUserId.HasValue || application.UserId != callerUserId.Value)
+        {
+            return ApiResponse<CandidateOfferViewDto>.Forbidden(ErrorCodes.Forbidden);
+        }
+
+        ApplicationOffer? offer = await _offerRepository.GetByApplicationIdAsync(application.Id);
+        if (offer == null || offer.Status == OfferStatus.Draft)
+        {
+            return ApiResponse<CandidateOfferViewDto>.NotFound(ErrorCodes.OfferNotFound);
+        }
+
+        return ApiResponse<CandidateOfferViewDto>.Ok(new CandidateOfferViewDto
+        {
+            ApplicationId = application.Id.ToString(),
+            JobTitle = application.Job.Title,
+            DepartmentName = application.Job.Department?.Name ?? "RecruitPro",
+            Status = offer.Status.ToString(),
+            BaseSalary = offer.BaseSalary,
+            CurrencyCode = offer.CurrencyCode,
+            CurrencySymbol = offer.Currency?.Symbol,
+            BonusDescription = offer.BonusDescription,
+            EquityNotes = offer.EquityNotes,
+            EmploymentType = offer.EmploymentType,
+            ProposedStartDate = offer.ProposedStartDate,
+            ProbationPeriod = offer.ProbationPeriod,
+            ReportingManagerName = offer.ReportingManagerNavigation?.FullName,
+            PersonalMessage = offer.PersonalMessage,
+            Benefits = offer.ApplicationOfferBenefits
+                .Select(link => link.Benefit?.Name)
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .Select(name => name!)
+                .ToList(),
+            SentAt = offer.SentAt
+        });
+    }
+
+    /// <summary>
     /// Saves draft.
     /// </summary>
     /// <param name="applicationId">The <paramref name="applicationId"/> value.</param>

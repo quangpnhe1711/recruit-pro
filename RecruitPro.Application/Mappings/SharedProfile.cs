@@ -93,7 +93,11 @@ public class SharedProfile : Profile
             TimeLabel = $"{src.InterviewDate:HH:mm} - {src.InterviewDate.AddHours(1):HH:mm}",
             StartAt = src.InterviewDate,
             EndAt = src.InterviewDate.AddHours(1),
-            Status = (src.Status ?? InterviewStatus.Scheduled).ToString()
+            Status = (src.Status ?? InterviewStatus.Scheduled).ToString(),
+            MeetingType = src.MeetingType.HasValue ? src.MeetingType.Value.ToString() : string.Empty,
+            MeetingLink = src.MeetingLink,
+            Location = src.Location,
+            CandidateConfirmedAt = src.CandidateConfirmedAt
         });
 
         // Ranking with custom criteria maps the inbound request criteria onto the normalized rule DTO.

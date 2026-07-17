@@ -13,4 +13,7 @@ public interface IInterviewRepository
     Task<Interview?> GetTrackedByIdAsync(Guid interviewId);
     Task AddAsync(Interview interview);
     Task DeleteAsync(Interview interview);
+    Task<InterviewEvaluation?> GetEvaluationByInterviewIdAsync(Guid interviewId);
+    Task<InterviewEvaluation?> GetTrackedEvaluationByInterviewIdAsync(Guid interviewId);
+    Task AddEvaluationAsync(InterviewEvaluation evaluation);
 }

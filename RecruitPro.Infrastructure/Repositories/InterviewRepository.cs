@@ -134,6 +134,25 @@ public class InterviewRepository : IInterviewRepository
         return Task.CompletedTask;
     }
 
+    public Task<InterviewEvaluation?> GetEvaluationByInterviewIdAsync(Guid interviewId)
+    {
+        return _context.InterviewEvaluations
+            .AsNoTracking()
+            .Include(evaluation => evaluation.Evaluator)
+            .FirstOrDefaultAsync(evaluation => evaluation.InterviewId == interviewId);
+    }
+
+    public Task<InterviewEvaluation?> GetTrackedEvaluationByInterviewIdAsync(Guid interviewId)
+    {
+        return _context.InterviewEvaluations
+            .FirstOrDefaultAsync(evaluation => evaluation.InterviewId == interviewId);
+    }
+
+    public async Task AddEvaluationAsync(InterviewEvaluation evaluation)
+    {
+        await _context.InterviewEvaluations.AddAsync(evaluation);
+    }
+
     private IQueryable<Interview> BuildInterviewQuery()
     {
         return _context.Interviews
@@ -143,6 +162,9 @@ public class InterviewRepository : IInterviewRepository
                     .ThenInclude(user => user.CandidateProfile)
             .Include(interview => interview.Application)
                 .ThenInclude(application => application.Job)
-                    .ThenInclude(job => job.Department);
+                    .ThenInclude(job => job.Department)
+            // Internal HR list surfaces the scorecard summary; the candidate list never loads this
+            // include (it goes through ApplicationRepository), so evaluations stay internal.
+            .Include(interview => interview.Evaluation);
     }
 }

@@ -65,9 +65,23 @@ public class InterviewService : IInterviewService
         Guid scopeUserId = OwnershipScope.ResolveInterviewListScopeUserId(callerUserId);
         (IReadOnlyList<Interview> interviews, int total) = await _interviewRepository.GetPagedAsync(page, pageSize, keyword, parsedStatus, startDate, endDate, scopeUserId);
 
+        List<InterviewListItemDto> items = _mapper.Map<List<InterviewListItemDto>>(interviews);
+
+        // Scorecard summary is internal-only: it is enriched here (HR/Manager list) instead of in the
+        // shared AutoMapper profile so the candidate list can never leak evaluation data.
+        for (int index = 0; index < interviews.Count; index++)
+        {
+            InterviewEvaluation? evaluation = interviews[index].Evaluation;
+            if (evaluation != null)
+            {
+                items[index].EvaluationOverallScore = evaluation.OverallScore;
+                items[index].EvaluationRecommendation = evaluation.Recommendation.ToString();
+            }
+        }
+
         return ApiResponse<InterviewListResponseDto>.Ok(new InterviewListResponseDto
         {
-            Items = _mapper.Map<List<InterviewListItemDto>>(interviews),
+            Items = items,
             Meta = PaginationMetaBuilder.Build(page, pageSize, total)
         });
     }
@@ -348,6 +362,175 @@ public class InterviewService : IInterviewService
         }
 
         return ApiResponse<string>.Ok("Cập nhật trạng thái phỏng vấn thành công");
+    }
+
+    /// <summary>
+    /// Records the candidate's attendance confirmation for their own Scheduled interview
+    /// (interview:confirm-own). Idempotent: confirming an already-confirmed interview succeeds
+    /// without changing the original confirmation time.
+    /// </summary>
+    /// <param name="interviewId">The <paramref name="interviewId"/> value.</param>
+    /// <param name="userId">The <paramref name="userId"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
+    public async Task<ApiResponse<string>> ConfirmCandidateInterviewAsync(string interviewId, Guid userId)
+    {
+        if (!Guid.TryParse(interviewId, out Guid interviewGuid))
+        {
+            return ApiResponse<string>.NotFound(ErrorCodes.InterviewNotFound);
+        }
+
+        Interview? interview = await _interviewRepository.GetTrackedByIdAsync(interviewGuid);
+        if (interview == null)
+        {
+            return ApiResponse<string>.NotFound(ErrorCodes.InterviewNotFound);
+        }
+
+        // Ownership: only the candidate who owns the underlying application may confirm.
+        Domain.Entities.Application? application = await _applicationRepository.GetByIdAsync(interview.ApplicationId);
+        if (application == null || application.UserId != userId)
+        {
+            return ApiResponse<string>.Forbidden(ErrorCodes.Forbidden);
+        }
+
+        // Only a Scheduled interview is confirmable; Completed/Canceled are terminal for attendance.
+        if ((interview.Status ?? InterviewStatus.Scheduled) != InterviewStatus.Scheduled)
+        {
+            return ApiResponse<string>.UnprocessableEntity(ErrorCodes.InterviewNotActionable);
+        }
+
+        if (interview.CandidateConfirmedAt == null)
+        {
+            interview.CandidateConfirmedAt = DbDateTime.Now;
+            await _unitOfWork.SaveChangesAsync();
+        }
+
+        return ApiResponse<string>.Ok("Đã xác nhận tham dự phỏng vấn.", "Đã xác nhận tham dự phỏng vấn.");
+    }
+
+    /// <summary>
+    /// Retrieves the post-interview scorecard for an interview (internal HR/Manager view).
+    /// </summary>
+    /// <param name="interviewId">The <paramref name="interviewId"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
+    public async Task<ApiResponse<InterviewEvaluationDto>> GetInterviewEvaluationAsync(string interviewId)
+    {
+        if (!Guid.TryParse(interviewId, out Guid interviewGuid))
+        {
+            return ApiResponse<InterviewEvaluationDto>.NotFound(ErrorCodes.InterviewNotFound);
+        }
+
+        InterviewEvaluation? evaluation = await _interviewRepository.GetEvaluationByInterviewIdAsync(interviewGuid);
+        if (evaluation == null)
+        {
+            return ApiResponse<InterviewEvaluationDto>.NotFound(ErrorCodes.EntityNotFound);
+        }
+
+        return ApiResponse<InterviewEvaluationDto>.Ok(BuildEvaluationDto(evaluation));
+    }
+
+    /// <summary>
+    /// Creates or updates the post-interview scorecard. Only a Completed interview can be
+    /// evaluated (the scorecard records what happened in the interview, so it gates on
+    /// completion the same way Interview → Offer does — BR-WF-005).
+    /// </summary>
+    /// <param name="interviewId">The <paramref name="interviewId"/> value.</param>
+    /// <param name="evaluatorId">The <paramref name="evaluatorId"/> value.</param>
+    /// <param name="request">The <paramref name="request"/> value.</param>
+    /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
+    public async Task<ApiResponse<InterviewEvaluationDto>> UpsertInterviewEvaluationAsync(string interviewId, Guid? evaluatorId, UpsertInterviewEvaluationRequest request)
+    {
+        if (!Guid.TryParse(interviewId, out Guid interviewGuid))
+        {
+            return ApiResponse<InterviewEvaluationDto>.NotFound(ErrorCodes.InterviewNotFound);
+        }
+
+        Interview? interview = await _interviewRepository.GetTrackedByIdAsync(interviewGuid);
+        if (interview == null)
+        {
+            return ApiResponse<InterviewEvaluationDto>.NotFound(ErrorCodes.InterviewNotFound);
+        }
+
+        if ((interview.Status ?? InterviewStatus.Scheduled) != InterviewStatus.Completed)
+        {
+            return ApiResponse<InterviewEvaluationDto>.UnprocessableEntity(ErrorCodes.InterviewNotActionable);
+        }
+
+        int[] criteriaScores =
+        [
+            request.TechnicalScore,
+            request.CommunicationScore,
+            request.ProblemSolvingScore,
+            request.CultureFitScore
+        ];
+        if (criteriaScores.Any(score => score < 1 || score > 5))
+        {
+            return ApiResponse<InterviewEvaluationDto>.BadRequest(ErrorCodes.InvalidInput);
+        }
+
+        if (!Enum.TryParse(request.Recommendation, ignoreCase: true, out InterviewRecommendation recommendation))
+        {
+            return ApiResponse<InterviewEvaluationDto>.BadRequest(ErrorCodes.InvalidInput);
+        }
+
+        InterviewEvaluation? evaluation = await _interviewRepository.GetTrackedEvaluationByInterviewIdAsync(interviewGuid);
+        bool isNew = evaluation == null;
+        evaluation ??= new InterviewEvaluation
+        {
+            Id = Guid.NewGuid(),
+            InterviewId = interviewGuid,
+            CreatedAt = DbDateTime.Now
+        };
+
+        evaluation.EvaluatorId = evaluatorId;
+        evaluation.TechnicalScore = request.TechnicalScore;
+        evaluation.CommunicationScore = request.CommunicationScore;
+        evaluation.ProblemSolvingScore = request.ProblemSolvingScore;
+        evaluation.CultureFitScore = request.CultureFitScore;
+        // 4 criteria x 1..5 → sum 4..20 → 0..100 scale.
+        evaluation.OverallScore = (int)Math.Round(criteriaScores.Sum() / 20.0 * 100.0);
+        evaluation.Recommendation = recommendation;
+        evaluation.Strengths = string.IsNullOrWhiteSpace(request.Strengths) ? null : request.Strengths.Trim();
+        evaluation.Concerns = string.IsNullOrWhiteSpace(request.Concerns) ? null : request.Concerns.Trim();
+        evaluation.Notes = string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes.Trim();
+        evaluation.UpdatedAt = DbDateTime.Now;
+
+        if (isNew)
+        {
+            await _interviewRepository.AddEvaluationAsync(evaluation);
+        }
+
+        await _unitOfWork.SaveChangesAsync();
+
+        InterviewEvaluation? savedEvaluation = await _interviewRepository.GetEvaluationByInterviewIdAsync(interviewGuid);
+        return ApiResponse<InterviewEvaluationDto>.Ok(
+            BuildEvaluationDto(savedEvaluation ?? evaluation),
+            "Đã lưu đánh giá phỏng vấn.");
+    }
+
+    /// <summary>
+    /// Builds the evaluation dto.
+    /// </summary>
+    /// <param name="evaluation">The <paramref name="evaluation"/> value.</param>
+    /// <returns>The operation result.</returns>
+    private static InterviewEvaluationDto BuildEvaluationDto(InterviewEvaluation evaluation)
+    {
+        return new InterviewEvaluationDto
+        {
+            InterviewId = evaluation.InterviewId.ToString(),
+            EvaluatorId = evaluation.EvaluatorId?.ToString(),
+            EvaluatorName = evaluation.Evaluator?.FullName,
+            TechnicalScore = evaluation.TechnicalScore,
+            CommunicationScore = evaluation.CommunicationScore,
+            ProblemSolvingScore = evaluation.ProblemSolvingScore,
+            CultureFitScore = evaluation.CultureFitScore,
+            OverallScore = evaluation.OverallScore,
+            Recommendation = evaluation.Recommendation.ToString(),
+            Strengths = evaluation.Strengths,
+            Concerns = evaluation.Concerns,
+            Notes = evaluation.Notes,
+            CreatedAt = evaluation.CreatedAt,
+            UpdatedAt = evaluation.UpdatedAt
+        };
     }
 
     /// <summary>

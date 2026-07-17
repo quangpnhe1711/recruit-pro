@@ -41,4 +41,15 @@ public class OfferController : ControllerBase
         var result = await _offerService.SendOfferAsync(applicationId, User.TryGetCurrentUserId(), User.GetRoles(), request);
         return StatusCode(result.StatusCode, result);
     }
+
+    // Candidate-facing, read-only offer view so the candidate can see the offer terms before
+    // accepting/declining. Ownership (application.UserId == caller) is enforced in the service;
+    // Draft offers are never exposed.
+    [HttpGet("api/candidate/applications/{applicationId}/offer")]
+    [Authorize(Roles = "Candidate")]
+    public async Task<IActionResult> GetCandidateOffer(string applicationId)
+    {
+        var result = await _offerService.GetCandidateOfferAsync(applicationId, User.TryGetCurrentUserId());
+        return StatusCode(result.StatusCode, result);
+    }
 }

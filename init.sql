@@ -212,7 +212,8 @@ CREATE TABLE public.interviews (
     meeting_link text,
     location text,
     notes text,
-    status character varying(50) DEFAULT 'Scheduled'
+    status character varying(50) DEFAULT 'Scheduled',
+    candidate_confirmed_at timestamp without time zone
 );
 
 
@@ -1774,6 +1775,33 @@ CREATE TABLE IF NOT EXISTS public.candidate_profile_section_items (
 );
 
 ALTER TABLE public.candidate_profile_section_items OWNER TO postgres;
+
+-- Scorecard đánh giá sau phỏng vấn: mỗi buổi phỏng vấn tối đa MỘT bản đánh giá.
+-- HR/Manager ghi nhận sau khi interview Completed (PUT /api/hr/interviews/{id}/evaluation).
+CREATE TABLE IF NOT EXISTS public.interview_evaluations (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    interview_id uuid NOT NULL,
+    evaluator_id uuid,
+    technical_score integer NOT NULL,
+    communication_score integer NOT NULL,
+    problem_solving_score integer NOT NULL,
+    culture_fit_score integer NOT NULL,
+    overall_score integer NOT NULL,
+    recommendation character varying(50) NOT NULL,
+    strengths text,
+    concerns text,
+    notes text,
+    created_at timestamp without time zone DEFAULT now(),
+    updated_at timestamp without time zone,
+    CONSTRAINT interview_evaluations_pkey PRIMARY KEY (id),
+    CONSTRAINT interview_evaluations_interview_id_key UNIQUE (interview_id),
+    CONSTRAINT interview_evaluations_interview_id_fkey FOREIGN KEY (interview_id)
+        REFERENCES public.interviews(id) ON DELETE CASCADE,
+    CONSTRAINT interview_evaluations_evaluator_id_fkey FOREIGN KEY (evaluator_id)
+        REFERENCES public.users(id)
+);
+
+ALTER TABLE public.interview_evaluations OWNER TO postgres;
 
 ALTER TABLE public.candidate_skills
     ADD COLUMN IF NOT EXISTS years_of_experience numeric(5,1);

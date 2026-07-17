@@ -67,4 +67,32 @@ public class InterviewController : ControllerBase
         var result = await _interviewService.DeleteInterviewAsync(interviewId);
         return StatusCode(result.StatusCode, result);
     }
+
+    // interview:confirm-own — the candidate acknowledges they will attend their Scheduled interview.
+    // Ownership (interview -> application -> caller) is enforced in the service.
+    [HttpPost("api/candidate/interviews/{interviewId}/confirm")]
+    [Authorize(Roles = "Candidate")]
+    public async Task<IActionResult> ConfirmCandidateInterview(string interviewId)
+    {
+        var result = await _interviewService.ConfirmCandidateInterviewAsync(interviewId, User.GetCurrentUserId());
+        return StatusCode(result.StatusCode, result);
+    }
+
+    // Post-interview scorecard (internal). Read is open to all interview readers; writing is an
+    // HR/Manager review action and only valid once the interview is Completed.
+    [HttpGet("api/hr/interviews/{interviewId}/evaluation")]
+    [Authorize(Roles = "HR,Manager,HeadDepartment")]
+    public async Task<IActionResult> GetInterviewEvaluation(string interviewId)
+    {
+        var result = await _interviewService.GetInterviewEvaluationAsync(interviewId);
+        return StatusCode(result.StatusCode, result);
+    }
+
+    [HttpPut("api/hr/interviews/{interviewId}/evaluation")]
+    [Authorize(Roles = "HR,Manager")]
+    public async Task<IActionResult> UpsertInterviewEvaluation(string interviewId, [FromBody] UpsertInterviewEvaluationRequest request)
+    {
+        var result = await _interviewService.UpsertInterviewEvaluationAsync(interviewId, User.TryGetCurrentUserId(), request);
+        return StatusCode(result.StatusCode, result);
+    }
 }
