@@ -15,3 +15,8 @@ public class CandidateImportRowRequestDto
     public string PositionApplied { get; set; } = string.Empty;
     public string Notes { get; set; } = string.Empty;
 }
+
+public class ResendInvitationRequest
+{
+    public string Email { get; set; } = string.Empty;
+}

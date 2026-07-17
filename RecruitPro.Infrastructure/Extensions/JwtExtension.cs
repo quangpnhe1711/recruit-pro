@@ -54,6 +54,17 @@ namespace RecruitPro.Infrastructure.Extensions
                                 return;
                             }
 
+                            // Only access tokens authenticate API requests. Refresh (token_type=refresh) and
+                            // password-reset (token_type=reset) tokens are signed with the same key and carry a
+                            // valid TokenVersion, so without this guard they would pass as bearer tokens on
+                            // bare [Authorize] endpoints. Access tokens carry NO token_type claim, so anything
+                            // that has one is a non-access token and must not authenticate.
+                            if (principal?.FindFirst("token_type") is not null)
+                            {
+                                context.Fail("Token cannot be used for authentication.");
+                                return;
+                            }
+
                             var userRepository = context.HttpContext.RequestServices.GetRequiredService<IUserRepository>();
                             (string? Status, int TokenVersion)? snapshot = await userRepository.GetAuthSnapshotAsync(userId);
                             if (snapshot is null)

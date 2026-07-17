@@ -431,7 +431,7 @@ public class CandidateService : ICandidateService
 
         List<string> createdCandidateIds = [];
         List<string> invitationEmails = [];
-        List<(string Email, string FullName, string TemporaryPassword)> invitations = [];
+        List<(int RowNumber, string Email, string FullName, string TemporaryPassword, string CandidateId)> invitations = [];
 
         await _unitOfWork.BeginTransactionAsync();
         try
@@ -467,7 +467,7 @@ public class CandidateService : ICandidateService
                 await _candidateRepository.SaveAsync(profile);
                 createdCandidateIds.Add(profile.Id.ToString());
                 invitationEmails.Add(user.Email);
-                invitations.Add((user.Email, user.FullName, temporaryPassword));
+                invitations.Add((row.RowNumber, user.Email, user.FullName, temporaryPassword, profile.Id.ToString()));
             }
 
             await _unitOfWork.SaveChangesAsync();
@@ -479,16 +479,27 @@ public class CandidateService : ICandidateService
             throw;
         }
 
-        foreach ((string email, string fullName, string temporaryPassword) in invitations)
+        List<CandidateImportInvitationDto> invitationResults = [];
+        foreach ((int rowNumber, string email, string fullName, string temporaryPassword, string candidateId) in invitations)
         {
+            bool sent = true;
             try
             {
                 await _emailService.SendCandidateInvitationAsync(email, fullName, temporaryPassword, CandidateLoginUrl);
             }
             catch (Exception exception)
             {
+                sent = false;
                 _logger.LogWarning(exception, "Candidate import completed but invitation email failed for {Email}.", email);
             }
+
+            invitationResults.Add(new CandidateImportInvitationDto
+            {
+                RowNumber = rowNumber,
+                Email = email,
+                CandidateId = candidateId,
+                InvitationSent = sent
+            });
         }
 
         return ApiResponse<CandidateImportResultDto>.Created(new CandidateImportResultDto
@@ -496,8 +507,40 @@ public class CandidateService : ICandidateService
             ImportedCount = validRows.Count,
             SkippedCount = rows.Count - validRows.Count,
             CreatedCandidateIds = createdCandidateIds,
-            InvitationEmails = invitationEmails
+            InvitationEmails = invitationEmails,
+            Invitations = invitationResults
         }, "Candidates imported successfully.");
+    }
+
+    /// <summary>
+    /// Resends the invitation email to an imported candidate whose original invitation failed to send.
+    /// Regenerates the temporary password (the original plaintext is never stored) and re-hashes it, then
+    /// emails a fresh invitation. Scoped to the Candidate role so this cannot be used to reset an
+    /// internal/admin account's password.
+    /// </summary>
+    public async Task<ApiResponse<string>> ResendInvitationAsync(string email)
+    {
+        string normalized = (email ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            return ApiResponse<string>.BadRequest(ErrorCodes.Required);
+        }
+
+        User? user = await _userRepository.GetTrackedByEmailOrUsernameAsync(normalized);
+        if (user == null || !user.UserRoles.Any(userRole => userRole.Role.Name == CandidateRoleName))
+        {
+            return ApiResponse<string>.NotFound(ErrorCodes.UserNotFound);
+        }
+
+        string temporaryPassword = CredentialUtility.GenerateTemporaryPassword();
+        user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(temporaryPassword);
+        user.UpdatedAt = DbDateTime.Now;
+
+        await _userRepository.UpdateAsync(user);
+        await _unitOfWork.SaveChangesAsync();
+        await _emailService.SendCandidateInvitationAsync(user.Email, user.FullName, temporaryPassword, CandidateLoginUrl);
+
+        return ApiResponse<string>.Ok("Đã gửi lại lời mời cho ứng viên.");
     }
 
     /// <summary>

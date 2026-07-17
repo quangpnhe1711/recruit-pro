@@ -27,6 +27,18 @@ public class CandidateImportResultDto
     public int SkippedCount { get; set; }
     public List<string> CreatedCandidateIds { get; set; } = [];
     public List<string> InvitationEmails { get; set; } = [];
+
+    // Per-row invitation outcome so HR can see which candidates did NOT receive their credentials and
+    // resend to them. The account is always created; only the email may have failed.
+    public List<CandidateImportInvitationDto> Invitations { get; set; } = [];
+}
+
+public class CandidateImportInvitationDto
+{
+    public int RowNumber { get; set; }
+    public string Email { get; set; } = string.Empty;
+    public string CandidateId { get; set; } = string.Empty;
+    public bool InvitationSent { get; set; }
 }
 
 public class CandidateImportTemplateDto

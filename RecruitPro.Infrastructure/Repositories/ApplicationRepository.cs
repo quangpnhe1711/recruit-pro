@@ -325,6 +325,7 @@ public class ApplicationRepository : IApplicationRepository
                 .ThenInclude(offer => offer!.ApplicationOfferBenefits)
                     .ThenInclude(link => link.Benefit)
             .Include(application => application.Interviews)
+                .ThenInclude(interview => interview.Interviewer)
             .Include(application => application.ReviewedByNavigation)
                 .ThenInclude(user => user!.UserRoles)
                     .ThenInclude(userRole => userRole.Role)
@@ -357,6 +358,7 @@ public class ApplicationRepository : IApplicationRepository
             .Include(application => application.Offer)
                 .ThenInclude(offer => offer!.ApplicationOfferBenefits)
             .Include(application => application.Interviews)
+                .ThenInclude(interview => interview.Interviewer)
             .Include(application => application.ReviewedByNavigation)
             .Include(application => application.AssignedRecruiter)
             .Include(application => application.AssignedDepartmentHead);

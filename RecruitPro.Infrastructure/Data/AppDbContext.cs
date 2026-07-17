@@ -747,6 +747,10 @@ public partial class AppDbContext : DbContext
             entity.Property(e => e.InterviewDate)
                 .HasColumnType("timestamp without time zone")
                 .HasColumnName("interview_date");
+            entity.Property(e => e.InterviewerId).HasColumnName("interviewer_id");
+            entity.Property(e => e.DurationMinutes)
+                .HasDefaultValue(60)
+                .HasColumnName("duration_minutes");
             entity.Property(e => e.Location).HasColumnName("location");
             entity.Property(e => e.MeetingType)
                 .HasConversion<string>()
@@ -764,9 +768,16 @@ public partial class AppDbContext : DbContext
                 .HasColumnType("timestamp without time zone")
                 .HasColumnName("candidate_confirmed_at");
 
+            entity.HasIndex(e => e.InterviewerId, "ix_interviews_interviewer_id");
+
             entity.HasOne(d => d.Application).WithMany(p => p.Interviews)
                 .HasForeignKey(d => d.ApplicationId)
                 .HasConstraintName("interviews_application_id_fkey");
+
+            entity.HasOne(d => d.Interviewer).WithMany()
+                .HasForeignKey(d => d.InterviewerId)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("interviews_interviewer_id_fkey");
         });
 
         modelBuilder.Entity<InterviewEvaluation>(entity =>

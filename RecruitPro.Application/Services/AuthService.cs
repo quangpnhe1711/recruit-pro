@@ -24,6 +24,7 @@ namespace RecruitPro.Application.Services
         private readonly JwtSettings _jwtSettings;
         private const string CandidateLoginUrl = "http://localhost:5173/login";
         private const string InternalLoginUrl = "http://localhost:5173/internal/login";
+        private const string ResetPasswordUrl = "http://localhost:5173/reset-password";
         private const string ResumeParseStatusNotStarted = "NotStarted";
         private const string ResumeEmbeddingStatusNotStarted = "NotStarted";
 
@@ -94,7 +95,7 @@ namespace RecruitPro.Application.Services
         /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
         public Task<ApiResponse<string>> ForgotCandidatePasswordAsync(string email)
         {
-            return ResetPasswordAsync(email, role => role.Equals("Candidate", StringComparison.OrdinalIgnoreCase), CandidateLoginUrl);
+            return IssueResetLinkAsync(email, role => role.Equals("Candidate", StringComparison.OrdinalIgnoreCase), isCandidate: true);
         }
 
         /// <summary>
@@ -104,7 +105,7 @@ namespace RecruitPro.Application.Services
         /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
         public Task<ApiResponse<string>> ForgotInternalPasswordAsync(string identifier)
         {
-            return ResetPasswordAsync(identifier, role => !role.Equals("Candidate", StringComparison.OrdinalIgnoreCase), InternalLoginUrl);
+            return IssueResetLinkAsync(identifier, role => !role.Equals("Candidate", StringComparison.OrdinalIgnoreCase), isCandidate: false);
         }
 
         /// <summary>
@@ -231,13 +232,16 @@ namespace RecruitPro.Application.Services
         }
 
         /// <summary>
-        /// Executes the reset password operation.
+        /// Issues a single-use password-reset link and emails it. The account's current password is left
+        /// untouched — it stays valid until the user completes the reset — so a slow or spam-filed email can
+        /// never lock anyone out. Enumeration-safe: the same neutral response is returned whether or not the
+        /// account exists.
         /// </summary>
-        /// <param name="identifier">The <paramref name="identifier"/> value.</param>
-        /// <param name="roleRule">The <paramref name="roleRule"/> value.</param>
-        /// <param name="loginUrl">The <paramref name="loginUrl"/> value.</param>
+        /// <param name="identifier">Email (candidate) or email/username (internal).</param>
+        /// <param name="roleRule">Predicate the account's roles must satisfy for this portal.</param>
+        /// <param name="isCandidate">Selects the candidate vs internal login target on the success screen.</param>
         /// <returns>A task that represents the asynchronous operation and returns the operation result.</returns>
-        private async Task<ApiResponse<string>> ResetPasswordAsync(string identifier, Func<string, bool> roleRule, string loginUrl)
+        private async Task<ApiResponse<string>> IssueResetLinkAsync(string identifier, Func<string, bool> roleRule, bool isCandidate)
         {
             string normalizedIdentifier = identifier.Trim();
             if (string.IsNullOrWhiteSpace(normalizedIdentifier))
@@ -248,24 +252,57 @@ namespace RecruitPro.Application.Services
             User? user = await _userRepository.GetTrackedByEmailOrUsernameAsync(normalizedIdentifier);
             if (user == null)
             {
-                return ApiResponse<string>.Ok("Nếu tài khoản tồn tại, mật khẩu tạm đã được cấp.");
+                return ApiResponse<string>.Ok("Nếu tài khoản tồn tại, một liên kết đặt lại mật khẩu đã được gửi tới email.");
             }
 
             List<string> roles = user.UserRoles.Select(x => x.Role.Name).ToList();
             if (!roles.Any(roleRule))
             {
-                return ApiResponse<string>.Ok("Nếu tài khoản tồn tại, mật khẩu tạm đã được cấp.");
+                return ApiResponse<string>.Ok("Nếu tài khoản tồn tại, một liên kết đặt lại mật khẩu đã được gửi tới email.");
             }
 
-            string temporaryPassword = CredentialUtility.GenerateTemporaryPassword();
-            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(temporaryPassword);
+            string token = _jwtService.CreateResetToken(user);
+            string portal = isCandidate ? "candidate" : "internal";
+            string resetUrl = $"{ResetPasswordUrl}?token={Uri.EscapeDataString(token)}&portal={portal}";
+            await _emailService.SendPasswordResetAsync(user.Email, user.FullName, resetUrl);
+
+            return ApiResponse<string>.Ok("Nếu tài khoản tồn tại, một liên kết đặt lại mật khẩu đã được gửi tới email.");
+        }
+
+        /// <summary>
+        /// Consumes a single-use reset token and sets a new password. Rejects invalid/expired tokens and any
+        /// token whose embedded version no longer matches the account (already used, or a stale earlier link).
+        /// On success it bumps TokenVersion and revokes every refresh token, logging the account out everywhere.
+        /// </summary>
+        public async Task<ApiResponse<string>> ResetPasswordWithTokenAsync(string token, string newPassword)
+        {
+            (Guid UserId, int TokenVersion)? payload = _jwtService.ValidateResetToken(token?.Trim() ?? string.Empty);
+            if (payload is null)
+            {
+                return ApiResponse<string>.BadRequest(ErrorCodes.TokenExpired);
+            }
+
+            if (string.IsNullOrWhiteSpace(newPassword) || newPassword.Length < 6)
+            {
+                return ApiResponse<string>.BadRequest(ErrorCodes.PasswordTooShort);
+            }
+
+            User? user = await _userRepository.GetTrackedByIdAsync(payload.Value.UserId);
+            if (user == null || user.TokenVersion != payload.Value.TokenVersion)
+            {
+                // Token version no longer matches → link already used or superseded by a newer one.
+                return ApiResponse<string>.BadRequest(ErrorCodes.TokenExpired);
+            }
+
+            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(newPassword);
+            user.TokenVersion += 1;
             user.UpdatedAt = DbDateTime.Now;
 
             await _userRepository.UpdateAsync(user);
             await _unitOfWork.SaveChangesAsync();
-            await _emailService.SendPasswordResetAsync(user.Email, user.FullName, temporaryPassword, loginUrl);
+            await _refreshTokenRepository.DeleteAllForUserAsync(user.Id);
 
-            return ApiResponse<string>.Ok("Nếu tài khoản tồn tại, mật khẩu tạm đã được cấp.");
+            return ApiResponse<string>.Ok("Mật khẩu đã được đặt lại. Vui lòng đăng nhập bằng mật khẩu mới.");
         }
 
         private async Task<User> EnsureCandidateProfileAsync(User user)

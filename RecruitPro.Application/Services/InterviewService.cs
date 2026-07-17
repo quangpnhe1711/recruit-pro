@@ -22,6 +22,15 @@ public class InterviewService : IInterviewService
     private readonly ILogger<InterviewService> _logger;
     private readonly IMapper _mapper;
 
+    // Bookable start slots (minutes-from-midnight): 09:00, 10:00, 11:00, 11:30, 13:00, 14:30, 16:00, 17:00.
+    // Shared by the schedule-data payload and the per-interviewer busy-slot builder so the UI's disabled
+    // slots and the server's occupancy view line up.
+    private static readonly int[] SlotMinutes = [540, 600, 660, 690, 780, 870, 960, 1020];
+
+    // Guards persisted duration used for conflict math and downstream EndAt display.
+    private const int MinDurationMinutes = 15;
+    private const int MaxDurationMinutes = 480;
+
     /// <summary>
     /// Initializes a new instance of the InterviewService class.
     /// </summary>
@@ -131,7 +140,7 @@ public class InterviewService : IInterviewService
         }
 
         IReadOnlyList<User> interviewers = await _userRepository.GetUsersInRolesAsync("HR", "Manager");
-        Dictionary<string, List<int>> busySlotsByDate = await BuildBusySlotsByDateAsync();
+        Dictionary<Guid, Dictionary<string, List<int>>> busyByInterviewer = await BuildBusySlotsByInterviewerAsync();
 
         return ApiResponse<ScheduleDataResponseDto>.Ok(new ScheduleDataResponseDto
         {
@@ -151,11 +160,12 @@ public class InterviewService : IInterviewService
                 Name = user.FullName,
                 Title = user.UserRoles.Select(userRole => userRole.Role.Name).FirstOrDefault() ?? "HR",
                 AvatarUrl = user.AvatarUrl,
-                // Interviewer assignment is not yet persisted, so we expose global occupied
-                // slots as a conservative scheduling heuristic for all interviewers.
-                BusySlotsByDate = CloneBusySlots(busySlotsByDate)
+                // Real per-interviewer occupancy: slots this specific person is already booked in.
+                BusySlotsByDate = busyByInterviewer.TryGetValue(user.Id, out Dictionary<string, List<int>>? slots)
+                    ? slots
+                    : new Dictionary<string, List<int>>()
             }).ToList(),
-            SlotMinutes = [540, 600, 660, 690, 780, 870, 960, 1020]
+            SlotMinutes = SlotMinutes.ToList()
         });
     }
 
@@ -175,6 +185,13 @@ public class InterviewService : IInterviewService
         // (hour = StartMinutes / 60). An out-of-range value threw ArgumentOutOfRangeException → 500.
         // Reject it as a 400 before constructing the time.
         if (request.StartMinutes < 0 || request.StartMinutes > 1439)
+        {
+            return ApiResponse<InterviewCreatedResponseDto>.BadRequest(ErrorCodes.InvalidInput);
+        }
+
+        // Duration is now persisted and used for conflict math, so it must be validated at the trust
+        // boundary — a garbage value would corrupt overlap detection and the displayed end time.
+        if (request.DurationMinutes < MinDurationMinutes || request.DurationMinutes > MaxDurationMinutes)
         {
             return ApiResponse<InterviewCreatedResponseDto>.BadRequest(ErrorCodes.InvalidInput);
         }
@@ -223,14 +240,39 @@ public class InterviewService : IInterviewService
             interviewerGuid = parsedInterviewerGuid;
         }
 
+        DateTime interviewStart = DateTime.SpecifyKind(
+            new DateTime(request.Date.Year, request.Date.Month, request.Date.Day,
+                request.StartMinutes / 60, request.StartMinutes % 60, 0),
+            DateTimeKind.Unspecified);
+        DateTime interviewEnd = interviewStart.AddMinutes(request.DurationMinutes);
+
+        // Reject double-booking: the chosen interviewer must not already have a scheduled interview whose
+        // window overlaps [interviewStart, interviewEnd). Overlap is computed in memory over the small
+        // same-day set because it depends on each row's stored duration.
+        if (interviewerGuid is { } interviewerToCheck)
+        {
+            IReadOnlyList<Interview> sameDay =
+                await _interviewRepository.GetScheduledForInterviewerOnDateAsync(interviewerToCheck, interviewStart);
+            bool hasConflict = sameDay.Any(existing =>
+            {
+                DateTime existingStart = existing.InterviewDate;
+                DateTime existingEnd = existingStart.AddMinutes(existing.DurationMinutes > 0 ? existing.DurationMinutes : 60);
+                return existingStart < interviewEnd && existingEnd > interviewStart;
+            });
+
+            if (hasConflict)
+            {
+                return ApiResponse<InterviewCreatedResponseDto>.Conflict(ErrorCodes.Conflict);
+            }
+        }
+
         Interview interview = new()
         {
             Id = Guid.NewGuid(),
             ApplicationId = applicationGuid,
-            InterviewDate = DateTime.SpecifyKind(
-                new DateTime(request.Date.Year, request.Date.Month, request.Date.Day,
-                    request.StartMinutes / 60, request.StartMinutes % 60, 0),
-                DateTimeKind.Unspecified),
+            InterviewDate = interviewStart,
+            InterviewerId = interviewerGuid,
+            DurationMinutes = request.DurationMinutes,
             MeetingType = request.Mode.Equals("video", StringComparison.OrdinalIgnoreCase) ? MeetingType.Online : MeetingType.Offline,
             MeetingLink = request.Mode.Equals("video", StringComparison.OrdinalIgnoreCase) ? request.LocationOrLink : null,
             Location = request.Mode.Equals("video", StringComparison.OrdinalIgnoreCase) ? null : request.LocationOrLink,
@@ -272,10 +314,12 @@ public class InterviewService : IInterviewService
     }
 
     /// <summary>
-    /// Builds busy slots by date.
+    /// Builds occupied bookable slots per interviewer, keyed by interviewer id then by date
+    /// (yyyy-MM-dd). A scheduled interview occupies every offered <see cref="SlotMinutes"/> value that
+    /// falls inside its [start, start + duration) window, so the UI disables the whole span, not just the
+    /// exact start. Interviews without an assigned interviewer are skipped (they can't be attributed).
     /// </summary>
-    /// <returns>The operation result.</returns>
-    private async Task<Dictionary<string, List<int>>> BuildBusySlotsByDateAsync()
+    private async Task<Dictionary<Guid, Dictionary<string, List<int>>>> BuildBusySlotsByInterviewerAsync()
     {
         (IReadOnlyList<Interview> interviews, _) = await _interviewRepository.GetPagedAsync(
             1,
@@ -286,27 +330,52 @@ public class InterviewService : IInterviewService
             DbDateTime.Today.AddMonths(2),
             Guid.Empty);
 
-        return interviews
-            .GroupBy(interview => interview.InterviewDate.Date)
-            .ToDictionary(
-                group => DateOnly.FromDateTime(group.Key).ToString("yyyy-MM-dd"),
-                group => group
-                    .Select(interview => interview.InterviewDate.Hour * 60 + interview.InterviewDate.Minute)
-                    .Distinct()
-                    .OrderBy(minutes => minutes)
-                    .ToList());
-    }
+        // ponytail: occupancy is expanded per already-booked interview's duration, but the UI can't know
+        // the *new* interview's duration, so a long new booking that spills into a later free slot is caught
+        // by the create-time conflict check (409), not greyed out up front. Upgrade to duration-aware slot
+        // disabling only if users find the 409 surprising.
+        Dictionary<Guid, Dictionary<string, List<int>>> result = new();
+        foreach (Interview interview in interviews)
+        {
+            if (interview.InterviewerId is not { } interviewerId)
+            {
+                continue;
+            }
 
-    /// <summary>
-    /// Clones busy slots.
-    /// </summary>
-    /// <param name="source">The <paramref name="source"/> value.</param>
-    /// <returns>The operation result.</returns>
-    private static Dictionary<string, List<int>> CloneBusySlots(Dictionary<string, List<int>> source)
-    {
-        return source.ToDictionary(
-            pair => pair.Key,
-            pair => pair.Value.ToList());
+            int startMinutes = interview.InterviewDate.Hour * 60 + interview.InterviewDate.Minute;
+            int endMinutes = startMinutes + (interview.DurationMinutes > 0 ? interview.DurationMinutes : 60);
+            string dateKey = DateOnly.FromDateTime(interview.InterviewDate.Date).ToString("yyyy-MM-dd");
+
+            List<int> occupied = SlotMinutes.Where(slot => slot >= startMinutes && slot < endMinutes).ToList();
+            if (occupied.Count == 0)
+            {
+                continue;
+            }
+
+            if (!result.TryGetValue(interviewerId, out Dictionary<string, List<int>>? byDate))
+            {
+                byDate = new Dictionary<string, List<int>>();
+                result[interviewerId] = byDate;
+            }
+
+            if (!byDate.TryGetValue(dateKey, out List<int>? slots))
+            {
+                slots = new List<int>();
+                byDate[dateKey] = slots;
+            }
+
+            foreach (int slot in occupied)
+            {
+                if (!slots.Contains(slot))
+                {
+                    slots.Add(slot);
+                }
+            }
+
+            slots.Sort();
+        }
+
+        return result;
     }
 
     /// <summary>

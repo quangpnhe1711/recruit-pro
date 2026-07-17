@@ -37,17 +37,17 @@ public sealed class SmtpEmailService : IEmailService
                 loginUrl),
             null);
 
-    public Task SendPasswordResetAsync(string email, string fullName, string temporaryPassword, string loginUrl) =>
+    public Task SendPasswordResetAsync(string email, string fullName, string resetUrl) =>
         SendAsync(
             email,
             "Đặt lại mật khẩu RecruitPro",
-            BuildCredentialEmail(
+            BuildActionEmail(
                 "Dat lai mat khau",
                 fullName,
-                "Ban vua yeu cau dat lai mat khau cho tai khoan RecruitPro. Vui long dang nhap bang mat khau tam thoi ben duoi va doi mat khau ngay sau khi truy cap.",
-                temporaryPassword,
-                "Dang nhap ngay",
-                loginUrl),
+                "Ban vua yeu cau dat lai mat khau cho tai khoan RecruitPro. Nhan nut ben duoi de tao mat khau moi. Lien ket chi dung duoc mot lan va se het han sau 30 phut. Mat khau hien tai van con hieu luc cho den khi ban dat lai thanh cong.",
+                "Dat lai mat khau",
+                resetUrl,
+                "Neu ban khong yeu cau dat lai mat khau, vui long bo qua email nay; tai khoan cua ban van an toan."),
             null);
 
     public Task SendApplicationEmailAsync(string email, string fullName, string jobTitle, string subject, string body) =>
@@ -156,6 +156,32 @@ public sealed class SmtpEmailService : IEmailService
             <p style="margin:18px 0 0; color:{InkMuted}; font-size:13px; line-height:20px;">
               Neu nut khong hoat dong, ban co the dang nhap truc tiep tai:<br />
               <a href="{EncodeAttribute(loginUrl)}" style="color:{BrandPrimary}; text-decoration:none;">{Encode(loginUrl)}</a>
+            </p>
+            """;
+
+        return WrapEmailShell(eyebrow, "RecruitPro", content);
+    }
+
+    private static string BuildActionEmail(
+        string eyebrow,
+        string fullName,
+        string intro,
+        string ctaLabel,
+        string actionUrl,
+        string footnote)
+    {
+        string content = $"""
+            <p style="margin:0 0 14px;">Xin chao {Encode(fullName)},</p>
+            <p style="margin:0 0 22px;">{Encode(intro)}</p>
+            <a href="{EncodeAttribute(actionUrl)}" style="{BuildButtonStyle()}">
+              {Encode(ctaLabel)}
+            </a>
+            <p style="margin:18px 0 0; color:{InkMuted}; font-size:13px; line-height:20px;">
+              Neu nut khong hoat dong, ban co the sao chep lien ket sau vao trinh duyet:<br />
+              <a href="{EncodeAttribute(actionUrl)}" style="color:{BrandPrimary}; text-decoration:none; word-break:break-all;">{Encode(actionUrl)}</a>
+            </p>
+            <p style="margin:18px 0 0; color:{InkMuted}; font-size:13px; line-height:20px;">
+              {Encode(footnote)}
             </p>
             """;
 
