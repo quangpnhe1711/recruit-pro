@@ -65,5 +65,12 @@ namespace RecruitPro.API.Controllers
             var result = await _authService.ForgotInternalPasswordAsync(request.Identifier);
             return StatusCode(result.StatusCode, result);
         }
+
+        [HttpPost("reset-password")]
+        public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest request)
+        {
+            var result = await _authService.ResetPasswordWithTokenAsync(request.Token, request.NewPassword);
+            return StatusCode(result.StatusCode, result);
+        }
     }
 }

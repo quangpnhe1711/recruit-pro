@@ -37,21 +37,20 @@ public class LoggingEmailService : IEmailService
     }
 
     /// <summary>
-    /// Sends password reset.
+    /// Sends a single-use password-reset link. In local/dev this records the send via the logger so the
+    /// reset URL can be copied from logs; no secret password is generated or logged.
     /// </summary>
     /// <param name="email">The <paramref name="email"/> value.</param>
     /// <param name="fullName">The <paramref name="fullName"/> value.</param>
-    /// <param name="temporaryPassword">The <paramref name="temporaryPassword"/> value.</param>
-    /// <param name="loginUrl">The <paramref name="loginUrl"/> value.</param>
+    /// <param name="resetUrl">The single-use reset link.</param>
     /// <returns>A task that represents the asynchronous operation.</returns>
-    public Task SendPasswordResetAsync(string email, string fullName, string temporaryPassword, string loginUrl)
+    public Task SendPasswordResetAsync(string email, string fullName, string resetUrl)
     {
         _logger.LogInformation(
-            "Password reset queued. Email: {Email}, FullName: {FullName}, TemporaryPassword: {TemporaryPassword}, LoginUrl: {LoginUrl}",
+            "Password reset link queued. Email: {Email}, FullName: {FullName}, ResetUrl: {ResetUrl}",
             email,
             fullName,
-            temporaryPassword,
-            loginUrl);
+            resetUrl);
 
         return Task.CompletedTask;
     }

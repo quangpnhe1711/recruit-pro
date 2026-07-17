@@ -208,6 +208,8 @@ CREATE TABLE public.interviews (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     application_id uuid NOT NULL,
     interview_date timestamp without time zone NOT NULL,
+    interviewer_id uuid,
+    duration_minutes integer NOT NULL DEFAULT 60,
     meeting_type character varying(50),
     meeting_link text,
     location text,
@@ -750,6 +752,11 @@ ALTER TABLE ONLY public.candidate_skills
 
 ALTER TABLE ONLY public.interviews
     ADD CONSTRAINT interviews_application_id_fkey FOREIGN KEY (application_id) REFERENCES public.applications(id) ON DELETE CASCADE;
+
+ALTER TABLE ONLY public.interviews
+    ADD CONSTRAINT interviews_interviewer_id_fkey FOREIGN KEY (interviewer_id) REFERENCES public.users(id);
+
+CREATE INDEX IF NOT EXISTS ix_interviews_interviewer_id ON public.interviews (interviewer_id);
 
 
 --

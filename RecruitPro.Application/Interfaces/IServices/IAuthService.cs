@@ -17,5 +17,6 @@ namespace RecruitPro.Application.Interfaces.IServices
         Task<ApiResponse<string>> LogoutAsync(string? refreshToken);
         Task<ApiResponse<string>> ForgotCandidatePasswordAsync(string email);
         Task<ApiResponse<string>> ForgotInternalPasswordAsync(string identifier);
+        Task<ApiResponse<string>> ResetPasswordWithTokenAsync(string token, string newPassword);
     }
 }

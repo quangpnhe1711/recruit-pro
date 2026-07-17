@@ -18,5 +18,14 @@ namespace RecruitPro.Application.Interfaces.IServices
 
         /// <summary>Hashes a raw refresh token the same way <see cref="CreateRefreshToken"/> does, for DB lookup.</summary>
         string HashRefreshToken(string raw);
+
+        /// <summary>Signs a short-lived (30 min) single-use password-reset token bound to the user's current
+        /// TokenVersion. Made single-use by bumping TokenVersion on consumption, which invalidates the token's
+        /// embedded version claim.</summary>
+        string CreateResetToken(User user);
+
+        /// <summary>Validates a reset token's signature/expiry/type; returns the userId and the embedded
+        /// TokenVersion, or null if invalid, expired, or not a reset token.</summary>
+        (Guid UserId, int TokenVersion)? ValidateResetToken(string raw);
     }
 }

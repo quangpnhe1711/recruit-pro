@@ -123,6 +123,23 @@ public class InterviewRepository : IInterviewRepository
         return _context.Interviews.FirstOrDefaultAsync(interview => interview.Id == interviewId);
     }
 
+    public async Task<IReadOnlyList<Interview>> GetScheduledForInterviewerOnDateAsync(Guid interviewerId, DateTime date)
+    {
+        // Include the prior day so an interview that started before midnight and runs into `date` is still
+        // returned; the caller's in-memory overlap filter discards any that don't actually overlap.
+        DateTime rangeStart = date.Date.AddDays(-1);
+        DateTime rangeEnd = date.Date.AddDays(1);
+
+        return await _context.Interviews
+            .AsNoTracking()
+            .Where(interview =>
+                interview.InterviewerId == interviewerId &&
+                interview.Status == InterviewStatus.Scheduled &&
+                interview.InterviewDate >= rangeStart &&
+                interview.InterviewDate < rangeEnd)
+            .ToListAsync();
+    }
+
     public async Task AddAsync(Interview interview)
     {
         await _context.Interviews.AddAsync(interview);
@@ -163,6 +180,7 @@ public class InterviewRepository : IInterviewRepository
             .Include(interview => interview.Application)
                 .ThenInclude(application => application.Job)
                     .ThenInclude(job => job.Department)
+            .Include(interview => interview.Interviewer)
             // Internal HR list surfaces the scorecard summary; the candidate list never loads this
             // include (it goes through ApplicationRepository), so evaluations stay internal.
             .Include(interview => interview.Evaluation);

@@ -191,4 +191,12 @@ public class CandidateController : ControllerBase
         var result = await _candidateService.ImportCandidatesAsync(request);
         return StatusCode(result.StatusCode, result);
     }
+
+    [HttpPost("api/candidates/import/resend-invitation")]
+    [Authorize(Roles = "HR,Manager")]
+    public async Task<IActionResult> ResendInvitation([FromBody] ResendInvitationRequest request)
+    {
+        var result = await _candidateService.ResendInvitationAsync(request.Email);
+        return StatusCode(result.StatusCode, result);
+    }
 }

@@ -22,4 +22,5 @@ public interface ICandidateService
     Task<CandidateImportTemplateDto> GenerateImportTemplateAsync();
     Task<ApiResponse<CandidateImportPreviewResponseDto>> PreviewImportAsync(Stream fileStream, string fileName);
     Task<ApiResponse<CandidateImportResultDto>> ImportCandidatesAsync(CandidateImportRequest request);
+    Task<ApiResponse<string>> ResendInvitationAsync(string email);
 }
