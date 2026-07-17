@@ -105,8 +105,9 @@ internal sealed class FakeEmailService : IEmailService
 {
     public Task SendCandidateInvitationAsync(string email, string fullName, string temporaryPassword, string loginUrl) => Task.CompletedTask;
     public Task SendPasswordResetAsync(string email, string fullName, string temporaryPassword, string loginUrl) => Task.CompletedTask;
+    public Task SendApplicationEmailAsync(string email, string fullName, string jobTitle, string subject, string body) => Task.CompletedTask;
     public Task SendOfferEmailAsync(string email, string fullName, string jobTitle, string subject, string body) => Task.CompletedTask;
-    public Task SendRejectionEmailAsync(string email, string fullName, string jobTitle, string subject, string body) => Task.CompletedTask;
+    public Task SendRejectionEmailAsync(string email, string fullName, string jobTitle, string subject, string body, string? replyToEmail) => Task.CompletedTask;
 }
 
 internal sealed class FakeResumeTextExtractor : IResumeTextExtractor

@@ -187,6 +187,24 @@ namespace RecruitPro.Application.Services
             return ApiResponse<LoginResponseDto>.Ok(await IssueTokensAsync(user));
         }
 
+        public async Task<ApiResponse<string>> LogoutAsync(string? refreshToken)
+        {
+            if (string.IsNullOrWhiteSpace(refreshToken))
+            {
+                return ApiResponse<string>.Ok("Đã đăng xuất.");
+            }
+
+            string hash = _jwtService.HashRefreshToken(refreshToken.Trim());
+            RefreshToken? stored = await _refreshTokenRepository.GetByHashAsync(hash);
+            if (stored != null)
+            {
+                _refreshTokenRepository.Remove(stored);
+                await _unitOfWork.SaveChangesAsync();
+            }
+
+            return ApiResponse<string>.Ok("Đã đăng xuất.");
+        }
+
         /// <summary>
         /// Issues an access token (carrying the current TokenVersion) and a fresh refresh JWT,
         /// persisting only the refresh token's hash, then projects both into the login response.

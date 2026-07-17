@@ -45,6 +45,13 @@ namespace RecruitPro.API.Controllers
             return StatusCode(result.StatusCode, result);
         }
 
+        [HttpPost("logout")]
+        public async Task<IActionResult> Logout([FromBody] LogoutRequest request)
+        {
+            var result = await _authService.LogoutAsync(request.RefreshToken);
+            return StatusCode(result.StatusCode, result);
+        }
+
         [HttpPost("candidate/forgot-password")]
         public async Task<IActionResult> CandidateForgotPassword([FromBody] ForgotPasswordRequest request)
         {

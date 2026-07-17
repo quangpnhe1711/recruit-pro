@@ -144,6 +144,17 @@ public class CandidateController : ControllerBase
         return StatusCode(result.StatusCode, result);
     }
 
+    [HttpPost("api/hr/candidates")]
+    [Authorize(Roles = "HR,Manager")]
+    [RequestSizeLimit(6_291_456)]
+    [RequestFormLimits(MultipartBodyLengthLimit = 6_291_456)]
+    public async Task<IActionResult> CreateCandidateFromHr([FromForm] CandidateRegisterRequest request, IFormFile? resume)
+    {
+        await using Stream? stream = resume?.OpenReadStream();
+        var result = await _candidateService.RegisterAsync(request, stream, resume?.FileName, resume?.ContentType);
+        return StatusCode(result.StatusCode, result);
+    }
+
     [HttpGet("api/hr/candidates/{candidateId}")]
     [Authorize(Roles = "HR,Manager")]
     public async Task<IActionResult> GetCandidateDetail(string candidateId)

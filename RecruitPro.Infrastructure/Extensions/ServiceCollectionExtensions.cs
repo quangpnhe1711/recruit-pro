@@ -83,7 +83,13 @@ public static class ServiceCollectionExtensions
                 .Build();
         });
         services.AddSingleton<IFileStorageService, MinioFileStorageService>();
-        services.AddSingleton<IEmailService, LoggingEmailService>();
+        services.AddSingleton<IEmailService>(serviceProvider =>
+        {
+            SmtpSettings settings = serviceProvider.GetRequiredService<IOptions<SmtpSettings>>().Value;
+            return settings.Enabled
+                ? ActivatorUtilities.CreateInstance<SmtpEmailService>(serviceProvider)
+                : ActivatorUtilities.CreateInstance<LoggingEmailService>(serviceProvider);
+        });
 
         return services;
     }

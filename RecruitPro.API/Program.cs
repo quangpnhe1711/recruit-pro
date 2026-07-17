@@ -100,6 +100,7 @@ builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("Jwt"))
 
 // config minio settings
 builder.Services.Configure<MinioSettings>(builder.Configuration.GetSection("MinioSettings"));
+builder.Services.Configure<SmtpSettings>(builder.Configuration.GetSection(SmtpSettings.SectionName));
 
 // config AI provider settings
 builder.Services.Configure<AiProviderSettings>(builder.Configuration.GetSection("AiProvider"));

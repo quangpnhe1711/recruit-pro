@@ -56,6 +56,18 @@ public class LoggingEmailService : IEmailService
         return Task.CompletedTask;
     }
 
+    public Task SendApplicationEmailAsync(string email, string fullName, string jobTitle, string subject, string body)
+    {
+        _logger.LogInformation(
+            "Application email queued. Email: {Email}, FullName: {FullName}, JobTitle: {JobTitle}, Subject: {Subject}",
+            email,
+            fullName,
+            jobTitle,
+            subject);
+
+        return Task.CompletedTask;
+    }
+
     /// <summary>
     /// Sends an offer email to the candidate. In local/dev this records the send via the logger; the
     /// transition to <c>Offer</c> only proceeds when this completes without throwing.
@@ -76,14 +88,15 @@ public class LoggingEmailService : IEmailService
     /// Sends a rejection email to the candidate. In local/dev this records the send via the logger; the
     /// transition to <c>Rejected</c> only proceeds when this completes without throwing.
     /// </summary>
-    public Task SendRejectionEmailAsync(string email, string fullName, string jobTitle, string subject, string body)
+    public Task SendRejectionEmailAsync(string email, string fullName, string jobTitle, string subject, string body, string? replyToEmail)
     {
         _logger.LogInformation(
-            "Rejection email queued. Email: {Email}, FullName: {FullName}, JobTitle: {JobTitle}, Subject: {Subject}",
+            "Rejection email queued. Email: {Email}, FullName: {FullName}, JobTitle: {JobTitle}, Subject: {Subject}, ReplyTo: {ReplyTo}",
             email,
             fullName,
             jobTitle,
-            subject);
+            subject,
+            replyToEmail);
 
         return Task.CompletedTask;
     }

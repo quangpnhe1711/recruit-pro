@@ -192,15 +192,19 @@ public sealed class WorkflowDecisionEmailTests
         Domain.Entities.Application application = BuildApplication(ApplicationStatus.Interview);
         application.Interviews.Add(new Interview { Id = Guid.NewGuid(), ApplicationId = application.Id, Status = InterviewStatus.Completed });
         var emailService = new Mock<IEmailService>();
-        ApplicationService service = BuildApplicationService(application, emailService: emailService);
+        Guid reviewerId = Guid.NewGuid();
+        var userRepository = new Mock<IUserRepository>();
+        userRepository.Setup(repository => repository.GetByIdAsync(reviewerId))
+            .ReturnsAsync(new User { Id = reviewerId, Email = "actor@test.com", FullName = "HR Actor", Username = "hr.actor" });
+        ApplicationService service = BuildApplicationService(application, emailService: emailService, userRepository: userRepository);
 
         var response = await service.SendRejectionEmailAsync(
-            application.Id.ToString(), Guid.NewGuid(), BuildRejectionRequest());
+            application.Id.ToString(), reviewerId, BuildRejectionRequest());
 
         response.StatusCode.Should().Be(200);
         application.Status.Should().Be(ApplicationStatus.Rejected);
         emailService.Verify(email => email.SendRejectionEmailAsync(
-            application.User.Email, application.User.FullName, application.Job.Title, It.IsAny<string>(), It.IsAny<string>()), Times.Once);
+            application.User.Email, application.User.FullName, application.Job.Title, It.IsAny<string>(), It.IsAny<string>(), "actor@test.com"), Times.Once);
     }
 
     // ---- T-WF-012: an email send failure must NOT transition the application status ----
@@ -212,7 +216,7 @@ public sealed class WorkflowDecisionEmailTests
 
         var emailService = new Mock<IEmailService>();
         emailService
-            .Setup(email => email.SendRejectionEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
+            .Setup(email => email.SendRejectionEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>()))
             .ThrowsAsync(new InvalidOperationException("SMTP down"));
 
         ApplicationService service = BuildApplicationService(application, emailService: emailService);
@@ -345,7 +349,8 @@ public sealed class WorkflowDecisionEmailTests
     private static ApplicationService BuildApplicationService(
         Domain.Entities.Application application,
         Mock<IApplicationRepository>? applicationRepository = null,
-        Mock<IEmailService>? emailService = null)
+        Mock<IEmailService>? emailService = null,
+        Mock<IUserRepository>? userRepository = null)
     {
         applicationRepository ??= new Mock<IApplicationRepository>();
         applicationRepository.Setup(repository => repository.GetTrackedByIdAsync(application.Id)).ReturnsAsync(application);
@@ -354,7 +359,7 @@ public sealed class WorkflowDecisionEmailTests
         return new ApplicationService(
             applicationRepository.Object,
             Mock.Of<ICandidateProfileRepository>(),
-            Mock.Of<IUserRepository>(),
+            (userRepository ?? new Mock<IUserRepository>()).Object,
             Mock.Of<IJobRepository>(),
             Mock.Of<IOfferRepository>(),
             Mock.Of<IUnitOfWork>(),

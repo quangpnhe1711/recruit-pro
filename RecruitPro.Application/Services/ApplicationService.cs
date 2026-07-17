@@ -810,12 +810,17 @@ public class ApplicationService : IApplicationService
         // Send the email BEFORE any DB change. If the send fails the application must NOT transition.
         try
         {
+            User? reviewer = reviewerId.HasValue
+                ? await _userRepository.GetByIdAsync(reviewerId.Value)
+                : null;
+
             await _emailService.SendRejectionEmailAsync(
                 application.User.Email,
                 application.User.FullName,
                 application.Job.Title,
                 request.Subject.Trim(),
-                request.Body.Trim());
+                request.Body.Trim(),
+                reviewer?.Email);
         }
         catch (Exception ex)
         {
@@ -952,7 +957,14 @@ public class ApplicationService : IApplicationService
             ? $"Prepared {normalizedTemplate} email for {recipient} regarding {application.Job.Title}."
             : request.Body.Trim();
 
-        return ApiResponse<string>.Ok($"{effectiveSubject}: {effectiveBody}", $"Đã soạn email cho {recipient}");
+        await _emailService.SendApplicationEmailAsync(
+            recipient,
+            application.User.FullName,
+            application.Job.Title,
+            effectiveSubject,
+            effectiveBody);
+
+        return ApiResponse<string>.Ok($"{effectiveSubject}: {effectiveBody}", $"Đã gửi email cho {recipient}");
     }
 
     /// <summary>
