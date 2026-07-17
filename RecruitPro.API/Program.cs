@@ -42,7 +42,12 @@ builder.Services.AddControllers(options =>
 // Added AFTER OData so the MVC XML formatter wins content negotiation for /api endpoints (OData 8 also
 // registers an application/xml formatter that only serves OData routes). DataContractSerializer handles
 // the wrapped ApiResponse<T>/DTO graphs that XmlSerializer refuses.
-.AddXmlDataContractSerializerFormatters();
+.AddXmlDataContractSerializerFormatters()
+// Normalize inbound request DateTimes to Kind=Unspecified. Schema is overwhelmingly `timestamp without
+// time zone`; Npgsql throws on a Kind=Utc value there, so a client sending "...Z" would 500. See
+// RecruitPro.API.Json.UnspecifiedDateTimeConverter. Write is native, so responses are unchanged.
+.AddJsonOptions(options =>
+    options.JsonSerializerOptions.Converters.Add(new RecruitPro.API.Json.UnspecifiedDateTimeConverter()));
 
 // Upload hardening (Phase 2.4): framework-level body-size ceiling, layered under the precise per-file
 // validation in CandidateService (5 MB CV cap). Kestrel + the multipart form reader reject oversized
