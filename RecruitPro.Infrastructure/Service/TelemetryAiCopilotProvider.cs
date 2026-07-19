@@ -7,6 +7,7 @@ using RecruitPro.Application.Configurations;
 using RecruitPro.Application.DTOs.Response.Copilot;
 using RecruitPro.Application.Interfaces.IServices;
 using RecruitPro.Domain.Constants;
+using RecruitPro.Domain.Entities;
 
 namespace RecruitPro.Infrastructure.Service;
 
@@ -120,11 +121,11 @@ public class TelemetryAiCopilotProvider : IAiCopilotProvider
     }
 
     public async Task<string?> TryCreateChatReplyAsync(
-        CopilotCandidatePoolDto pool, string userPrompt, Guid conversationId, CancellationToken cancellationToken = default)
+        CopilotCandidatePoolDto pool, string userPrompt, IReadOnlyList<CopilotMessage> history, Guid conversationId, CancellationToken cancellationToken = default)
     {
         bool configured = TelemetryProviderContext.IsConfigured(_settings);
         Stopwatch stopwatch = Stopwatch.StartNew();
-        string? result = await _inner.TryCreateChatReplyAsync(pool, userPrompt, conversationId, cancellationToken);
+        string? result = await _inner.TryCreateChatReplyAsync(pool, userPrompt, history, conversationId, cancellationToken);
         stopwatch.Stop();
 
         if (configured)
