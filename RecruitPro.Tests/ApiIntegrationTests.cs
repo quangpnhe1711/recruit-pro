@@ -440,8 +440,12 @@ public sealed class ApiIntegrationTests : IClassFixture<PostgresTestFixture>, IA
     }
 
     [Fact]
-    public async Task CopilotChat_UnrelatedPrompt_Refuses_WithoutRanking()
+    public async Task CopilotChat_NonRankingPrompt_RoutesToProvider_WithoutRanking()
     {
+        // Scope is now the AI's judgment (system prompt), not a backend keyword gate: a non-ranking
+        // chat prompt is forwarded to the provider and returned as a chat reply, with no ranking run
+        // and no ranking session. The soft-decline for genuinely off-topic prompts happens inside the
+        // AI and isn't exercised here (the fake provider always replies).
         PostgresTestFixture.SetBearerToken(_client, _factory.Fixture.CreateJwt(TestDataSeeder.HrUserId.ToString(), "HR"));
         var convJson = await ApiResponseAssertions.AssertNo500AndEnvelopeAsync(
             await _client.PostAsJsonAsync("/api/copilot/conversations", new { jobId = TestDataSeeder.ApprovedJobId }));
@@ -449,10 +453,10 @@ public sealed class ApiIntegrationTests : IClassFixture<PostgresTestFixture>, IA
 
         var replyJson = await ApiResponseAssertions.AssertNo500AndEnvelopeAsync(
             await _client.PostAsJsonAsync($"/api/copilot/conversations/{conversationId}/rankings",
-                new { jobId = TestDataSeeder.ApprovedJobId, prompt = "Thời tiết hôm nay thế nào?", forceRanking = false }));
+                new { jobId = TestDataSeeder.ApprovedJobId, prompt = "JD này có yêu cầu Python không?", forceRanking = false }));
         JsonElement data = replyJson.RootElement.GetProperty("data");
         data.GetProperty("didRank").GetBoolean().Should().BeFalse();
-        data.GetProperty("assistantMessage").GetString().Should().Contain("Đây không phải nhiệm vụ");
+        data.GetProperty("assistantMessage").GetString().Should().Be("Test reply");
         data.GetProperty("rankingSessionId").ValueKind.Should().Be(JsonValueKind.Null);
     }
 

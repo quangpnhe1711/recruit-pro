@@ -651,9 +651,12 @@ public class CopilotService : ICopilotService
     }
 
     /// <summary>
-    /// Non-ranking chat reply. Enforces the recruitment scope guard (v2 §14) before loading the
-    /// candidate pool, enriching resume text, or calling the AI provider: an unrelated prompt gets an
-    /// immediate Vietnamese refusal with no data access, no AI call, and no artifacts/ranking session.
+    /// Non-ranking chat reply. Scope (v2 §14) is judged by the AI itself from job/conversation
+    /// semantics — see the system prompt in <see cref="IAiCopilotProvider.TryCreateChatReplyAsync"/> —
+    /// not by a backend keyword gate: every conversation is already bound to one job/JD, so a keyword
+    /// allowlist/denylist can never exhaustively cover legitimate recruitment phrasing (JD, tiêu chí,
+    /// "viết code Java phù hợp không", ...). The backend only enforces deterministic checks: prompt
+    /// presence, conversation ownership/JobId binding (done by the caller), and job/candidate access.
     /// </summary>
     private async Task<ApiResponse<CopilotPromptResponseDto>> HandleChatReplyAsync(
         CopilotConversation conversation,
@@ -670,16 +673,17 @@ public class CopilotService : ICopilotService
             SequenceNo = replySequence
         });
 
-        if (!IsRecruitmentCopilotQuery(request.Prompt))
+        if (IsGreetingOrCapabilityQuery(request.Prompt))
         {
-            const string refusal = "Đây không phải nhiệm vụ của tôi. Tôi chỉ hỗ trợ các tác vụ liên quan đến "
-                + "tuyển dụng trong RecruitPro như xếp hạng ứng viên, phân tích CV, giải thích độ phù hợp, "
-                + "chuẩn bị phỏng vấn và chuyển hồ sơ sang Head Review.";
+            const string intro = "Xin chào! Tôi là Copilot tuyển dụng của RecruitPro. Tôi có thể giúp bạn "
+                + "xếp hạng ứng viên theo mức độ phù hợp, phân tích CV, giải thích lý do phù hợp/không phù hợp, "
+                + "chuẩn bị câu hỏi phỏng vấn và chuyển hồ sơ sang Head Review. Hãy hỏi tôi về ứng viên hoặc "
+                + "công việc bạn đang xem nhé.";
             await _copilotRepository.AddMessageAsync(new CopilotMessage
             {
                 ConversationId = conversationId,
                 Role = "Assistant",
-                Content = refusal,
+                Content = intro,
                 SequenceNo = replySequence + 1
             });
             conversation.UpdatedAt = DbDateTime.Now;
@@ -689,10 +693,9 @@ public class CopilotService : ICopilotService
             {
                 ConversationId = conversationId,
                 DidRank = false,
-                AssistantMessage = refusal,
+                AssistantMessage = intro,
                 NormalizedRules = new CopilotNormalizedRulesDto(),
-                Results = [],
-                Warnings = ["copilot-chat:out-of-scope"]
+                Results = []
             });
         }
 
@@ -702,8 +705,17 @@ public class CopilotService : ICopilotService
             return ApiResponse<CopilotPromptResponseDto>.NotFound(ErrorCodes.JobNotFound);
         }
 
+        // Prior turns (this message isn't persisted-and-visible to itself yet, so this is exactly
+        // "history before now") let the AI resolve short follow-ups like "gợi ý thêm" against what was
+        // already discussed, instead of answering each message in isolation.
+        CopilotConversation? withHistory = await _copilotRepository.GetConversationWithDetailsAsync(conversationId);
+        IReadOnlyList<CopilotMessage> history = withHistory?.Messages
+            .OrderBy(message => message.SequenceNo)
+            .TakeLast(10)
+            .ToList() ?? [];
+
         pool = await EnrichPoolWithResumeTextAsync(pool);
-        string assistantReply = await _aiCopilotProvider.TryCreateChatReplyAsync(pool, request.Prompt, conversationId)
+        string assistantReply = await _aiCopilotProvider.TryCreateChatReplyAsync(pool, request.Prompt, history, conversationId)
             ?? "Hiện chưa thể tạo phản hồi. Vui lòng thử lại hoặc chạy xếp hạng ứng viên để nhận đánh giá chi tiết.";
 
         await _copilotRepository.AddMessageAsync(new CopilotMessage
@@ -948,29 +960,27 @@ public class CopilotService : ICopilotService
     }
 
     /// <summary>
-    /// v2 §14 — recruitment scope guard. Returns true only for prompts that relate to RecruitPro
-    /// recruitment work. Runs before any data load or AI call so unrelated questions are refused
-    /// immediately.
+    /// A bare greeting or "what can you do" has no recruitment content for the AI to reason about, so
+    /// it's handled here with a canned capabilities intro instead of a wasted AI call. Actual scope
+    /// judgment for everything else happens in the AI provider's system prompt (v2 §14) — see
+    /// <see cref="IAiCopilotProvider.TryCreateChatReplyAsync"/>.
     /// </summary>
-    private static bool IsRecruitmentCopilotQuery(string? prompt)
+    private static bool IsGreetingOrCapabilityQuery(string? prompt)
     {
         if (string.IsNullOrWhiteSpace(prompt))
         {
             return false;
         }
 
-        string lowered = prompt.ToLowerInvariant();
-        string[] allowedKeywords =
+        string lowered = prompt.Trim().ToLowerInvariant();
+        string[] greetingPhrases =
         [
-            "job", "candidate", "application", "applicant", "resume", "cv", "screening",
-            "ranking", "rank", "shortlist", "interview", "offer", "hire", "recruit",
-            "head review", "department head", "fit", "skill", "experience", "pass cv",
-            "ứng viên", "hồ sơ", "công việc", "vị trí", "ứng tuyển", "tuyển dụng",
-            "xếp hạng", "chấm", "đánh giá", "phỏng vấn", "trưởng bộ phận", "lọc hồ sơ",
-            "kỹ năng", "kinh nghiệm", "phù hợp", "shortlist", "head review", "offer"
+            "hi", "hello", "hey", "alo", "chào", "xin chào", "helo",
+            "bạn là ai", "bạn có thể làm gì", "bạn làm được gì", "bạn giúp được gì",
+            "làm được những gì", "giúp gì được", "what can you do", "who are you"
         ];
 
-        return allowedKeywords.Any(keyword => lowered.Contains(keyword));
+        return greetingPhrases.Any(phrase => lowered == phrase || lowered.Contains(phrase));
     }
 
     /// <summary>

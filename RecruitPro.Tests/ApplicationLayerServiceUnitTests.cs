@@ -1032,20 +1032,71 @@ public sealed class CopilotServiceUnitTests
     }
 
     [Fact]
-    public async Task CreateRankingAsync_UnrelatedChatPrompt_RefusesWithoutPoolOrProvider()
+    public async Task CreateRankingAsync_ChatPromptWithTechOrJdWording_ReachesAiProvider_NoBackendKeywordGate()
     {
-        // v2 §14 — an unrelated chat prompt is refused in Vietnamese without loading the pool or
-        // calling the AI provider.
+        // Root-cause fix: the backend no longer decides scope by keyword allowlist/denylist. Every
+        // conversation is already bound to one job, so phrasing like "JD", "Python", "viết code" must
+        // reach the AI (which judges scope from context) instead of being blocked before the pool loads.
         var repository = new Mock<ICopilotRepository>();
         var aiProvider = new Mock<IAiCopilotProvider>();
         Guid jobId = Guid.NewGuid();
         Guid ownerId = Guid.NewGuid();
         Guid conversationId = Guid.NewGuid();
+        CopilotCandidatePoolDto pool = BuildCopilotPool(jobId);
 
         repository.Setup(v => v.GetConversationAsync(conversationId)).ReturnsAsync(new CopilotConversation { Id = conversationId, JobId = jobId, UserId = ownerId });
         repository.Setup(v => v.GetNextMessageSequenceAsync(conversationId)).ReturnsAsync(1);
+        repository.Setup(v => v.GetCandidatePoolAsync(jobId)).ReturnsAsync(pool);
+        repository.Setup(v => v.GetConversationWithDetailsAsync(conversationId))
+            .ReturnsAsync(new CopilotConversation { Id = conversationId, JobId = jobId, UserId = ownerId });
+        aiProvider.Setup(v => v.TryCreateChatReplyAsync(It.IsAny<CopilotCandidatePoolDto>(), It.IsAny<string>(), It.IsAny<IReadOnlyList<CopilotMessage>>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("Có, JD yêu cầu kinh nghiệm Python.");
 
-        CopilotService service = CreateService(repository.Object, aiProvider: aiProvider.Object);
+        CopilotService service = CreateService(repository.Object, aiProvider: aiProvider.Object,
+            aiSettings: new AiProviderSettings { Enabled = true, ApiKey = "test-key", Model = "m" });
+
+        var response = await service.CreateRankingAsync(conversationId, new CopilotPromptRequest
+        {
+            JobId = jobId,
+            Prompt = "JD này có yêu cầu Python không?",
+            ForceRanking = false
+        }, ownerId);
+
+        response.Success.Should().BeTrue();
+        response.Data!.DidRank.Should().BeFalse();
+        response.Data.AssistantMessage.Should().Be("Có, JD yêu cầu kinh nghiệm Python.");
+        repository.Verify(v => v.GetCandidatePoolAsync(jobId), Times.Once);
+        aiProvider.Verify(v => v.TryCreateChatReplyAsync(
+            It.IsAny<CopilotCandidatePoolDto>(),
+            "JD này có yêu cầu Python không?",
+            It.IsAny<IReadOnlyList<CopilotMessage>>(),
+            conversationId,
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task CreateRankingAsync_OffTopicChatPrompt_StillReachesAiProvider_NoBackendRefusal()
+    {
+        // Even a clearly off-topic prompt is now forwarded to the AI — whose system prompt is
+        // responsible for a soft decline — instead of being refused by a backend keyword denylist that
+        // can never exhaustively cover every unrelated topic either.
+        var repository = new Mock<ICopilotRepository>();
+        var aiProvider = new Mock<IAiCopilotProvider>();
+        Guid jobId = Guid.NewGuid();
+        Guid ownerId = Guid.NewGuid();
+        Guid conversationId = Guid.NewGuid();
+        CopilotCandidatePoolDto pool = BuildCopilotPool(jobId);
+
+        repository.Setup(v => v.GetConversationAsync(conversationId)).ReturnsAsync(new CopilotConversation { Id = conversationId, JobId = jobId, UserId = ownerId });
+        repository.Setup(v => v.GetNextMessageSequenceAsync(conversationId)).ReturnsAsync(1);
+        repository.Setup(v => v.GetCandidatePoolAsync(jobId)).ReturnsAsync(pool);
+        repository.Setup(v => v.GetConversationWithDetailsAsync(conversationId))
+            .ReturnsAsync(new CopilotConversation { Id = conversationId, JobId = jobId, UserId = ownerId });
+        aiProvider.Setup(v => v.TryCreateChatReplyAsync(It.IsAny<CopilotCandidatePoolDto>(), It.IsAny<string>(), It.IsAny<IReadOnlyList<CopilotMessage>>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("Mình chỉ hỗ trợ các tác vụ tuyển dụng trong RecruitPro thôi nhé.");
+
+        CopilotService service = CreateService(repository.Object, aiProvider: aiProvider.Object,
+            aiSettings: new AiProviderSettings { Enabled = true, ApiKey = "test-key", Model = "m" });
 
         var response = await service.CreateRankingAsync(conversationId, new CopilotPromptRequest
         {
@@ -1056,9 +1107,64 @@ public sealed class CopilotServiceUnitTests
 
         response.Success.Should().BeTrue();
         response.Data!.DidRank.Should().BeFalse();
-        response.Data.AssistantMessage.Should().Contain("Đây không phải nhiệm vụ của tôi");
-        repository.Verify(v => v.GetCandidatePoolAsync(It.IsAny<Guid>()), Times.Never);
-        aiProvider.Verify(v => v.TryCreateChatReplyAsync(It.IsAny<CopilotCandidatePoolDto>(), It.IsAny<string>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+        repository.Verify(v => v.GetCandidatePoolAsync(jobId), Times.Once);
+        aiProvider.Verify(v => v.TryCreateChatReplyAsync(
+            It.IsAny<CopilotCandidatePoolDto>(),
+            "Thời tiết hôm nay thế nào?",
+            It.IsAny<IReadOnlyList<CopilotMessage>>(),
+            conversationId,
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task CreateRankingAsync_ChatFollowUp_PassesPriorMessagesAsHistoryToProvider()
+    {
+        // Short follow-ups ("gợi ý thêm") only make sense with what was already discussed; the backend
+        // must load and forward prior turns rather than answering each message in isolation.
+        var repository = new Mock<ICopilotRepository>();
+        var aiProvider = new Mock<IAiCopilotProvider>();
+        Guid jobId = Guid.NewGuid();
+        Guid ownerId = Guid.NewGuid();
+        Guid conversationId = Guid.NewGuid();
+        CopilotCandidatePoolDto pool = BuildCopilotPool(jobId);
+
+        CopilotConversation conversationWithHistory = new()
+        {
+            Id = conversationId,
+            JobId = jobId,
+            UserId = ownerId,
+            Messages =
+            [
+                new CopilotMessage { ConversationId = conversationId, Role = "User", Content = "Gợi ý tiêu chí cho JD này", SequenceNo = 1 },
+                new CopilotMessage { ConversationId = conversationId, Role = "Assistant", Content = "Bạn có thể ưu tiên kinh nghiệm .NET và SQL.", SequenceNo = 2 }
+            ]
+        };
+
+        repository.Setup(v => v.GetConversationAsync(conversationId)).ReturnsAsync(new CopilotConversation { Id = conversationId, JobId = jobId, UserId = ownerId });
+        repository.Setup(v => v.GetNextMessageSequenceAsync(conversationId)).ReturnsAsync(3);
+        repository.Setup(v => v.GetCandidatePoolAsync(jobId)).ReturnsAsync(pool);
+        repository.Setup(v => v.GetConversationWithDetailsAsync(conversationId)).ReturnsAsync(conversationWithHistory);
+
+        IReadOnlyList<CopilotMessage>? capturedHistory = null;
+        aiProvider.Setup(v => v.TryCreateChatReplyAsync(It.IsAny<CopilotCandidatePoolDto>(), It.IsAny<string>(), It.IsAny<IReadOnlyList<CopilotMessage>>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .Callback<CopilotCandidatePoolDto, string, IReadOnlyList<CopilotMessage>, Guid, CancellationToken>((_, _, history, _, _) => capturedHistory = history)
+            .ReturnsAsync("Thêm kỹ năng Azure và khả năng làm việc nhóm.");
+
+        CopilotService service = CreateService(repository.Object, aiProvider: aiProvider.Object,
+            aiSettings: new AiProviderSettings { Enabled = true, ApiKey = "test-key", Model = "m" });
+
+        var response = await service.CreateRankingAsync(conversationId, new CopilotPromptRequest
+        {
+            JobId = jobId,
+            Prompt = "Gợi ý thêm.",
+            ForceRanking = false
+        }, ownerId);
+
+        response.Success.Should().BeTrue();
+        capturedHistory.Should().NotBeNull();
+        capturedHistory!.Should().HaveCount(2);
+        capturedHistory[0].Content.Should().Be("Gợi ý tiêu chí cho JD này");
+        capturedHistory[1].Content.Should().Be("Bạn có thể ưu tiên kinh nghiệm .NET và SQL.");
     }
 
     [Fact]

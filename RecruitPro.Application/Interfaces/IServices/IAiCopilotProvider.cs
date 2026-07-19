@@ -1,4 +1,5 @@
 using RecruitPro.Application.DTOs.Response.Copilot;
+using RecruitPro.Domain.Entities;
 
 namespace RecruitPro.Application.Interfaces.IServices;
 
@@ -18,9 +19,16 @@ public interface IAiCopilotProvider
         Guid conversationId,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Non-ranking chat reply. Scope (v2 §14) is the AI's own judgment call from the job/JD/CV context,
+    /// <paramref name="history"/>, and <paramref name="userPrompt"/> — the backend does not pre-filter
+    /// by keyword. <paramref name="history"/> is the prior turns of this conversation (oldest first),
+    /// letting the AI resolve short follow-ups (e.g. "gợi ý thêm") against what was already discussed.
+    /// </summary>
     Task<string?> TryCreateChatReplyAsync(
         CopilotCandidatePoolDto pool,
         string userPrompt,
+        IReadOnlyList<CopilotMessage> history,
         Guid conversationId,
         CancellationToken cancellationToken = default);
 }

@@ -10,6 +10,7 @@ using RecruitPro.Application.DTOs.Response;
 using RecruitPro.Application.DTOs.Response.Copilot;
 using RecruitPro.Application.Interfaces;
 using RecruitPro.Application.Interfaces.IServices;
+using RecruitPro.Domain.Entities;
 using RecruitPro.Infrastructure.Data;
 
 namespace RecruitPro.Tests.Infrastructure;
@@ -136,6 +137,6 @@ internal sealed class FakeAiCopilotProvider : IAiCopilotProvider
     public Task<CopilotPromptResponseDto?> TryCreateRankingAsync(CopilotCandidatePoolDto pool, CopilotNormalizedRulesDto rules, IReadOnlyList<CopilotRankingResultDto> deterministicResults, string userPrompt, Guid conversationId, CancellationToken cancellationToken = default)
         => Task.FromResult<CopilotPromptResponseDto?>(null);
 
-    public Task<string?> TryCreateChatReplyAsync(CopilotCandidatePoolDto pool, string userPrompt, Guid conversationId, CancellationToken cancellationToken = default)
+    public Task<string?> TryCreateChatReplyAsync(CopilotCandidatePoolDto pool, string userPrompt, IReadOnlyList<CopilotMessage> history, Guid conversationId, CancellationToken cancellationToken = default)
         => Task.FromResult<string?>("Test reply");
 }
