@@ -1,0 +1,787 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RecruitPro · G10 Automation — Flow</title>
+<script>
+  (function () {
+    const saved = localStorage.getItem('theme');
+    const dark = saved ? saved === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+    document.documentElement.classList.toggle('dark', dark);
+  })();
+</script>
+<style>
+  :root {
+    --bg: #FAF9F5; --surface: #FFFFFF; --surface2: #F0EEE6;
+    --ink: #141413; --body: #3D3D3A; --muted: #87867F;
+    --line: #D1CFC5; --line-soft: #E6E3DA;
+    --clay: #D97757; --clay-soft: rgba(217,119,87,0.10);
+    --olive: #788C5D; --olive-soft: rgba(120,140,93,0.12);
+    --gold: #C9A45C; --blue: #5B7E96; --blue-soft: rgba(91,126,150,0.12);
+    --zone: rgba(20,20,19,0.025); --zone-line: #D1CFC5;
+    --serif: ui-serif, Georgia, "Times New Roman", serif;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  html.dark {
+    --bg: #141413; --surface: #1F1F1D; --surface2: #2A2A28;
+    --ink: #FAF9F5; --body: #D1CFC5; --muted: #8B8A82;
+    --line: #3D3D3A; --line-soft: #2A2A28;
+    --clay: #E48A6E; --clay-soft: rgba(228,138,110,0.14);
+    --olive: #9DB07C; --olive-soft: rgba(157,176,124,0.16);
+    --gold: #D4B36F; --blue: #7FA3BC; --blue-soft: rgba(127,163,188,0.16);
+    --zone: rgba(250,249,245,0.03); --zone-line: #3D3D3A;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg); color: var(--body); font-family: var(--sans);
+    -webkit-font-smoothing: antialiased; display: flex; flex-direction: column; overflow: hidden;
+  }
+
+  /* ── top bar ─────────────────────────────── */
+  .bar {
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    padding: 11px 18px; border-bottom: 1px solid var(--line-soft); flex: none;
+  }
+  .bar h1 { font-family: var(--serif); font-weight: 500; font-size: 18px; color: var(--ink); letter-spacing: -0.01em; }
+  .bar .sub { font-family: var(--mono); font-size: 10px; color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; }
+  .spacer { flex: 1; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.03em;
+    padding: 5px 10px; border: 1px solid var(--line); border-radius: 999px;
+    background: transparent; color: var(--muted); cursor: pointer; transition: all .15s ease;
+  }
+  .chip:hover { color: var(--ink); border-color: var(--muted); }
+  .chip.on { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+  .btn {
+    font-family: var(--mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em;
+    padding: 5px 10px; border: 1px solid var(--line); border-radius: 6px;
+    background: transparent; color: var(--muted); cursor: pointer;
+  }
+  .btn:hover { color: var(--ink); border-color: var(--muted); }
+
+  /* ── stage ───────────────────────────────── */
+  .stage { flex: 1; position: relative; min-height: 0; }
+  .stage svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; }
+  .stage.grabbing svg { cursor: grabbing; }
+
+  /* zones */
+  .zone rect { fill: var(--zone); stroke: var(--zone-line); stroke-width: 1; stroke-dasharray: 5 5; }
+  .zone .ztitle { font-family: var(--mono); font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; fill: var(--muted); }
+  .zone .zsub { font-family: var(--mono); font-size: 10px; fill: var(--muted); opacity: 0.7; }
+
+  /* nodes */
+  .node { cursor: pointer; }
+  .node rect { fill: var(--surface); stroke: var(--line); stroke-width: 1.5; transition: stroke .15s ease, filter .15s ease; }
+  .node:hover rect { stroke: var(--muted); }
+  .node.sel rect { stroke: var(--clay) !important; stroke-width: 2.4; }
+  .node .t  { font-family: var(--sans); font-size: 14px; font-weight: 600; fill: var(--ink); pointer-events: none; }
+  .node .m  { font-family: var(--mono); font-size: 10.5px; fill: var(--muted); pointer-events: none; }
+  .node .k  { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.09em; text-transform: uppercase; fill: var(--clay); pointer-events: none; }
+  .node.gate rect { fill: var(--clay-soft); stroke: var(--clay); }
+  .node.store rect { fill: var(--surface2); }
+  .node.store .k { fill: var(--blue); }
+  .node.do rect { fill: var(--olive-soft); stroke: var(--olive); }
+  .node.do .k { fill: var(--olive); }
+  .node.ext rect { stroke-dasharray: 6 3; fill: transparent; }
+  .node.ext .k { fill: var(--muted); }
+
+  /* edges */
+  .edge { stroke: var(--muted); stroke-width: 1.5; fill: none; marker-end: url(#a-mut); transition: opacity .2s ease, stroke .2s ease; }
+  .edge.dash { stroke-dasharray: 5 4; opacity: 0.6; }
+  .elbl { font-family: var(--mono); font-size: 10px; fill: var(--muted); transition: opacity .2s ease; }
+
+  /* flow highlighting */
+  .stage.flowing .edge { opacity: 0.10; }
+  .stage.flowing .elbl { opacity: 0.10; }
+  .stage.flowing .node { opacity: 0.28; }
+  .stage.flowing .zone { opacity: 0.40; }
+  .stage.flowing .edge.lit {
+    opacity: 1; stroke: var(--clay); marker-end: url(#a-clay);
+    stroke-dasharray: 7 5; animation: march 0.9s linear infinite;
+  }
+  .stage.flowing .elbl.lit { opacity: 1; fill: var(--clay); }
+  .stage.flowing .node.lit { opacity: 1; }
+  .stage.flowing .node.lit rect { stroke: var(--clay); }
+  @keyframes march { to { stroke-dashoffset: -12; } }
+  @media (prefers-reduced-motion: reduce) { .stage.flowing .edge.lit { animation: none; } }
+
+  /* ── floating cards ──────────────────────── */
+  .card {
+    position: absolute; background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+    padding: 14px 16px; box-shadow: 0 6px 24px rgba(0,0,0,0.10);
+  }
+  .card .x {
+    position: absolute; top: 8px; right: 10px; width: 22px; height: 22px; line-height: 20px;
+    text-align: center; border: 1px solid var(--line); border-radius: 6px; background: transparent;
+    color: var(--muted); cursor: pointer; font-size: 14px; font-family: var(--mono);
+  }
+  .card .x:hover { color: var(--ink); border-color: var(--muted); }
+  #detail { right: 16px; bottom: 16px; width: 344px; }
+  #detail h3 { font-family: var(--serif); font-weight: 500; font-size: 17px; color: var(--ink); margin-bottom: 2px; padding-right: 26px; }
+  #detail .meta { font-family: var(--mono); font-size: 10px; color: var(--muted); margin-bottom: 9px; }
+  #detail p { font-size: 12.5px; line-height: 1.55; }
+  #detail code, #flowcap code { font-family: var(--mono); font-size: 11px; color: var(--clay); }
+  #flowcap { left: 16px; bottom: 16px; max-width: 470px; display: none; }
+  #flowcap.show { display: block; }
+  #flowcap .fname { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--clay); margin-bottom: 7px; padding-right: 26px; }
+  #flowcap ol { margin-left: 18px; }
+  #flowcap li { font-size: 12.5px; line-height: 1.5; margin-bottom: 3px; }
+  #legend { left: 16px; top: 16px; width: 220px; display: none; }
+  #legend.show { display: block; }
+  #legend .lg { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; padding-right: 26px; }
+  #legend .row { display: flex; align-items: center; gap: 9px; margin-bottom: 8px; font-size: 12px; }
+  #legend .sw { width: 26px; height: 16px; border-radius: 4px; border: 1.5px solid var(--line); flex: none; }
+  #legend .sw.core { background: var(--surface); }
+  #legend .sw.gate { background: var(--clay-soft); border-color: var(--clay); }
+  #legend .sw.store { background: var(--surface2); border-color: var(--blue); }
+  #legend .sw.do { background: var(--olive-soft); border-color: var(--olive); }
+  #legend .sw.ext { background: transparent; border-style: dashed; }
+
+  /* ── view controls ───────────────────────── */
+  .viewctl {
+    position: absolute; right: 16px; top: 16px; display: flex; align-items: center; gap: 6px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 5px 7px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.07);
+  }
+  .viewctl button {
+    font-family: var(--mono); font-size: 14px; width: 26px; height: 26px; border: 1px solid var(--line);
+    border-radius: 5px; background: transparent; color: var(--muted); cursor: pointer;
+  }
+  .viewctl button:hover { color: var(--ink); border-color: var(--muted); }
+  .viewctl #zlvl { font-family: var(--mono); font-size: 11px; color: var(--muted); min-width: 42px; text-align: center; }
+  .hint {
+    position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%);
+    font-family: var(--mono); font-size: 10px; color: var(--muted); opacity: 0.7;
+    pointer-events: none; letter-spacing: 0.04em;
+  }
+  .stage.flowing .hint { display: none; }
+  @media (max-width: 900px) {
+    body { overflow: auto; }
+    .stage { min-height: 78vh; }
+    #detail, #flowcap, #legend { position: static; width: auto; margin: 10px 16px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="bar">
+  <div>
+    <h1>G10 · Tự động hóa Workflow &amp; MCP</h1>
+    <div class="sub">RecruitPro.Application / Services / Automation</div>
+  </div>
+  <div class="spacer"></div>
+  <div class="chips" id="chips">
+    <button class="chip on" data-flow="all">Toàn cảnh</button>
+    <button class="chip" data-flow="publish">Publish</button>
+    <button class="chip" data-flow="dispatch">Dispatch</button>
+    <button class="chip" data-flow="shadow">Shadow</button>
+    <button class="chip" data-flow="live">Live</button>
+    <button class="chip" data-flow="retry">Retry</button>
+    <button class="chip" data-flow="overdue">Overdue</button>
+    <button class="chip" data-flow="admin">Admin</button>
+    <button class="chip" data-flow="diagnostics">Chẩn đoán</button>
+    <button class="chip" data-flow="mcp">MCP</button>
+    <button class="chip" data-flow="seed">Seed</button>
+  </div>
+  <button class="btn" id="legendBtn">Chú thích</button>
+  <button class="btn" id="themeToggle">Theme</button>
+</div>
+
+<div class="stage" id="stage">
+<svg id="svg" viewBox="0 0 1800 1470" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Sơ đồ luồng module Tự động hóa Workflow và MCP của RecruitPro">
+  <defs>
+    <marker id="a-mut" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" style="fill: var(--muted)"/>
+    </marker>
+    <marker id="a-clay" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" style="fill: var(--clay)"/>
+    </marker>
+  </defs>
+
+  <g id="svg-content">
+  <!-- ── zones ─────────────────────────────── -->
+  <g class="zone">
+    <rect x="35" y="150" width="250" height="320" rx="16"/>
+    <text class="ztitle" x="55" y="180">Nguồn / Trigger</text>
+    <text class="zsub" x="55" y="197">phát event vào outbox</text>
+  </g>
+  <g class="zone">
+    <rect x="300" y="150" width="250" height="690" rx="16"/>
+    <text class="ztitle" x="320" y="180">Outbox &amp; Workers</text>
+  </g>
+  <g class="zone">
+    <rect x="575" y="150" width="330" height="610" rx="16"/>
+    <text class="ztitle" x="595" y="180">Workflow Engine — core</text>
+  </g>
+  <g class="zone">
+    <rect x="1130" y="440" width="300" height="430" rx="16"/>
+    <text class="ztitle" x="1150" y="470">Cutover &amp; Delivery</text>
+  </g>
+  <g class="zone">
+    <rect x="1490" y="150" width="290" height="690" rx="16"/>
+    <text class="ztitle" x="1510" y="180">Data · PostgreSQL</text>
+  </g>
+  <g class="zone">
+    <rect x="300" y="860" width="790" height="340" rx="16"/>
+    <text class="ztitle" x="320" y="890">Admin &amp; Chẩn đoán · SysAdmin</text>
+  </g>
+  <g class="zone">
+    <rect x="300" y="1210" width="1120" height="250" rx="16"/>
+    <text class="ztitle" x="320" y="1240">MCP Tools · SysAdmin · read-only</text>
+  </g>
+
+  <!-- ── edges ─────────────────────────────── -->
+  <path class="edge" id="e-ats"        d="M265,248 L320,248"/>
+  <path class="edge" id="e-scan"       d="M265,406 C295,402 305,300 320,272"/>
+  <path class="edge" id="e-write"      d="M425,297 L425,360"/>
+  <path class="edge" id="e-poll"       d="M425,452 L425,520"/>
+  <path class="edge" id="e-proc"       d="M530,560 C595,556 600,320 650,305"/>
+  <path class="edge dash" id="e-mode"  d="M1160,513 C1030,470 940,340 880,300"/>
+  <path class="edge" id="e-defs"       d="M880,258 C1150,250 1300,248 1530,248"/>
+  <path class="edge" id="e-exec"       d="M765,325 C1050,340 1300,378 1530,378"/>
+  <path class="edge" id="e-cond"       d="M765,325 L765,380"/>
+  <path class="edge" id="e-reg"        d="M765,456 L765,500"/>
+  <path class="edge" id="e-hand"       d="M765,572 L765,620"/>
+  <path class="edge" id="e-notify"     d="M880,675 C1010,672 1060,668 1160,666"/>
+  <path class="edge" id="e-persist"    d="M1390,666 C1450,660 1495,642 1530,638"/>
+  <path class="edge" id="e-sse"        d="M1275,712 L1275,770"/>
+  <path class="edge" id="e-fail"       d="M880,690 C1120,660 1300,540 1530,513"/>
+  <path class="edge" id="e-rerun"      d="M425,660 C455,470 545,330 650,308"/>
+  <path class="edge dash" id="e-dlretry" d="M1530,513 C1150,760 780,805 530,712"/>
+
+  <path class="edge" id="e-sa-def"     d="M265,1010 C290,995 300,958 320,946"/>
+  <path class="edge" id="e-sa-exec"    d="M265,1026 C290,1035 300,1048 320,1052"/>
+  <path class="edge" id="e-sa-diag"    d="M265,1006 C400,1030 470,1000 600,950"/>
+  <path class="edge dash" id="e-def-store"  d="M530,942 C900,700 1220,300 1530,255"/>
+  <path class="edge dash" id="e-exec-store" d="M530,1052 C950,900 1260,420 1530,388"/>
+  <path class="edge" id="e-diag2"      d="M705,984 L705,1010"/>
+  <path class="edge dash" id="e-diag-hb" d="M810,942 C1100,860 1350,772 1530,760"/>
+  <path class="edge dash" id="e-hb-write" d="M530,555 C950,600 1300,742 1530,754"/>
+  <path class="edge dash" id="e-map1"  d="M530,940 C650,958 780,986 880,990"/>
+  <path class="edge dash" id="e-map2"  d="M530,1050 C650,1032 780,1002 880,996"/>
+  <path class="edge" id="e-boot-seed"  d="M265,1150 C400,1152 500,1156 600,1157"/>
+  <path class="edge dash" id="e-seed-store" d="M810,1150 C1210,900 1460,300 1530,258"/>
+
+  <path class="edge" id="e-sa-mcp"     d="M160,1056 C160,1200 240,1284 320,1284"/>
+  <path class="edge" id="e-mcp1"       d="M530,1284 L600,1283"/>
+  <path class="edge" id="e-mcp2"       d="M800,1283 L850,1285"/>
+  <path class="edge" id="e-mcp3"       d="M1070,1285 L1160,1285"/>
+  <path class="edge dash" id="e-mcp-log" d="M425,1328 C700,1345 950,1394 1180,1396"/>
+  <path class="edge dash" id="e-mcp-read" d="M530,1396 L1180,1396"/>
+  <path class="edge" id="e-sa-audit"   d="M160,1056 C120,1250 190,1396 320,1396"/>
+
+  <!-- ── edge labels ───────────────────────── -->
+  <text class="elbl" data-e="e-ats" x="272" y="240">PublishAsync</text>
+  <text class="elbl" data-e="e-scan" x="228" y="345">⏱ overdue</text>
+  <text class="elbl" data-e="e-write" x="433" y="332">ghi event</text>
+  <text class="elbl" data-e="e-poll" x="433" y="492">poll Pending</text>
+  <text class="elbl" data-e="e-proc" x="545" y="430">ProcessEvent</text>
+  <text class="elbl" data-e="e-mode" x="965" y="352">resolve mode</text>
+  <text class="elbl" data-e="e-defs" x="1075" y="240">version active</text>
+  <text class="elbl" data-e="e-exec" x="1055" y="352">ghi execution</text>
+  <text class="elbl" data-e="e-cond" x="772" y="358">chấm ĐK (AND)</text>
+  <text class="elbl" data-e="e-reg" x="772" y="482">nếu pass →</text>
+  <text class="elbl" data-e="e-hand" x="772" y="600">resolve type</text>
+  <text class="elbl" data-e="e-notify" x="915" y="652">dispatch notify</text>
+  <text class="elbl" data-e="e-persist" x="1398" y="700">Live: ghi</text>
+  <text class="elbl" data-e="e-sse" x="1282" y="746">SSE push</text>
+  <text class="elbl" data-e="e-fail" x="1120" y="600">on fail</text>
+  <text class="elbl" data-e="e-rerun" x="452" y="470">re-run due</text>
+  <text class="elbl" data-e="e-dlretry" x="960" y="775">dead-letter đến hạn</text>
+  <text class="elbl" data-e="e-mcp3" x="1078" y="1277">read-only</text>
+  <text class="elbl" data-e="e-mcp-log" x="720" y="1372">audit call</text>
+
+  <!-- ── nodes: triggers ───────────────────── -->
+  <g class="node ext" data-k="ats">
+    <rect x="55" y="200" width="210" height="96" rx="10"/>
+    <text class="t" x="73" y="230">ATS Producer Services</text>
+    <text class="m" x="73" y="252">JobService · ApplicationService</text>
+    <text class="m" x="73" y="270">InterviewService</text>
+    <text class="k" x="73" y="288">PUBLISH</text>
+  </g>
+  <g class="node ext" data-k="scanner">
+    <rect x="55" y="360" width="210" height="92" rx="10"/>
+    <text class="t" x="73" y="388">HeadReviewOverdueScanner</text>
+    <text class="m" x="73" y="410">⏱ mỗi giờ · Infrastructure</text>
+    <text class="m" x="73" y="428">quét hồ sơ quá hạn</text>
+    <text class="k" x="73" y="446">SCHEDULED</text>
+  </g>
+  <g class="node ext" data-k="sysadmin">
+    <rect x="55" y="980" width="210" height="76" rx="10"/>
+    <text class="t" x="73" y="1010">SysAdmin</text>
+    <text class="m" x="73" y="1032">/api/sysadmin/* controllers</text>
+    <text class="k" x="73" y="1050">ACTOR</text>
+  </g>
+  <g class="node ext" data-k="appstart">
+    <rect x="55" y="1120" width="210" height="70" rx="10"/>
+    <text class="t" x="73" y="1150">App startup</text>
+    <text class="m" x="73" y="1172">HostedService (1 lần)</text>
+  </g>
+
+  <!-- ── nodes: outbox & workers ───────────── -->
+  <g class="node gate" data-k="eventbus">
+    <rect x="320" y="205" width="210" height="92" rx="10"/>
+    <text class="t" x="338" y="233">RecruitProEventBus</text>
+    <text class="m" x="338" y="255">PublishAsync → effective mode</text>
+    <text class="m" x="338" y="273">idempotent · best-effort</text>
+    <text class="k" x="338" y="290">CUTOVER</text>
+  </g>
+  <g class="node store" data-k="outbox">
+    <rect x="320" y="360" width="210" height="92" rx="10"/>
+    <text class="t" x="338" y="388">published_domain_events</text>
+    <text class="m" x="338" y="410">outbox bền vững</text>
+    <text class="m" x="338" y="428">Pending → Processed</text>
+    <text class="k" x="338" y="446">TABLE</text>
+  </g>
+  <g class="node ext" data-k="dispatcher">
+    <rect x="320" y="520" width="210" height="80" rx="10"/>
+    <text class="t" x="338" y="548">WorkflowDispatcher</text>
+    <text class="m" x="338" y="570">⏱ mỗi 5s · lấy ≤25 event</text>
+    <text class="k" x="338" y="590">BACKGROUND</text>
+  </g>
+  <g class="node" data-k="retry">
+    <rect x="320" y="660" width="210" height="88" rx="10"/>
+    <text class="t" x="338" y="688">WorkflowRetryService</text>
+    <text class="m" x="338" y="710">⏱ 30s worker</text>
+    <text class="m" x="338" y="728">re-run execution đến hạn</text>
+  </g>
+
+  <!-- ── nodes: engine core ────────────────── -->
+  <g class="node" data-k="engine">
+    <rect x="650" y="205" width="230" height="120" rx="10"/>
+    <text class="t" x="668" y="235">WorkflowEngine</text>
+    <text class="m" x="668" y="258">ProcessEventAsync</text>
+    <text class="m" x="668" y="276">match trigger · resolve mode</text>
+    <text class="m" x="668" y="294">write execution + steps</text>
+    <text class="k" x="668" y="314">CORE · THE BRAIN</text>
+  </g>
+  <g class="node" data-k="conditions">
+    <rect x="650" y="380" width="230" height="76" rx="10"/>
+    <text class="t" x="668" y="408">WorkflowConditionEvaluator</text>
+    <text class="m" x="668" y="430">AND · thuần logic · 7 operators</text>
+    <text class="k" x="668" y="448">GATE</text>
+  </g>
+  <g class="node" data-k="registry">
+    <rect x="650" y="500" width="230" height="72" rx="10"/>
+    <text class="t" x="668" y="528">WorkflowActionRegistry</text>
+    <text class="m" x="668" y="550">resolve handler theo type</text>
+  </g>
+  <g class="node do" data-k="handlers">
+    <rect x="650" y="620" width="230" height="110" rx="10"/>
+    <text class="t" x="668" y="648">Action Handlers ×5</text>
+    <text class="m" x="668" y="670">notify_user · notify_role</text>
+    <text class="m" x="668" y="688">send_reminder</text>
+    <text class="m" x="668" y="706">next_step · shadow_log</text>
+    <text class="k" x="668" y="724">DO THE WORK</text>
+  </g>
+
+  <!-- ── nodes: cutover & delivery ─────────── -->
+  <g class="node ext" data-k="settings">
+    <rect x="1160" y="470" width="230" height="86" rx="10"/>
+    <text class="t" x="1178" y="498">WorkflowAutomation config</text>
+    <text class="m" x="1178" y="520">appsettings · EventModes</text>
+    <text class="m" x="1178" y="538">Disabled / Shadow / Live</text>
+    <text class="k" x="1178" y="552">CUTOVER · SoT</text>
+  </g>
+  <g class="node" data-k="notifier">
+    <rect x="1160" y="620" width="230" height="92" rx="10"/>
+    <text class="t" x="1178" y="648">WorkflowNotificationDispatcher</text>
+    <text class="m" x="1178" y="670">Shadow → would-notify</text>
+    <text class="m" x="1178" y="688">Live → persist + SSE</text>
+    <text class="k" x="1178" y="705">DELIVER</text>
+  </g>
+  <g class="node ext" data-k="users">
+    <rect x="1160" y="770" width="230" height="76" rx="10"/>
+    <text class="t" x="1178" y="798">Users</text>
+    <text class="m" x="1178" y="820">bell · SSE realtime</text>
+    <text class="k" x="1178" y="838">RECIPIENTS</text>
+  </g>
+
+  <!-- ── nodes: data ───────────────────────── -->
+  <g class="node store" data-k="defs">
+    <rect x="1530" y="200" width="220" height="96" rx="10"/>
+    <text class="t" x="1548" y="228">workflow_definitions</text>
+    <text class="m" x="1548" y="250">+ _versions</text>
+    <text class="m" x="1548" y="268">active + enabled</text>
+    <text class="k" x="1548" y="286">TABLE</text>
+  </g>
+  <g class="node store" data-k="execs">
+    <rect x="1530" y="330" width="220" height="96" rx="10"/>
+    <text class="t" x="1548" y="358">workflow_executions</text>
+    <text class="m" x="1548" y="380">+ _steps</text>
+    <text class="m" x="1548" y="398">status · mode · retry</text>
+    <text class="k" x="1548" y="416">TABLE</text>
+  </g>
+  <g class="node store" data-k="deadletters">
+    <rect x="1530" y="470" width="220" height="86" rx="10"/>
+    <text class="t" x="1548" y="498">…action_dead_letters</text>
+    <text class="m" x="1548" y="520">action hết retry</text>
+    <text class="m" x="1548" y="538">+ next_retry_at</text>
+    <text class="k" x="1548" y="552">TABLE</text>
+  </g>
+  <g class="node store" data-k="notifs">
+    <rect x="1530" y="600" width="220" height="76" rx="10"/>
+    <text class="t" x="1548" y="628">notifications</text>
+    <text class="m" x="1548" y="650">chỉ Live mới ghi</text>
+    <text class="k" x="1548" y="668">TABLE</text>
+  </g>
+  <g class="node store" data-k="heartbeats">
+    <rect x="1530" y="720" width="220" height="76" rx="10"/>
+    <text class="t" x="1548" y="748">…worker_heartbeats</text>
+    <text class="m" x="1548" y="770">worker còn sống?</text>
+    <text class="k" x="1548" y="788">TABLE</text>
+  </g>
+
+  <!-- ── nodes: admin & diagnostics ────────── -->
+  <g class="node" data-k="defsvc">
+    <rect x="320" y="900" width="210" height="84" rx="10"/>
+    <text class="t" x="338" y="928">WorkflowDefinitionService</text>
+    <text class="m" x="338" y="950">create · update · publish</text>
+    <text class="m" x="338" y="968">enable · versioning</text>
+  </g>
+  <g class="node" data-k="execsvc">
+    <rect x="320" y="1010" width="210" height="84" rx="10"/>
+    <text class="t" x="338" y="1038">WorkflowExecutionService</text>
+    <text class="m" x="338" y="1060">query · detail · retry</text>
+    <text class="m" x="338" y="1078">outbox debug</text>
+  </g>
+  <g class="node" data-k="diag">
+    <rect x="600" y="900" width="210" height="84" rx="10"/>
+    <text class="t" x="618" y="928">AutomationDiagnosticsService</text>
+    <text class="m" x="618" y="950">"vì sao không chạy?"</text>
+    <text class="m" x="618" y="968">gom heartbeat+exec+outbox</text>
+  </g>
+  <g class="node" data-k="reasoner">
+    <rect x="600" y="1010" width="210" height="84" rx="10"/>
+    <text class="t" x="618" y="1038">AutomationDiagnosticsReasoner</text>
+    <text class="m" x="618" y="1060">luật thuần → kết luận</text>
+    <text class="k" x="618" y="1080">PURE</text>
+  </g>
+  <g class="node" data-k="mapper">
+    <rect x="880" y="955" width="200" height="76" rx="10"/>
+    <text class="t" x="898" y="983">AutomationMapper</text>
+    <text class="m" x="898" y="1005">entity → DTO</text>
+    <text class="k" x="898" y="1023">HELPER</text>
+  </g>
+  <g class="node" data-k="seeder">
+    <rect x="600" y="1120" width="210" height="76" rx="10"/>
+    <text class="t" x="618" y="1148">WorkflowTemplateSeeder</text>
+    <text class="m" x="618" y="1170">4 workflow mẫu · Shadow</text>
+    <text class="k" x="618" y="1188">BOOT</text>
+  </g>
+
+  <!-- ── nodes: mcp ─────────────────────────── -->
+  <g class="node gate" data-k="mcpsvc">
+    <rect x="320" y="1240" width="210" height="88" rx="10"/>
+    <text class="t" x="338" y="1268">McpToolService</text>
+    <text class="m" x="338" y="1290">RBAC: SystemAdmin</text>
+    <text class="m" x="338" y="1308">audit mọi lần gọi</text>
+    <text class="k" x="338" y="1324">GATE</text>
+  </g>
+  <g class="node" data-k="mcpreg">
+    <rect x="600" y="1245" width="200" height="76" rx="10"/>
+    <text class="t" x="618" y="1273">McpToolRegistry</text>
+    <text class="m" x="618" y="1295">resolve tool theo tên</text>
+  </g>
+  <g class="node do" data-k="mcptools">
+    <rect x="850" y="1240" width="220" height="90" rx="10"/>
+    <text class="t" x="868" y="1268">MCP Tools ×6</text>
+    <text class="m" x="868" y="1290">jobs · applications</text>
+    <text class="m" x="868" y="1308">interviews · analytics</text>
+    <text class="k" x="868" y="1324">READ-ONLY</text>
+  </g>
+  <g class="node ext" data-k="appsvc">
+    <rect x="1160" y="1245" width="230" height="80" rx="10"/>
+    <text class="t" x="1178" y="1273">App Services</text>
+    <text class="m" x="1178" y="1295">Jobs/Apps/Interviews/Analytics</text>
+    <text class="m" x="1178" y="1313">ownership check ở đây</text>
+  </g>
+  <g class="node" data-k="mcpaudit">
+    <rect x="320" y="1360" width="210" height="72" rx="10"/>
+    <text class="t" x="338" y="1388">McpToolAuditService</text>
+    <text class="m" x="338" y="1410">đọc log audit (admin)</text>
+  </g>
+  <g class="node store" data-k="audits">
+    <rect x="1180" y="1360" width="220" height="72" rx="10"/>
+    <text class="t" x="1198" y="1388">mcp_tool_audits</text>
+    <text class="m" x="1198" y="1410">mọi call được ghi</text>
+  </g>
+  </g>
+</svg>
+
+  <div class="viewctl">
+    <button id="zoomOut" title="Thu nhỏ">−</button>
+    <span id="zlvl">100%</span>
+    <button id="zoomIn" title="Phóng to">+</button>
+    <button id="zoomReset" title="Về 100%">⤢</button>
+  </div>
+
+  <div class="hint">Kéo để di chuyển · lăn chuột để zoom · bấm node để xem chi tiết · bấm chip để chạy luồng</div>
+
+  <div class="card" id="legend">
+    <button class="x" data-close="legend">×</button>
+    <div class="lg">Chú thích</div>
+    <div class="row"><span class="sw core"></span> Service trong folder Automation</div>
+    <div class="row"><span class="sw gate"></span> Gate / cutover (bus · MCP RBAC)</div>
+    <div class="row"><span class="sw do"></span> Handlers / Tools (làm việc)</div>
+    <div class="row"><span class="sw store"></span> Bảng dữ liệu (Postgres)</div>
+    <div class="row"><span class="sw ext"></span> Ngoài folder (worker · store · actor)</div>
+  </div>
+
+  <div class="card" id="flowcap">
+    <button class="x" data-close="flowcap">×</button>
+    <div class="fname" id="f-name"></div>
+    <ol id="f-steps"></ol>
+  </div>
+
+  <div class="card" id="detail">
+    <button class="x" data-close="detail">×</button>
+    <h3 id="d-title">Bấm vào một node</h3>
+    <div class="meta" id="d-meta">chi tiết node</div>
+    <p id="d-body">Mỗi hộp là 1 file trong <code>Services/Automation/</code> (hoặc thành phần liên quan). Các chip phía trên tô sáng &amp; animate từng luồng: Publish, Dispatch, Shadow, Live, Retry, Overdue, Admin, Chẩn đoán, MCP, Seed.</p>
+  </div>
+</div>
+
+<script>
+const DETAIL = {
+  ats:        { t:"ATS Producer Services", m:"ngoài folder · nguồn event", b:"Các service nghiệp vụ (Job/Application/Interview). Sau khi đổi trạng thái ATS <b>đã commit</b>, gọi <code>eventBus.PublishAsync(...)</code> rồi dùng mode trả về để quyết định có bỏ qua notification trực tiếp cũ không." },
+  scanner:    { t:"HeadReviewOverdueScanner", m:"Infrastructure · ⏱ 1 giờ", b:"Producer theo thời gian. Tìm hồ sơ còn ở <code>ManagerReview</code> quá hạn (mặc định 3 ngày), publish <code>HeadReviewOverdue</code> với dedup theo <b>cửa sổ giờ</b> → mỗi hồ sơ tối đa 1 event/24h (chống spam)." },
+  sysadmin:   { t:"SysAdmin", m:"actor · qua controllers", b:"Người dùng duy nhất chạm được module này, qua <code>/api/sysadmin/automation/*</code> và <code>/api/sysadmin/mcp/*</code>. HR/Manager chỉ nhận kết quả (notification), không thấy màn quản trị." },
+  appstart:   { t:"App startup", m:"HostedService · chạy 1 lần", b:"Lúc khởi động chạy <code>WorkflowSeederHostedService</code> → gọi seeder. Best-effort: DB chưa sẵn cũng không chặn startup." },
+  eventbus:   { t:"RecruitProEventBus", m:"Automation/ · publisher + cutover", b:"Ghi 1 dòng vào outbox (idempotent theo <code>dedup_key</code>, best-effort — lỗi ở đây <b>không</b> throw ngược vào nghiệp vụ). Trả về effective mode: <code>Live</code> → caller bỏ qua notification cũ; <code>Shadow/Disabled</code> → giữ đường cũ." },
+  outbox:     { t:"published_domain_events", m:"bảng · hàng đợi bền vững", b:"Outbox durable. Event ghi ở đây <b>sau khi</b> nghiệp vụ commit → server chết vẫn không mất việc. <code>dedup_key</code> UNIQUE chống publish trùng; status Pending→Processing→Processed/Failed/DeadLetter." },
+  dispatcher: { t:"WorkflowDispatcher", m:"API · BackgroundService ⏱5s", b:"Vòng lặp mỗi 5s: lấy ≤25 event Pending/đến hạn → gọi <code>WorkflowEngine.ProcessEventAsync</code> cho từng cái. Ghi heartbeat mỗi vòng để chẩn đoán biết worker còn sống." },
+  retry:      { t:"WorkflowRetryService", m:"Automation/ · worker ⏱30s", b:"Quét execution <code>Failed</code>/<code>DeadLetter</code> có <code>next_retry_at</code> đến hạn và chạy lại. Backoff mũ 2 (≤60’); quá <code>MaxAttempts=3</code> → DeadLetter, chờ retry thủ công." },
+  engine:     { t:"WorkflowEngine", m:"Automation/ · bộ não", b:"Xử lý 1 event: resolve mode (settings) → lấy version active+enabled khớp trigger, bỏ qua nếu đã chạy (idempotent) → chấm điều kiện → chạy action → ghi execution + steps. 1 action lỗi chỉ fail execution đó, <b>không</b> rollback ATS, không chặn workflow khác." },
+  conditions: { t:"WorkflowConditionEvaluator", m:"Automation/ · thuần logic", b:"Đánh giá AND các điều kiện trên payload phẳng. 7 operator: <code>exists · equals · not_equals · greater_than(_or_equal) · in_list · older_than_days</code>. Field thiếu = fail (trừ <code>exists</code>). Không I/O → dễ unit test." },
+  registry:   { t:"WorkflowActionRegistry", m:"Automation/ · resolver", b:"Tra handler theo <code>action.type</code> (map dựng từ DI). Không tìm thấy → fail execution với 'Unknown action handler'. Thêm action mới = implement <code>IWorkflowActionHandler</code> + đăng ký DI, không đụng engine." },
+  handlers:   { t:"Action Handlers ×5", m:"Automation/Handlers/ · do việc", b:"<code>notify_user</code>, <code>notify_role</code>, <code>send_reminder</code>, <code>rule_based_next_step_suggestion</code> (gợi ý theo điểm, <b>không AI</b>), <code>shadow_log</code>. Mọi handler gửi thông báo đều đi qua WorkflowNotificationDispatcher và tôn trọng <code>ctx.Mode</code>." },
+  settings:   { t:"WorkflowAutomation config", m:"appsettings · single source of truth", b:"Quyết định <b>Shadow vs Live thực tế</b> theo từng event type (<code>EventModes</code>). Đây là SoT — cả EventBus (skip đường cũ) và Engine (mode khi gửi) đều đọc từ đây. Bật Live = đổi config + restart, không cần sửa code." },
+  notifier:   { t:"WorkflowNotificationDispatcher", m:"Automation/ · sink gửi", b:"Dedup người nhận, bỏ user không tồn tại. <b>Shadow</b>: chỉ trả would-notify, không ghi/không đẩy. <b>Live</b>: ghi 1 <code>notifications</code>/người + đẩy SSE — dùng đúng shape của đường trực tiếp nên frontend không phân biệt được." },
+  users:      { t:"Users", m:"người nhận cuối", b:"Nhận thông báo qua chuông + SSE realtime. Ở Shadow, thông báo họ thấy vẫn đến từ đường trực tiếp cũ; ở Live, đến từ workflow." },
+  defs:       { t:"workflow_definitions (+versions)", m:"bảng · luật workflow", b:"Definition (tên, bật/tắt) sở hữu nhiều <b>version bất biến</b> (trigger/conditions/actions/mode). Sửa = tạo version mới rồi Publish, không đè bản cũ → có lịch sử. Dispatcher chỉ chạy version active + enabled." },
+  execs:      { t:"workflow_executions (+steps)", m:"bảng · lịch sử chạy", b:"1 dòng/lần chạy 1 version với 1 event; index UNIQUE (version, event_dedup_key) đảm bảo idempotent. Mỗi bước (condition/action) ghi 1 <code>workflow_execution_steps</code> kèm input/output/error để debug." },
+  deadletters:{ t:"workflow_action_dead_letters", m:"bảng · action chết", b:"Action đã hết số lần retry, giữ lại để soi &amp; retry thủ công. Kèm <code>next_retry_at</code> để RetryService biết khi nào chạy lại." },
+  notifs:     { t:"notifications", m:"bảng · dùng chung", b:"Bảng thông báo chung của hệ thống. Workflow chỉ ghi vào đây khi mode = <b>Live</b> (type = 'Automation'); Shadow không ghi gì." },
+  heartbeats: { t:"workflow_worker_heartbeats", m:"bảng · nhịp tim worker", b:"1 dòng/worker (vd 'dispatcher'), cập nhật mỗi vòng lặp. Heartbeat cũ/mất = bằng chứng worker chết — nguyên nhân số 1 của 'workflow không chạy'." },
+  defsvc:     { t:"WorkflowDefinitionService", m:"Automation/ · admin CRUD", b:"Vòng đời: create (draft v1, <b>chưa active</b>) → update (mutate draft / tạo draft mới) → <b>publish</b> (kích hoạt version, bản cũ tự deactivate) → enable/disable. Validate trigger/operator/action type." },
+  execsvc:    { t:"WorkflowExecutionService", m:"Automation/ · admin đọc", b:"Query/xem chi tiết execution (kèm step + snapshot version) và event outbox; retry thủ công (chỉ khi Failed/DeadLetter)." },
+  diag:       { t:"AutomationDiagnosticsService", m:"Automation/ · chẩn đoán", b:"Trả lời 'vì sao workflow không chạy?': gom heartbeat (worker sống?), số event hôm nay, mode hiệu lực, execution gần đây rồi giao Reasoner suy luận." },
+  reasoner:   { t:"AutomationDiagnosticsReasoner", m:"Automation/ · luật thuần", b:"Hàm thuần: nhận các tín hiệu (heartbeat, mode, số event, lỗi) → kết luận nguyên nhân &amp; gợi ý (worker chết / đang Shadow / không có event / condition không pass…). Dễ test." },
+  mapper:     { t:"AutomationMapper", m:"Automation/ · helper", b:"Chuyển entity → DTO (execution summary, version, …). Helper dùng chung bởi DefinitionService, ExecutionService, DiagnosticsService." },
+  seeder:     { t:"WorkflowTemplateSeeder", m:"Automation/ · boot", b:"Seed 4 workflow mẫu thành published+active, idempotent theo tên → chạy mỗi lần khởi động cũng an toàn. Tất cả mode = <b>Shadow</b> nên không gửi trùng lần đầu." },
+  mcpsvc:     { t:"McpToolService", m:"Automation/Mcp/ · gate", b:"Chạy 1 tool nội bộ với RBAC (chỉ <code>SystemAdmin</code>) + <b>audit mọi lần gọi</b> (cho phép lẫn từ chối). Lớp này chỉ gác 'ai được gọi tool'; quyền sở hữu dữ liệu do App Service bên dưới kiểm." },
+  mcpreg:     { t:"McpToolRegistry", m:"Automation/Mcp/ · resolver", b:"Tra tool theo tên (map dựng từ DI). Thêm tool mới = implement <code>IMcpTool</code> + đăng ký DI." },
+  mcptools:   { t:"MCP Tools ×6", m:"Automation/Mcp/ · read-only", b:"<code>jobs.search · jobs.get · applications.get · applications.get_fit_analysis · interviews.get_schedule · analytics.get_funnel_summary</code>. Chỉ đọc; trả <b>tóm tắt trạng thái</b> (McpSummary), không dump CV/dữ liệu nhạy cảm." },
+  appsvc:     { t:"App Services", m:"ngoài folder · tái dùng", b:"Các service nghiệp vụ thật (Jobs/Applications/Interviews/Analytics) mà tool gọi vào. Truyền <code>CallerUserId</code>+<code>Roles</code> xuống nên ownership vẫn được kiểm ở đây, tool không bypass." },
+  mcpaudit:   { t:"McpToolAuditService", m:"Automation/Mcp/ · admin đọc", b:"Query log audit cho màn admin (lọc theo tool, allowed…). McpToolService là bên <b>ghi</b> audit; service này là bên <b>đọc</b>." },
+  audits:     { t:"mcp_tool_audits", m:"bảng · nhật ký MCP", b:"1 dòng/lần gọi tool: ai gọi, input, tóm tắt output, allowed, lý do từ chối, latency. Nền tảng để soi ai đã dùng tool gì." },
+};
+
+const FLOWS = {
+  publish: {
+    name: "Publish — nghiệp vụ phát event",
+    edges: ["e-ats","e-write","e-mode"],
+    nodes: ["ats","eventbus","outbox","settings"],
+    steps: ["ATS service đổi trạng thái (đã commit) rồi gọi <code>eventBus.PublishAsync(...)</code>",
+            "EventBus ghi 1 dòng <code>published_domain_events</code> (Pending) — idempotent theo <code>dedup_key</code>",
+            "Trả về effective <b>mode</b> (theo appsettings) → caller quyết định bỏ qua notification cũ hay giữ"]
+  },
+  dispatch: {
+    name: "Dispatch — engine xử lý event",
+    edges: ["e-poll","e-proc","e-defs","e-cond","e-reg","e-hand","e-exec"],
+    nodes: ["outbox","dispatcher","engine","defs","conditions","registry","handlers","execs"],
+    steps: ["WorkflowDispatcher (5s) lấy ≤25 event Pending/đến hạn",
+            "Engine khớp trigger với version active+enabled, resolve mode",
+            "ConditionEvaluator chấm ĐK (AND) → pass thì ActionRegistry resolve handler",
+            "Ghi <code>workflow_executions</code> + <code>workflow_execution_steps</code> cho từng bước"]
+  },
+  shadow: {
+    name: "Shadow — chạy nhưng KHÔNG gửi",
+    edges: ["e-hand","e-notify"],
+    nodes: ["handlers","notifier"],
+    steps: ["Handler gọi WorkflowNotificationDispatcher với mode = Shadow",
+            "Dispatcher chỉ resolve <b>would-notify</b> (ai <i>sẽ</i> được báo) — KHÔNG ghi, KHÔNG đẩy SSE",
+            "Notification thật vẫn do đường trực tiếp cũ gửi → không trùng"]
+  },
+  live: {
+    name: "Live — gửi thật, tắt đường cũ",
+    edges: ["e-hand","e-notify","e-persist","e-sse"],
+    nodes: ["handlers","notifier","notifs","users"],
+    steps: ["Handler gọi dispatcher với mode = Live",
+            "Ghi 1 <code>notifications</code>/người nhận + đẩy SSE realtime",
+            "Đường trực tiếp cũ bị bỏ qua cho event đó → chỉ 1 nguồn gửi"]
+  },
+  retry: {
+    name: "Retry — action lỗi & dead-letter",
+    edges: ["e-fail","e-dlretry","e-rerun"],
+    nodes: ["handlers","deadletters","retry","engine"],
+    steps: ["Action lỗi → engine set execution Failed + ghi <code>dead_letters</code> với next_retry_at (backoff 2ⁿ, ≤60’)",
+            "WorkflowRetryService (30s) quét execution đến hạn",
+            "Chạy lại; quá MaxAttempts=3 → DeadLetter (chờ retry thủ công)"]
+  },
+  overdue: {
+    name: "Overdue — producer theo thời gian",
+    edges: ["e-scan","e-write","e-poll","e-proc"],
+    nodes: ["scanner","eventbus","outbox","dispatcher","engine"],
+    steps: ["HeadReviewOverdueScanner (1h) tìm hồ sơ ManagerReview quá hạn",
+            "Publish <code>HeadReviewOverdue</code> với dedup theo cửa sổ giờ → mỗi hồ sơ ≤1 event/24h",
+            "Vào chung pipeline dispatcher → engine như mọi event khác"]
+  },
+  admin: {
+    name: "Admin — SysAdmin quản trị workflow",
+    edges: ["e-sa-def","e-def-store","e-sa-exec","e-exec-store"],
+    nodes: ["sysadmin","defsvc","defs","execsvc","execs"],
+    steps: ["SysAdmin gọi <code>/api/sysadmin/automation/*</code>",
+            "DefinitionService: create → update (draft) → <b>publish</b> (kích hoạt) → enable/disable",
+            "ExecutionService: query/detail/retry execution + soi outbox"]
+  },
+  diagnostics: {
+    name: "Chẩn đoán — 'vì sao không chạy?'",
+    edges: ["e-sa-diag","e-diag2","e-diag-hb","e-hb-write"],
+    nodes: ["sysadmin","diag","reasoner","heartbeats","dispatcher"],
+    steps: ["DiagnosticsService gom heartbeat + executions + outbox",
+            "Reasoner (thuần) suy ra nguyên nhân &amp; gợi ý sửa",
+            "Heartbeat cũ/mất = worker chết — lỗi phổ biến nhất"]
+  },
+  mcp: {
+    name: "MCP — gọi tool nội bộ, có audit",
+    edges: ["e-sa-mcp","e-mcp1","e-mcp2","e-mcp3","e-mcp-log"],
+    nodes: ["sysadmin","mcpsvc","mcpreg","mcptools","appsvc","audits"],
+    steps: ["SysAdmin gọi tool qua <code>/api/sysadmin/mcp/tools/{name}/test</code>",
+            "McpToolService gác RBAC (chỉ SystemAdmin) → Registry resolve → Tool gọi App Service (chỉ đọc)",
+            "Mọi lần gọi (allow/deny) ghi <code>mcp_tool_audits</code>"]
+  },
+  seed: {
+    name: "Seed — workflow mẫu lúc khởi động",
+    edges: ["e-boot-seed","e-seed-store"],
+    nodes: ["appstart","seeder","defs"],
+    steps: ["Lúc khởi động, WorkflowTemplateSeeder chạy (idempotent theo tên)",
+            "Seed 4 workflow mẫu, tất cả mode = Shadow (an toàn, không gửi trùng)"]
+  }
+};
+
+const stage = document.getElementById('stage');
+const svg = document.getElementById('svg');
+const content = document.getElementById('svg-content');
+const nodes = document.querySelectorAll('.node');
+const edges = document.querySelectorAll('.edge');
+const elbls = document.querySelectorAll('.elbl');
+const chips = document.querySelectorAll('.chip');
+const fcap = document.getElementById('flowcap');
+const detail = document.getElementById('detail');
+const legend = document.getElementById('legend');
+
+let currentFlow = 'all';
+
+function setFlow(key) {
+  currentFlow = key;
+  chips.forEach(c => c.classList.toggle('on', c.dataset.flow === key));
+  edges.forEach(e => e.classList.remove('lit'));
+  elbls.forEach(l => l.classList.remove('lit'));
+  nodes.forEach(n => n.classList.remove('lit'));
+  if (key === 'all') { stage.classList.remove('flowing'); fcap.classList.remove('show'); return; }
+  const f = FLOWS[key];
+  stage.classList.add('flowing');
+  f.edges.forEach(id => document.getElementById(id)?.classList.add('lit'));
+  elbls.forEach(l => { if (f.edges.includes(l.dataset.e)) l.classList.add('lit'); });
+  f.nodes.forEach(k => document.querySelector(`.node[data-k="${k}"]`)?.classList.add('lit'));
+  document.getElementById('f-name').textContent = f.name;
+  document.getElementById('f-steps').innerHTML = f.steps.map(s => `<li>${s}</li>`).join('');
+  fcap.classList.add('show');
+}
+chips.forEach(c => c.addEventListener('click', () => setFlow(c.dataset.flow)));
+
+let suppressClick = false;
+nodes.forEach(n => n.addEventListener('click', () => {
+  if (suppressClick) return;
+  nodes.forEach(x => x.classList.remove('sel'));
+  n.classList.add('sel');
+  const d = DETAIL[n.dataset.k];
+  if (!d) return;
+  document.getElementById('d-title').textContent = d.t;
+  document.getElementById('d-meta').textContent = d.m;
+  document.getElementById('d-body').innerHTML = d.b;
+  detail.style.display = 'block';
+}));
+
+// close buttons; cards re-open on the relevant trigger
+document.querySelectorAll('.card .x').forEach(x => x.addEventListener('click', () => {
+  document.getElementById(x.dataset.close).style.display = 'none';
+  if (x.dataset.close === 'flowcap') fcap.classList.remove('show');
+}));
+document.getElementById('legendBtn').addEventListener('click', () => {
+  legend.style.display = ''; legend.classList.toggle('show');
+});
+
+// ── pan & zoom ──────────────────────────────
+let tx = 0, ty = 0, k = 1;
+const MIN_K = 0.35, MAX_K = 3.2;
+function apply() {
+  content.setAttribute('transform', `translate(${tx},${ty}) scale(${k})`);
+  document.getElementById('zlvl').textContent = Math.round(k * 100) + '%';
+}
+function clientToSvg(clientX, clientY) {
+  const pt = svg.createSVGPoint(); pt.x = clientX; pt.y = clientY;
+  return pt.matrixTransform(svg.getScreenCTM().inverse());
+}
+function zoomAt(clientX, clientY, factor) {
+  const p = clientToSvg(clientX, clientY);
+  const k2 = Math.min(MAX_K, Math.max(MIN_K, k * factor));
+  tx = p.x - (p.x - tx) * (k2 / k);
+  ty = p.y - (p.y - ty) * (k2 / k);
+  k = k2; apply();
+}
+svg.addEventListener('wheel', e => {
+  e.preventDefault();
+  zoomAt(e.clientX, e.clientY, e.deltaY < 0 ? 1.12 : 1 / 1.12);
+}, { passive: false });
+
+let panning = false, moved = false, downClient = null, startSvg = null;
+svg.addEventListener('pointerdown', e => {
+  if (e.button !== 0) return;
+  panning = true; moved = false;
+  downClient = { x: e.clientX, y: e.clientY };
+  startSvg = clientToSvg(e.clientX, e.clientY);
+  stage.classList.add('grabbing');
+  svg.setPointerCapture(e.pointerId);
+});
+svg.addEventListener('pointermove', e => {
+  if (!panning) return;
+  if (Math.hypot(e.clientX - downClient.x, e.clientY - downClient.y) > 5) moved = true;
+  const cur = clientToSvg(e.clientX, e.clientY);
+  tx += cur.x - startSvg.x; ty += cur.y - startSvg.y;
+  startSvg = cur; apply();
+});
+function endPan() {
+  if (!panning) return;
+  panning = false; stage.classList.remove('grabbing');
+  if (moved) { suppressClick = true; setTimeout(() => suppressClick = false, 0); }
+}
+svg.addEventListener('pointerup', endPan);
+svg.addEventListener('pointercancel', endPan);
+
+document.getElementById('zoomIn').addEventListener('click', () => {
+  const r = svg.getBoundingClientRect(); zoomAt(r.left + r.width / 2, r.top + r.height / 2, 1.2);
+});
+document.getElementById('zoomOut').addEventListener('click', () => {
+  const r = svg.getBoundingClientRect(); zoomAt(r.left + r.width / 2, r.top + r.height / 2, 1 / 1.2);
+});
+document.getElementById('zoomReset').addEventListener('click', () => {
+  tx = 0; ty = 0; k = 1; apply();
+});
+
+document.getElementById('themeToggle').addEventListener('click', () => {
+  const dark = !document.documentElement.classList.contains('dark');
+  document.documentElement.classList.toggle('dark', dark);
+  localStorage.setItem('theme', dark ? 'dark' : 'light');
+});
+
+apply();
+</script>
+</body>
+</html>
