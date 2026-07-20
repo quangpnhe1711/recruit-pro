@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RecruitPro · Luồng ứng tuyển</title>
+<script>
+  (function () {
+    const saved = localStorage.getItem('theme');
+    const dark = saved ? saved === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+    document.documentElement.classList.toggle('dark', dark);
+  })();
+</script>
+<style>
+  :root {
+    --bg: #FAF9F5; --surface: #FFFFFF; --surface2: #F0EEE6;
+    --ink: #141413; --body: #3D3D3A; --muted: #87867F;
+    --line: #D1CFC5; --line-soft: #E6E3DA;
+    --clay: #D97757; --clay-soft: rgba(217,119,87,0.10);
+    --olive: #788C5D; --olive-soft: rgba(120,140,93,0.12);
+    --gold: #C9A45C; --blue: #5B7E96; --blue-soft: rgba(91,126,150,0.12);
+    --rose: #B0574B; --rose-soft: rgba(176,87,75,0.10);
+    --zone: rgba(20,20,19,0.025); --zone-line: #D1CFC5;
+    --serif: ui-serif, Georgia, "Times New Roman", serif;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  html.dark {
+    --bg: #141413; --surface: #1F1F1D; --surface2: #2A2A28;
+    --ink: #FAF9F5; --body: #D1CFC5; --muted: #8B8A82;
+    --line: #3D3D3A; --line-soft: #2A2A28;
+    --clay: #E48A6E; --clay-soft: rgba(228,138,110,0.14);
+    --olive: #9DB07C; --olive-soft: rgba(157,176,124,0.16);
+    --gold: #D4B36F; --blue: #7FA3BC; --blue-soft: rgba(127,163,188,0.16);
+    --rose: #D98C80; --rose-soft: rgba(217,140,128,0.14);
+    --zone: rgba(250,249,245,0.03); --zone-line: #3D3D3A;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body { background: var(--bg); color: var(--body); font-family: var(--sans); -webkit-font-smoothing: antialiased; display: flex; flex-direction: column; overflow: hidden; }
+  .bar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 11px 18px; border-bottom: 1px solid var(--line-soft); flex: none; }
+  .bar h1 { font-family: var(--serif); font-weight: 500; font-size: 18px; color: var(--ink); letter-spacing: -0.01em; }
+  .bar .sub { font-family: var(--mono); font-size: 10px; color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; }
+  .spacer { flex: 1; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip { font-family: var(--mono); font-size: 11px; letter-spacing: 0.03em; padding: 5px 10px; border: 1px solid var(--line); border-radius: 999px; background: transparent; color: var(--muted); cursor: pointer; transition: all .15s ease; }
+  .chip:hover { color: var(--ink); border-color: var(--muted); }
+  .chip.on { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+  .btn { font-family: var(--mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em; padding: 5px 10px; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; }
+  .btn:hover { color: var(--ink); border-color: var(--muted); }
+  .stage { flex: 1; position: relative; min-height: 0; }
+  .stage svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; }
+  .stage.grabbing svg { cursor: grabbing; }
+  .zone rect { fill: var(--zone); stroke: var(--zone-line); stroke-width: 1; stroke-dasharray: 5 5; }
+  .zone .ztitle { font-family: var(--mono); font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; fill: var(--muted); }
+  .node { cursor: pointer; }
+  .node rect { fill: var(--surface); stroke: var(--line); stroke-width: 1.5; transition: stroke .15s ease; }
+  .node:hover rect { stroke: var(--muted); }
+  .node.sel rect { stroke: var(--clay) !important; stroke-width: 2.4; }
+  .node .t { font-family: var(--sans); font-size: 13.5px; font-weight: 600; fill: var(--ink); pointer-events: none; }
+  .node .m { font-family: var(--mono); font-size: 10.5px; fill: var(--muted); pointer-events: none; }
+  .node .k { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.09em; text-transform: uppercase; fill: var(--clay); pointer-events: none; }
+  .node.gate rect { fill: var(--clay-soft); stroke: var(--clay); }
+  .node.store rect { fill: var(--surface2); }
+  .node.store .k { fill: var(--blue); }
+  .node.ext rect { stroke-dasharray: 6 3; fill: transparent; }
+  .node.ext .k { fill: var(--muted); }
+  .node.pill rect { rx: 26; fill: var(--olive-soft); stroke: var(--olive); }
+  .node.pill .t { font-size: 12.5px; fill: var(--ink); }
+  .node.term rect { fill: var(--rose-soft); stroke: var(--rose); stroke-dasharray: 4 3; }
+  .edge { stroke: var(--muted); stroke-width: 1.5; fill: none; marker-end: url(#a-mut); transition: opacity .2s ease, stroke .2s ease; }
+  .edge.dash { stroke-dasharray: 5 4; opacity: 0.6; }
+  .elbl { font-family: var(--mono); font-size: 10px; fill: var(--muted); transition: opacity .2s ease; }
+  .stage.flowing .edge { opacity: 0.10; }
+  .stage.flowing .elbl { opacity: 0.10; }
+  .stage.flowing .node { opacity: 0.28; }
+  .stage.flowing .zone { opacity: 0.40; }
+  .stage.flowing .edge.lit { opacity: 1; stroke: var(--clay); marker-end: url(#a-clay); stroke-dasharray: 7 5; animation: march 0.9s linear infinite; }
+  .stage.flowing .elbl.lit { opacity: 1; fill: var(--clay); }
+  .stage.flowing .node.lit { opacity: 1; }
+  .stage.flowing .node.lit rect { stroke: var(--clay); }
+  @keyframes march { to { stroke-dashoffset: -12; } }
+  @media (prefers-reduced-motion: reduce) { .stage.flowing .edge.lit { animation: none; } }
+  .card { position: absolute; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; box-shadow: 0 6px 24px rgba(0,0,0,0.10); }
+  .card .x { position: absolute; top: 8px; right: 10px; width: 22px; height: 22px; line-height: 20px; text-align: center; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; font-size: 14px; font-family: var(--mono); }
+  .card .x:hover { color: var(--ink); border-color: var(--muted); }
+  #detail { right: 16px; bottom: 16px; width: 344px; }
+  #detail h3 { font-family: var(--serif); font-weight: 500; font-size: 17px; color: var(--ink); margin-bottom: 2px; padding-right: 26px; }
+  #detail .meta { font-family: var(--mono); font-size: 10px; color: var(--muted); margin-bottom: 9px; }
+  #detail p { font-size: 12.5px; line-height: 1.55; }
+  #detail code, #flowcap code { font-family: var(--mono); font-size: 11px; color: var(--clay); }
+  #flowcap { left: 16px; bottom: 16px; max-width: 480px; display: none; }
+  #flowcap.show { display: block; }
+  #flowcap .fname { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--clay); margin-bottom: 7px; padding-right: 26px; }
+  #flowcap ol { margin-left: 18px; }
+  #flowcap li { font-size: 12.5px; line-height: 1.5; margin-bottom: 3px; }
+  .viewctl { position: absolute; right: 16px; top: 16px; display: flex; align-items: center; gap: 6px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 5px 7px; box-shadow: 0 4px 16px rgba(0,0,0,0.07); }
+  .viewctl button { font-family: var(--mono); font-size: 14px; width: 26px; height: 26px; border: 1px solid var(--line); border-radius: 5px; background: transparent; color: var(--muted); cursor: pointer; }
+  .viewctl button:hover { color: var(--ink); border-color: var(--muted); }
+  .viewctl #zlvl { font-family: var(--mono); font-size: 11px; color: var(--muted); min-width: 42px; text-align: center; }
+  .hint { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); font-family: var(--mono); font-size: 10px; color: var(--muted); opacity: 0.7; pointer-events: none; letter-spacing: 0.04em; }
+  .stage.flowing .hint { display: none; }
+  @media (max-width: 900px) { body { overflow: auto; } .stage { min-height: 78vh; } #detail, #flowcap { position: static; width: auto; margin: 10px 16px; } }
+</style>
+</head>
+<body>
+
+<div class="bar">
+  <div>
+    <h1>Luồng ứng tuyển — RecruitPro</h1>
+    <div class="sub">Candidate apply · rule/semantic score · outbox · pipeline</div>
+  </div>
+  <div class="spacer"></div>
+  <div class="chips" id="chips">
+    <button class="chip on" data-flow="all">Toàn cảnh</button>
+    <button class="chip" data-flow="upload">Upload CV</button>
+    <button class="chip" data-flow="apply">Apply (sync)</button>
+    <button class="chip" data-flow="score">Chấm điểm</button>
+    <button class="chip" data-flow="semantic">Semantic (nền)</button>
+    <button class="chip" data-flow="automation">Outbox &amp; notify</button>
+    <button class="chip" data-flow="pipeline">Pipeline</button>
+  </div>
+  <button class="btn" id="themeToggle">Theme</button>
+</div>
+
+<div class="stage" id="stage">
+<svg id="svg" viewBox="0 0 1740 1260" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Sơ đồ luồng ứng tuyển RecruitPro">
+  <defs>
+    <marker id="a-mut" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" style="fill: var(--muted)"/></marker>
+    <marker id="a-clay" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" style="fill: var(--clay)"/></marker>
+  </defs>
+  <g id="svg-content">
+  <!-- zones -->
+  <g class="zone"><rect x="35" y="250" width="255" height="430" rx="16"/><text class="ztitle" x="55" y="280">CV Upload · tiền đề (sync)</text></g>
+  <g class="zone"><rect x="300" y="120" width="830" height="470" rx="16"/><text class="ztitle" x="320" y="150">Apply request · đồng bộ</text></g>
+  <g class="zone"><rect x="300" y="605" width="830" height="265" rx="16"/><text class="ztitle" x="320" y="635">Semantic scoring · nền (async)</text></g>
+  <g class="zone"><rect x="300" y="880" width="1120" height="135" rx="16"/><text class="ztitle" x="320" y="905">Outbox &amp; Automation · nền</text></g>
+  <g class="zone"><rect x="1430" y="120" width="290" height="900" rx="16"/><text class="ztitle" x="1450" y="150">Data · PostgreSQL</text></g>
+  <g class="zone"><rect x="35" y="1035" width="1685" height="205" rx="16"/><text class="ztitle" x="55" y="1065">Application status lifecycle</text></g>
+
+  <!-- edges -->
+  <path class="edge" id="e-ap1" d="M265,190 L320,191"/>
+  <path class="edge" id="e-ap2" d="M525,191 C555,190 565,214 590,222"/>
+  <path class="edge" id="e-ap3" d="M840,190 L900,190"/>
+  <path class="edge" id="e-ap4" d="M840,255 C868,285 878,305 900,305"/>
+  <path class="edge" id="e-ap5" d="M840,300 C1050,405 1300,360 1450,348"/>
+  <path class="edge dash" id="e-read" d="M1450,200 C1100,120 850,120 715,150"/>
+  <path class="edge" id="e-up1" d="M160,230 L162,285"/>
+  <path class="edge" id="e-up2" d="M162,367 L162,395"/>
+  <path class="edge" id="e-up4" d="M130,367 C95,420 95,485 140,500"/>
+  <path class="edge dash" id="e-store1" d="M265,434 C700,300 1100,220 1450,210"/>
+  <path class="edge dash" id="e-store2" d="M265,537 C750,540 1150,262 1450,224"/>
+  <path class="edge" id="e-ap6" d="M650,300 C520,392 460,452 435,470"/>
+  <path class="edge" id="e-ap7" d="M740,300 C725,392 715,442 713,470"/>
+  <path class="edge" id="e-qw" d="M712,554 C560,590 470,618 435,635"/>
+  <path class="edge" id="e-sm1" d="M545,675 L590,682"/>
+  <path class="edge" id="e-sm2" d="M840,683 L900,680"/>
+  <path class="edge" id="e-sm3" d="M715,731 L715,750"/>
+  <path class="edge dash" id="e-sm4" d="M840,792 C1150,650 1350,430 1450,372"/>
+  <path class="edge dash" id="e-sm5" d="M700,834 C540,858 470,888 435,905"/>
+  <path class="edge dash" id="e-au1" d="M410,554 C300,700 298,860 322,908"/>
+  <path class="edge" id="e-au2" d="M545,945 L590,945"/>
+  <path class="edge" id="e-au3" d="M815,945 L900,945"/>
+  <path class="edge" id="e-au4" d="M1140,945 L1160,945"/>
+  <path class="edge" id="e-au5" d="M1400,947 L1450,945"/>
+  <path class="edge" id="p1" d="M220,1129 L300,1129"/>
+  <path class="edge" id="p2" d="M450,1129 L530,1129"/>
+  <path class="edge" id="p3" d="M705,1129 L760,1129"/>
+  <path class="edge" id="p4" d="M910,1129 L990,1129"/>
+  <path class="edge" id="p5" d="M1140,1129 L1200,1129"/>
+  <path class="edge" id="p6" d="M1065,1158 L1077,1185"/>
+  <path class="edge dash" id="p7" d="M375,1158 C430,1176 560,1183 605,1185"/>
+  <path class="edge dash" id="p8" d="M145,1158 C200,1178 330,1184 375,1185"/>
+
+  <!-- edge labels -->
+  <text class="elbl" data-e="e-ap1" x="270" y="182">POST /jobs/{id}/apply</text>
+  <text class="elbl" data-e="e-ap3" x="848" y="182">validate</text>
+  <text class="elbl" data-e="e-ap4" x="846" y="290">rule score</text>
+  <text class="elbl" data-e="e-ap5" x="1120" y="392">INSERT (tx) · Applied</text>
+  <text class="elbl" data-e="e-read" x="1000" y="118">đọc profile/resume</text>
+  <text class="elbl" data-e="e-ap6" x="470" y="392">best-effort</text>
+  <text class="elbl" data-e="e-ap7" x="726" y="392">enqueue id</text>
+  <text class="elbl" data-e="e-qw" x="470" y="600">dequeue</text>
+  <text class="elbl" data-e="e-sm4" x="1150" y="560">UPDATE FinalScore</text>
+  <text class="elbl" data-e="e-sm5" x="450" y="878">CandidateScoreReady</text>
+  <text class="elbl" data-e="e-au1" x="230" y="740">CandidateApplied</text>
+  <text class="elbl" data-e="e-au3" x="822" y="938">poll 5s</text>
+  <text class="elbl" data-e="e-au5" x="1360" y="978">persist (Live)</text>
+
+  <!-- nodes: upload -->
+  <g class="node ext" data-k="candidate"><rect x="55" y="150" width="210" height="80" rx="10"/><text class="t" x="73" y="180">Candidate</text><text class="m" x="73" y="202">ứng viên đăng nhập</text><text class="k" x="73" y="220">ACTOR</text></g>
+  <g class="node" data-k="uploadctl"><rect x="60" y="285" width="205" height="82" rx="10"/><text class="t" x="78" y="313">CandidateService</text><text class="m" x="78" y="335">upload + parse CV</text><text class="k" x="78" y="355">TIỀN ĐỀ</text></g>
+  <g class="node" data-k="parse"><rect x="60" y="395" width="205" height="78" rx="10"/><text class="t" x="78" y="423">ResumeParsingService</text><text class="m" x="78" y="445">PDF / DOCX / TXT → text</text></g>
+  <g class="node ext" data-k="minio"><rect x="60" y="500" width="205" height="74" rx="10"/><text class="t" x="78" y="528">MinIO storage</text><text class="m" x="78" y="550">lưu file CV · presigned URL</text></g>
+
+  <!-- nodes: apply sync -->
+  <g class="node" data-k="applyctl"><rect x="320" y="150" width="205" height="82" rx="10"/><text class="t" x="338" y="178">ApplicationController</text><text class="m" x="338" y="200">POST /jobs/{id}/apply</text><text class="k" x="338" y="220">ROLE: CANDIDATE</text></g>
+  <g class="node" data-k="applysvc"><rect x="590" y="150" width="250" height="150" rx="10"/><text class="t" x="608" y="180">ApplicationService</text><text class="m" x="608" y="202">.ApplyAsync</text><text class="m" x="608" y="222">load job · profile</text><text class="m" x="608" y="240">chỉ 1 DB write (applications)</text><text class="m" x="608" y="258">+ 2 side-effect best-effort</text><text class="k" x="608" y="284">SYNC · TRONG REQUEST</text></g>
+  <g class="node gate" data-k="validate"><rect x="900" y="150" width="225" height="80" rx="10"/><text class="t" x="918" y="178">Eligibility + dup check</text><text class="m" x="918" y="200">job Approved · deadline</text><text class="m" x="918" y="218">có resume · không trùng · chưa Hired</text></g>
+  <g class="node" data-k="rulescore"><rect x="900" y="265" width="225" height="80" rx="10"/><text class="t" x="918" y="293">CalculateRuleScore</text><text class="m" x="918" y="315">skill·exp·keyword có trọng số</text><text class="k" x="918" y="335">KHÔNG AI</text></g>
+  <g class="node" data-k="notifsvc"><rect x="320" y="470" width="225" height="84" rx="10"/><text class="t" x="338" y="498">NotificationEventService</text><text class="m" x="338" y="520">publish event + notify</text><text class="k" x="338" y="540">BEST-EFFORT</text></g>
+  <g class="node" data-k="queue"><rect x="600" y="470" width="225" height="84" rx="10"/><text class="t" x="618" y="498">SemanticQueue.Enqueue</text><text class="m" x="618" y="520">in-mem channel (id)</text><text class="k" x="618" y="540">BEST-EFFORT</text></g>
+
+  <!-- nodes: semantic -->
+  <g class="node ext" data-k="semworker"><rect x="320" y="635" width="225" height="80" rx="10"/><text class="t" x="338" y="663">SemanticScoring worker</text><text class="m" x="338" y="685">hosted · dequeue</text><text class="k" x="338" y="704">BACKGROUND</text></g>
+  <g class="node" data-k="semsvc"><rect x="590" y="635" width="250" height="96" rx="10"/><text class="t" x="608" y="663">ApplicationSemanticScoring</text><text class="m" x="608" y="685">embeddings + cosine similarity</text><text class="m" x="608" y="703">tx · fallback nếu lỗi</text></g>
+  <g class="node ext" data-k="embed"><rect x="900" y="635" width="225" height="90" rx="10"/><text class="t" x="918" y="663">AiEmbeddingProvider</text><text class="m" x="918" y="685">external AI · EmbeddingCache</text><text class="k" x="918" y="705">EXTERNAL</text></g>
+  <g class="node" data-k="scoreupd"><rect x="590" y="750" width="250" height="84" rx="10"/><text class="t" x="608" y="778">FinalScore = Rule×.85 + Sem×.15</text><text class="m" x="608" y="800">ScoreStatus → SemanticCompleted</text><text class="k" x="608" y="820">UPDATE applications</text></g>
+
+  <!-- nodes: automation -->
+  <g class="node gate" data-k="eventbus"><rect x="320" y="905" width="225" height="80" rx="10"/><text class="t" x="338" y="933">RecruitProEventBus</text><text class="m" x="338" y="955">event: CandidateApplied</text><text class="k" x="338" y="973">OUTBOX</text></g>
+  <g class="node store" data-k="outbox"><rect x="590" y="905" width="225" height="80" rx="10"/><text class="t" x="608" y="933">published_domain_events</text><text class="m" x="608" y="955">durable · Pending</text><text class="k" x="608" y="973">TABLE</text></g>
+  <g class="node ext" data-k="dispatcher"><rect x="900" y="905" width="240" height="80" rx="10"/><text class="t" x="918" y="933">WorkflowDispatcher → Engine</text><text class="m" x="918" y="955">xem g10-automation-flow</text><text class="k" x="918" y="973">BACKGROUND</text></g>
+  <g class="node" data-k="notify"><rect x="1160" y="905" width="240" height="84" rx="10"/><text class="t" x="1178" y="933">Notification + SSE</text><text class="m" x="1178" y="955">→ recruiter phụ trách</text><text class="k" x="1178" y="975">SHADOW: trực tiếp · LIVE: workflow</text></g>
+
+  <!-- nodes: data -->
+  <g class="node store" data-k="resumeTbl"><rect x="1450" y="160" width="220" height="92" rx="10"/><text class="t" x="1468" y="188">candidate_resumes</text><text class="m" x="1468" y="210">candidate_profiles</text><text class="m" x="1468" y="228">ParsedResume · CandidateSkills</text><text class="k" x="1468" y="246">TABLE</text></g>
+  <g class="node store" data-k="appsTbl"><rect x="1450" y="270" width="220" height="96" rx="10"/><text class="t" x="1468" y="298">applications</text><text class="m" x="1468" y="320">Status · RuleScore</text><text class="m" x="1468" y="338">SemanticScore · FinalScore</text><text class="k" x="1468" y="356">TABLE</text></g>
+  <g class="node store" data-k="notifsTbl"><rect x="1450" y="905" width="220" height="80" rx="10"/><text class="t" x="1468" y="933">notifications</text><text class="m" x="1468" y="955">1 dòng/người nhận</text><text class="k" x="1468" y="973">TABLE</text></g>
+
+  <!-- pipeline pills -->
+  <g class="node pill" data-k="st-applied"><rect x="70" y="1100" width="150" height="58"/><text class="t" x="112" y="1134">Applied</text></g>
+  <g class="node pill" data-k="st-screening"><rect x="300" y="1100" width="150" height="58"/><text class="t" x="336" y="1134">Screening</text></g>
+  <g class="node pill" data-k="st-manager"><rect x="530" y="1100" width="175" height="58"/><text class="t" x="548" y="1134">ManagerReview</text></g>
+  <g class="node pill" data-k="st-interview"><rect x="760" y="1100" width="150" height="58"/><text class="t" x="792" y="1134">Interview</text></g>
+  <g class="node pill" data-k="st-offer"><rect x="990" y="1100" width="150" height="58"/><text class="t" x="1040" y="1134">Offer</text></g>
+  <g class="node pill" data-k="st-hired"><rect x="1200" y="1100" width="150" height="58"/><text class="t" x="1246" y="1134">Hired</text></g>
+  <g class="node pill term" data-k="st-withdrawn"><rect x="300" y="1185" width="150" height="50"/><text class="t" x="330" y="1215">Withdrawn</text></g>
+  <g class="node pill term" data-k="st-rejected"><rect x="530" y="1185" width="150" height="50"/><text class="t" x="566" y="1215">Rejected</text></g>
+  <g class="node pill term" data-k="st-declined"><rect x="990" y="1185" width="175" height="50"/><text class="t" x="1008" y="1215">OfferDeclined</text></g>
+  </g>
+</svg>
+
+  <div class="viewctl">
+    <button id="zoomOut" title="Thu nhỏ">−</button><span id="zlvl">100%</span>
+    <button id="zoomIn" title="Phóng to">+</button><button id="zoomReset" title="Về 100%">⤢</button>
+  </div>
+  <div class="hint">Kéo để di chuyển · lăn chuột để zoom · bấm node để xem chi tiết · bấm chip để chạy luồng</div>
+
+  <div class="card" id="flowcap"><button class="x" data-close="flowcap">×</button><div class="fname" id="f-name"></div><ol id="f-steps"></ol></div>
+  <div class="card" id="detail"><button class="x" data-close="detail">×</button>
+    <h3 id="d-title">Bấm vào một node</h3>
+    <div class="meta" id="d-meta">chi tiết</div>
+    <p id="d-body">Luồng ứng tuyển: request đồng bộ chỉ ghi <b>1</b> bản ghi <code>applications</code> + 2 side-effect best-effort; toàn bộ AI/semantic scoring và automation chạy nền. Bấm chip để xem từng giai đoạn.</p>
+  </div>
+</div>
+
+<script>
+const DETAIL = {
+  candidate:  { t:"Candidate", m:"actor", b:"Ứng viên. Trước khi apply phải có <b>CV hiện hành</b> (upload + parse ở luồng CV Upload). Khi apply chỉ gửi <code>coverLetter</code>." },
+  uploadctl:  { t:"CandidateService (upload)", m:"service · sync tại upload", b:"Xử lý upload CV: gọi ResumeParsingService để trích text và MinIO để lưu file, ghi <code>CandidateResume</code>/<code>CandidateProfile</code>. <b>Tách rời</b> apply — apply chỉ đọc lại profile." },
+  parse:      { t:"ResumeParsingService", m:"service · sync", b:"Trích text từ PDF/DOCX/TXT (+ AI preview tuỳ chọn). Chạy lúc <b>upload</b>, không phải lúc apply." },
+  minio:      { t:"MinIO storage", m:"external · object storage", b:"Bucket riêng tư; key lưu vào <code>CandidateResume.StorageKey</code>. HR xem CV qua presigned URL. Apply không đụng storage." },
+  applyctl:   { t:"ApplicationController.Apply", m:"controller · role Candidate", b:"<code>POST /api/jobs/{jobId}/apply</code>. Lấy userId từ token, gọi <code>ApplyAsync</code>, trả 201 hoặc 409/422." },
+  applysvc:   { t:"ApplicationService.ApplyAsync", m:"service · đồng bộ", b:"Thứ tự: load job → load/tạo profile → check trùng → eligibility → rule score → INSERT <code>applications</code> (transaction, status <b>Applied</b>, ScoreStatus=PendingSemantic) → 201. Sau đó 2 việc best-effort (publish event, enqueue semantic) trong try/catch, lỗi không làm hỏng 201." },
+  validate:   { t:"Eligibility + dup check", m:"gate", b:"Chặn nếu: job chưa Approved, quá hạn, thiếu tên/email, <b>không có CV hiện hành</b>, đang có đơn active (409), hoặc đã Hired job này. Withdrawn/Rejected/OfferDeclined được apply lại. Index unique <code>ux_applications_active_user_job</code> chặn double-apply đồng thời." },
+  rulescore:  { t:"CalculateRuleScore", m:"thuần · không AI", b:"Điểm luật có trọng số: required skill ×40 + experience ×20 + nice-to-have ×15 + keyword ×15 + baseline 10, clamp 0–100. Chạy đồng bộ; <code>FinalScore = RuleScore</code> tạm thời." },
+  notifsvc:   { t:"NotificationEventService", m:"service · best-effort", b:"<code>PublishApplicationAppliedAsync</code>: resolve owner (recruiter) → publish event <code>CandidateApplied</code> vào outbox. Nếu mode Live → workflow lo gửi; Shadow/Disabled → gửi notification trực tiếp (1 dòng/người + SSE)." },
+  queue:      { t:"SemanticQueue.Enqueue", m:"in-mem channel", b:"Đẩy <code>applicationId</code> vào hàng đợi in-process để worker chấm semantic sau. Không durable — mất enqueue thì không có retry (khác outbox durable)." },
+  semworker:  { t:"SemanticScoringBackgroundService", m:"hosted worker", b:"Vòng lặp: dequeue id → tạo scope → gọi <code>ApplicationSemanticScoringService.ProcessAsync</code>. Lỗi được log, worker vẫn chạy." },
+  semsvc:     { t:"ApplicationSemanticScoringService", m:"service · async", b:"Dựng text embedding cho candidate + job (hash SHA-256 để cache), resolve embedding (cache hoặc gọi AI), tính cosine → semanticScore. Ghi lại trong transaction; lỗi → ScoreStatus=SemanticFailed, FinalScore về RuleScore." },
+  embed:      { t:"AiEmbeddingProvider", m:"external AI · cache", b:"Sinh vector embedding (có EmbeddingCache + vector lưu trên profile/job để tái dùng). Đây là điểm gọi AI của luồng scoring." },
+  scoreupd:   { t:"FinalScore update", m:"UPDATE applications", b:"<b>FinalScore = RuleScore×0.85 + SemanticScore×0.15</b>, ScoreStatus → SemanticCompleted, ScoredAt. Rồi publish <code>CandidateScoreReady</code> báo recruiter." },
+  eventbus:   { t:"RecruitProEventBus", m:"service → outbox", b:"Ghi event <code>CandidateApplied</code> vào <code>published_domain_events</code> (idempotent theo dedup_key, best-effort). Trả effective mode cho caller. Xem chi tiết ở g10-automation-flow." },
+  outbox:     { t:"published_domain_events", m:"bảng · outbox bền vững", b:"Hàng đợi event durable. Ghi sau khi apply đã commit → server chết không mất việc." },
+  dispatcher: { t:"WorkflowDispatcher → Engine", m:"background · 5s", b:"Worker poll outbox mỗi 5s → WorkflowEngine chấm điều kiện & chạy action (notify). Toàn bộ chi tiết ở diagram g10-automation-flow.html." },
+  notify:     { t:"Notification + SSE", m:"delivery", b:"Ghi <code>notifications</code> + đẩy SSE realtime cho recruiter. Ở Shadow đến từ đường trực tiếp; ở Live đến từ workflow — chỉ 1 nguồn gửi." },
+  resumeTbl:  { t:"candidate_resumes / _profiles", m:"bảng", b:"Nơi lưu CV đã parse + skills + profile. Apply <b>đọc</b> để check resume &amp; tính rule score; upload thì <b>ghi</b>." },
+  appsTbl:    { t:"applications", m:"bảng · trung tâm", b:"1 dòng/đơn ứng tuyển. Apply INSERT (Applied, RuleScore, ScoreStatus=PendingSemantic); worker semantic UPDATE (SemanticScore, FinalScore). Có index unique cho đơn active." },
+  notifsTbl:  { t:"notifications", m:"bảng", b:"Thông báo người dùng; workflow chỉ ghi khi Live." },
+  "st-applied":    { t:"Applied", m:"trạng thái · khởi điểm", b:"Đặt khi apply thành công. Chuyển được: → Screening, → Rejected. Ứng viên có thể → Withdrawn." },
+  "st-screening":  { t:"Screening", m:"trạng thái", b:"HR sàng lọc CV (đây cũng là pool cho luồng ranking). Chuyển: → ManagerReview, → Rejected; ứng viên → Withdrawn." },
+  "st-manager":    { t:"ManagerReview", m:"trạng thái · Trưởng bộ phận duyệt", b:"Được set bởi hành động Pass CV (luồng ranking). Stamp <code>DepartmentHeadReviewRequestedAt</code>. Chuyển: → Interview, → Rejected." },
+  "st-interview":  { t:"Interview", m:"trạng thái", b:"Phỏng vấn. Chuyển: → Offer, → Rejected." },
+  "st-offer":      { t:"Offer", m:"trạng thái", b:"Gửi offer. Chuyển: → Hired (ứng viên nhận), → OfferDeclined (ứng viên từ chối)." },
+  "st-hired":      { t:"Hired", m:"trạng thái · kết thúc thành công", b:"Terminal. Chặn apply lại cùng job đó." },
+  "st-withdrawn":  { t:"Withdrawn", m:"terminal · ứng viên rút", b:"Ứng viên tự rút (từ Applied/Screening/ManagerReview/Interview), huỷ interview đang chờ. Được apply lại." },
+  "st-rejected":   { t:"Rejected", m:"terminal", b:"Bị loại ở bất kỳ vòng nào. Được apply lại job đó." },
+  "st-declined":   { t:"OfferDeclined", m:"terminal", b:"Từ chối offer. Được apply lại." },
+};
+
+const FLOWS = {
+  upload: { name:"Upload CV — tiền đề (đồng bộ)", edges:["e-up1","e-up2","e-up4","e-store1","e-store2"], nodes:["candidate","uploadctl","parse","minio","resumeTbl"],
+    steps:["Ứng viên upload CV → CandidateService","ResumeParsingService trích text; MinIO lưu file gốc","Ghi candidate_resumes/_profiles — apply sẽ đọc lại (không parse lúc apply)"] },
+  apply: { name:"Apply — request đồng bộ", edges:["e-ap1","e-ap2","e-read","e-ap3","e-ap4","e-ap5"], nodes:["candidate","applyctl","applysvc","validate","rulescore","resumeTbl","appsTbl"],
+    steps:["<code>POST /jobs/{id}/apply</code> → ApplyAsync","Đọc job + profile/resume; check eligibility + trùng (409/422)","Tính rule score (không AI) → INSERT <code>applications</code> (tx, status Applied)","Trả 201 · ScoreStatus = PendingSemantic"] },
+  score: { name:"Chấm điểm — Rule + Semantic", edges:["e-ap4","e-sm3","e-sm4"], nodes:["rulescore","applysvc","semsvc","scoreupd","appsTbl"],
+    steps:["Rule score tính ngay lúc apply (đồng bộ)","Semantic score tính sau ở nền (embeddings + cosine)","<b>FinalScore = Rule×0.85 + Semantic×0.15</b>, ghi đè vào applications"] },
+  semantic: { name:"Semantic scoring — chạy nền", edges:["e-ap7","e-qw","e-sm1","e-sm2","e-sm3","e-sm4","e-sm5"], nodes:["applysvc","queue","semworker","semsvc","embed","scoreupd","appsTbl"],
+    steps:["Apply enqueue applicationId (in-mem)","Worker dequeue → ApplicationSemanticScoringService","Gọi AiEmbeddingProvider (có cache) → cosine similarity","UPDATE FinalScore + báo CandidateScoreReady"] },
+  automation: { name:"Outbox & notify — chạy nền", edges:["e-ap6","e-au1","e-au2","e-au3","e-au4","e-au5"], nodes:["applysvc","notifsvc","eventbus","outbox","dispatcher","notify","notifsTbl"],
+    steps:["NotificationEventService publish <code>CandidateApplied</code>","Ghi outbox durable → Dispatcher (5s) → WorkflowEngine","Engine chạy action → Notification + SSE cho recruiter","Shadow: đường trực tiếp gửi · Live: workflow gửi (1 nguồn)"] },
+  pipeline: { name:"Application status lifecycle", edges:["p1","p2","p3","p4","p5","p6","p7","p8"], nodes:["st-applied","st-screening","st-manager","st-interview","st-offer","st-hired","st-withdrawn","st-rejected","st-declined"],
+    steps:["Happy path: Applied → Screening → ManagerReview → Interview → Offer → Hired","Rejected từ bất kỳ vòng active nào; Withdrawn do ứng viên","Offer → OfferDeclined nếu ứng viên từ chối","Transition được kiểm bởi ApplicationStatusWorkflow.CanTransition"] },
+};
+
+const stage = document.getElementById('stage');
+const svg = document.getElementById('svg');
+const content = document.getElementById('svg-content');
+const nodes = document.querySelectorAll('.node');
+const edges = document.querySelectorAll('.edge');
+const elbls = document.querySelectorAll('.elbl');
+const chips = document.querySelectorAll('.chip');
+const fcap = document.getElementById('flowcap');
+const detail = document.getElementById('detail');
+
+function setFlow(key) {
+  chips.forEach(c => c.classList.toggle('on', c.dataset.flow === key));
+  edges.forEach(e => e.classList.remove('lit'));
+  elbls.forEach(l => l.classList.remove('lit'));
+  nodes.forEach(n => n.classList.remove('lit'));
+  if (key === 'all') { stage.classList.remove('flowing'); fcap.classList.remove('show'); return; }
+  const f = FLOWS[key];
+  stage.classList.add('flowing');
+  f.edges.forEach(id => document.getElementById(id)?.classList.add('lit'));
+  elbls.forEach(l => { if (f.edges.includes(l.dataset.e)) l.classList.add('lit'); });
+  f.nodes.forEach(k => document.querySelector(`.node[data-k="${k}"]`)?.classList.add('lit'));
+  document.getElementById('f-name').textContent = f.name;
+  document.getElementById('f-steps').innerHTML = f.steps.map(s => `<li>${s}</li>`).join('');
+  fcap.classList.add('show');
+}
+chips.forEach(c => c.addEventListener('click', () => setFlow(c.dataset.flow)));
+
+let suppressClick = false;
+nodes.forEach(n => n.addEventListener('click', () => {
+  if (suppressClick) return;
+  nodes.forEach(x => x.classList.remove('sel'));
+  n.classList.add('sel');
+  const d = DETAIL[n.dataset.k];
+  if (!d) return;
+  document.getElementById('d-title').textContent = d.t;
+  document.getElementById('d-meta').textContent = d.m;
+  document.getElementById('d-body').innerHTML = d.b;
+  detail.style.display = 'block';
+}));
+document.querySelectorAll('.card .x').forEach(x => x.addEventListener('click', () => {
+  document.getElementById(x.dataset.close).style.display = 'none';
+  if (x.dataset.close === 'flowcap') fcap.classList.remove('show');
+}));
+
+let tx = 0, ty = 0, k = 1;
+const MIN_K = 0.35, MAX_K = 3.2;
+function apply() { content.setAttribute('transform', `translate(${tx},${ty}) scale(${k})`); document.getElementById('zlvl').textContent = Math.round(k * 100) + '%'; }
+function clientToSvg(cx, cy) { const pt = svg.createSVGPoint(); pt.x = cx; pt.y = cy; return pt.matrixTransform(svg.getScreenCTM().inverse()); }
+function zoomAt(cx, cy, factor) { const p = clientToSvg(cx, cy); const k2 = Math.min(MAX_K, Math.max(MIN_K, k * factor)); tx = p.x - (p.x - tx) * (k2 / k); ty = p.y - (p.y - ty) * (k2 / k); k = k2; apply(); }
+svg.addEventListener('wheel', e => { e.preventDefault(); zoomAt(e.clientX, e.clientY, e.deltaY < 0 ? 1.12 : 1 / 1.12); }, { passive: false });
+let panning = false, moved = false, downClient = null, startSvg = null;
+svg.addEventListener('pointerdown', e => { if (e.button !== 0) return; panning = true; moved = false; downClient = { x: e.clientX, y: e.clientY }; startSvg = clientToSvg(e.clientX, e.clientY); stage.classList.add('grabbing'); svg.setPointerCapture(e.pointerId); });
+svg.addEventListener('pointermove', e => { if (!panning) return; if (Math.hypot(e.clientX - downClient.x, e.clientY - downClient.y) > 5) moved = true; const cur = clientToSvg(e.clientX, e.clientY); tx += cur.x - startSvg.x; ty += cur.y - startSvg.y; startSvg = cur; apply(); });
+function endPan() { if (!panning) return; panning = false; stage.classList.remove('grabbing'); if (moved) { suppressClick = true; setTimeout(() => suppressClick = false, 0); } }
+svg.addEventListener('pointerup', endPan); svg.addEventListener('pointercancel', endPan);
+document.getElementById('zoomIn').addEventListener('click', () => { const r = svg.getBoundingClientRect(); zoomAt(r.left + r.width / 2, r.top + r.height / 2, 1.2); });
+document.getElementById('zoomOut').addEventListener('click', () => { const r = svg.getBoundingClientRect(); zoomAt(r.left + r.width / 2, r.top + r.height / 2, 1 / 1.2); });
+document.getElementById('zoomReset').addEventListener('click', () => { tx = 0; ty = 0; k = 1; apply(); });
+document.getElementById('themeToggle').addEventListener('click', () => { const dark = !document.documentElement.classList.contains('dark'); document.documentElement.classList.toggle('dark', dark); localStorage.setItem('theme', dark ? 'dark' : 'light'); });
+apply();
+</script>
+</body>
+</html>

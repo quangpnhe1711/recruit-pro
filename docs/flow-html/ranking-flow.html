@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RecruitPro · Luồng Ranking (Copilot v2)</title>
+<script>
+  (function () {
+    const saved = localStorage.getItem('theme');
+    const dark = saved ? saved === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+    document.documentElement.classList.toggle('dark', dark);
+  })();
+</script>
+<style>
+  :root {
+    --bg: #FAF9F5; --surface: #FFFFFF; --surface2: #F0EEE6;
+    --ink: #141413; --body: #3D3D3A; --muted: #87867F;
+    --line: #D1CFC5; --line-soft: #E6E3DA;
+    --clay: #D97757; --clay-soft: rgba(217,119,87,0.10);
+    --olive: #788C5D; --olive-soft: rgba(120,140,93,0.12);
+    --gold: #C9A45C; --blue: #5B7E96; --blue-soft: rgba(91,126,150,0.12);
+    --zone: rgba(20,20,19,0.025); --zone-line: #D1CFC5;
+    --serif: ui-serif, Georgia, "Times New Roman", serif;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  html.dark {
+    --bg: #141413; --surface: #1F1F1D; --surface2: #2A2A28;
+    --ink: #FAF9F5; --body: #D1CFC5; --muted: #8B8A82;
+    --line: #3D3D3A; --line-soft: #2A2A28;
+    --clay: #E48A6E; --clay-soft: rgba(228,138,110,0.14);
+    --olive: #9DB07C; --olive-soft: rgba(157,176,124,0.16);
+    --gold: #D4B36F; --blue: #7FA3BC; --blue-soft: rgba(127,163,188,0.16);
+    --zone: rgba(250,249,245,0.03); --zone-line: #3D3D3A;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body { background: var(--bg); color: var(--body); font-family: var(--sans); -webkit-font-smoothing: antialiased; display: flex; flex-direction: column; overflow: hidden; }
+  .bar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 11px 18px; border-bottom: 1px solid var(--line-soft); flex: none; }
+  .bar h1 { font-family: var(--serif); font-weight: 500; font-size: 18px; color: var(--ink); letter-spacing: -0.01em; }
+  .bar .sub { font-family: var(--mono); font-size: 10px; color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; }
+  .spacer { flex: 1; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip { font-family: var(--mono); font-size: 11px; letter-spacing: 0.03em; padding: 5px 10px; border: 1px solid var(--line); border-radius: 999px; background: transparent; color: var(--muted); cursor: pointer; transition: all .15s ease; }
+  .chip:hover { color: var(--ink); border-color: var(--muted); }
+  .chip.on { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+  .btn { font-family: var(--mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em; padding: 5px 10px; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; }
+  .btn:hover { color: var(--ink); border-color: var(--muted); }
+  .stage { flex: 1; position: relative; min-height: 0; }
+  .stage svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; }
+  .stage.grabbing svg { cursor: grabbing; }
+  .zone rect { fill: var(--zone); stroke: var(--zone-line); stroke-width: 1; stroke-dasharray: 5 5; }
+  .zone .ztitle { font-family: var(--mono); font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; fill: var(--muted); }
+  .node { cursor: pointer; }
+  .node rect { fill: var(--surface); stroke: var(--line); stroke-width: 1.5; transition: stroke .15s ease; }
+  .node:hover rect { stroke: var(--muted); }
+  .node.sel rect { stroke: var(--clay) !important; stroke-width: 2.4; }
+  .node .t { font-family: var(--sans); font-size: 13.5px; font-weight: 600; fill: var(--ink); pointer-events: none; }
+  .node .m { font-family: var(--mono); font-size: 10.5px; fill: var(--muted); pointer-events: none; }
+  .node .k { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.09em; text-transform: uppercase; fill: var(--clay); pointer-events: none; }
+  .node.gate rect { fill: var(--clay-soft); stroke: var(--clay); }
+  .node.store rect { fill: var(--surface2); }
+  .node.store .k { fill: var(--blue); }
+  .node.do rect { fill: var(--olive-soft); stroke: var(--olive); }
+  .node.do .k { fill: var(--olive); }
+  .node.ext rect { stroke-dasharray: 6 3; fill: transparent; }
+  .node.ext .k { fill: var(--muted); }
+  .edge { stroke: var(--muted); stroke-width: 1.5; fill: none; marker-end: url(#a-mut); transition: opacity .2s ease, stroke .2s ease; }
+  .edge.dash { stroke-dasharray: 5 4; opacity: 0.6; }
+  .elbl { font-family: var(--mono); font-size: 10px; fill: var(--muted); transition: opacity .2s ease; }
+  .stage.flowing .edge { opacity: 0.10; }
+  .stage.flowing .elbl { opacity: 0.10; }
+  .stage.flowing .node { opacity: 0.28; }
+  .stage.flowing .zone { opacity: 0.40; }
+  .stage.flowing .edge.lit { opacity: 1; stroke: var(--clay); marker-end: url(#a-clay); stroke-dasharray: 7 5; animation: march 0.9s linear infinite; }
+  .stage.flowing .elbl.lit { opacity: 1; fill: var(--clay); }
+  .stage.flowing .node.lit { opacity: 1; }
+  .stage.flowing .node.lit rect { stroke: var(--clay); }
+  @keyframes march { to { stroke-dashoffset: -12; } }
+  @media (prefers-reduced-motion: reduce) { .stage.flowing .edge.lit { animation: none; } }
+  .card { position: absolute; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; box-shadow: 0 6px 24px rgba(0,0,0,0.10); }
+  .card .x { position: absolute; top: 8px; right: 10px; width: 22px; height: 22px; line-height: 20px; text-align: center; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; font-size: 14px; font-family: var(--mono); }
+  .card .x:hover { color: var(--ink); border-color: var(--muted); }
+  #detail { right: 16px; bottom: 16px; width: 350px; }
+  #detail h3 { font-family: var(--serif); font-weight: 500; font-size: 17px; color: var(--ink); margin-bottom: 2px; padding-right: 26px; }
+  #detail .meta { font-family: var(--mono); font-size: 10px; color: var(--muted); margin-bottom: 9px; }
+  #detail p { font-size: 12.5px; line-height: 1.55; }
+  #detail code, #flowcap code { font-family: var(--mono); font-size: 11px; color: var(--clay); }
+  #flowcap { left: 16px; bottom: 16px; max-width: 490px; display: none; }
+  #flowcap.show { display: block; }
+  #flowcap .fname { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--clay); margin-bottom: 7px; padding-right: 26px; }
+  #flowcap ol { margin-left: 18px; }
+  #flowcap li { font-size: 12.5px; line-height: 1.5; margin-bottom: 3px; }
+  .viewctl { position: absolute; right: 16px; top: 16px; display: flex; align-items: center; gap: 6px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 5px 7px; box-shadow: 0 4px 16px rgba(0,0,0,0.07); }
+  .viewctl button { font-family: var(--mono); font-size: 14px; width: 26px; height: 26px; border: 1px solid var(--line); border-radius: 5px; background: transparent; color: var(--muted); cursor: pointer; }
+  .viewctl button:hover { color: var(--ink); border-color: var(--muted); }
+  .viewctl #zlvl { font-family: var(--mono); font-size: 11px; color: var(--muted); min-width: 42px; text-align: center; }
+  .hint { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); font-family: var(--mono); font-size: 10px; color: var(--muted); opacity: 0.7; pointer-events: none; letter-spacing: 0.04em; }
+  .stage.flowing .hint { display: none; }
+  @media (max-width: 900px) { body { overflow: auto; } .stage { min-height: 78vh; } #detail, #flowcap { position: static; width: auto; margin: 10px 16px; } }
+</style>
+</head>
+<body>
+
+<div class="bar">
+  <div>
+    <h1>Luồng Ranking — Copilot v2</h1>
+    <div class="sub">CV screening · deterministic + AI · input_hash · pass CV</div>
+  </div>
+  <div class="spacer"></div>
+  <div class="chips" id="chips">
+    <button class="chip on" data-flow="all">Toàn cảnh</button>
+    <button class="chip" data-flow="rank">Ranking</button>
+    <button class="chip" data-flow="idempotent">Idempotency</button>
+    <button class="chip" data-flow="score">Chấm điểm</button>
+    <button class="chip" data-flow="ai">AI enrich</button>
+    <button class="chip" data-flow="persist">Lưu KQ</button>
+    <button class="chip" data-flow="telemetry">Telemetry</button>
+    <button class="chip" data-flow="passcv">Pass CV</button>
+    <button class="chip" data-flow="external">ScoringService</button>
+  </div>
+  <button class="btn" id="themeToggle">Theme</button>
+</div>
+
+<div class="stage" id="stage">
+<svg id="svg" viewBox="0 0 1760 1170" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Sơ đồ luồng ranking Copilot v2 RecruitPro">
+  <defs>
+    <marker id="a-mut" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" style="fill: var(--muted)"/></marker>
+    <marker id="a-clay" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" style="fill: var(--clay)"/></marker>
+  </defs>
+  <g id="svg-content">
+  <!-- zones -->
+  <g class="zone"><rect x="270" y="120" width="850" height="550" rx="16"/><text class="ztitle" x="290" y="150">Ranking pipeline · CopilotService</text></g>
+  <g class="zone"><rect x="1130" y="340" width="260" height="300" rx="16"/><text class="ztitle" x="1150" y="370">AI provider · Gemini</text></g>
+  <g class="zone"><rect x="1130" y="660" width="260" height="200" rx="16"/><text class="ztitle" x="1150" y="690">AI telemetry (async)</text></g>
+  <g class="zone"><rect x="1450" y="120" width="290" height="670" rx="16"/><text class="ztitle" x="1470" y="150">Data · PostgreSQL</text></g>
+  <g class="zone"><rect x="270" y="865" width="1170" height="155" rx="16"/><text class="ztitle" x="290" y="895">Pass CV → ManagerReview</text></g>
+  <g class="zone"><rect x="270" y="1035" width="870" height="120" rx="16"/><text class="ztitle" x="290" y="1063">RecruitPro.ScoringService · gRPC (lane riêng)</text></g>
+
+  <!-- edges -->
+  <path class="edge" id="e-r1" d="M255,222 L300,222"/>
+  <path class="edge" id="e-r2" d="M515,222 C545,222 555,232 575,234"/>
+  <path class="edge" id="e-r3" d="M810,235 C840,220 850,196 870,188"/>
+  <path class="edge" id="e-r4" d="M980,222 L980,240"/>
+  <path class="edge" id="e-r5" d="M980,304 L980,320"/>
+  <path class="edge" id="e-r6" d="M980,384 L980,400"/>
+  <path class="edge" id="e-r7" d="M980,464 L980,480"/>
+  <path class="edge" id="e-r8" d="M870,517 C840,500 828,452 810,440"/>
+  <path class="edge" id="e-r9" d="M692,295 L692,360"/>
+  <path class="edge" id="e-r10" d="M660,490 C560,520 520,545 508,560"/>
+  <path class="edge" id="e-r11" d="M615,600 L640,600"/>
+  <path class="edge" id="e-r12" d="M855,600 L880,600"/>
+  <path class="edge" id="e-r13" d="M810,420 C960,406 1050,400 1150,399"/>
+  <path class="edge" id="e-r14" d="M1260,434 L1260,450"/>
+  <path class="edge" id="e-r15" d="M1260,530 L1260,555"/>
+  <path class="edge" id="e-r16" d="M1150,590 C1120,596 1108,600 1095,600"/>
+  <path class="edge dash" id="e-r17" d="M810,398 C1050,300 1250,238 1470,226"/>
+  <path class="edge dash" id="e-r18" d="M810,415 C1060,360 1250,338 1470,340"/>
+  <path class="edge dash" id="e-r19" d="M810,458 C1050,540 1300,460 1470,452"/>
+  <path class="edge dash" id="e-r20" d="M1185,434 C1120,540 1120,650 1180,682"/>
+  <path class="edge" id="e-r21" d="M1260,754 L1260,780"/>
+  <path class="edge dash" id="e-r22" d="M1370,817 C1420,800 1452,760 1470,748"/>
+  <path class="edge" id="e-p1" d="M155,264 C150,600 200,905 300,935"/>
+  <path class="edge" id="e-p2" d="M520,940 C555,940 570,943 600,944"/>
+  <path class="edge" id="e-p3" d="M835,945 L900,945"/>
+  <path class="edge" id="e-p4" d="M1135,945 L1200,945"/>
+  <path class="edge" id="e-e1" d="M150,264 C110,700 180,1060 300,1098"/>
+  <path class="edge" id="e-e2" d="M535,1100 L620,1100"/>
+  <path class="edge" id="e-e3" d="M835,1100 L900,1100"/>
+
+  <!-- edge labels -->
+  <text class="elbl" data-e="e-r1" x="258" y="214">POST …/rankings</text>
+  <text class="elbl" data-e="e-r3" x="812" y="196">pool (Screening)</text>
+  <text class="elbl" data-e="e-r8" x="795" y="500">no hit → run</text>
+  <text class="elbl" data-e="e-r13" x="900" y="392">TryCreateRanking</text>
+  <text class="elbl" data-e="e-r15" x="1268" y="546">/chat/completions</text>
+  <text class="elbl" data-e="e-r16" x="1015" y="590">JSON (prose)</text>
+  <text class="elbl" data-e="e-r17" x="1130" y="250">persist +input_hash</text>
+  <text class="elbl" data-e="e-r20" x="1075" y="560">record</text>
+  <text class="elbl" data-e="e-p1" x="165" y="620">POST …/pass-cv</text>
+  <text class="elbl" data-e="e-p4" x="1130" y="937">Screening→ManagerReview</text>
+  <text class="elbl" data-e="e-e1" x="120" y="720">GET …/external-score</text>
+
+  <!-- nodes -->
+  <g class="node ext" data-k="hr"><rect x="55" y="180" width="200" height="84" rx="10"/><text class="t" x="73" y="210">HR / Manager</text><text class="m" x="73" y="232">mở Copilot theo 1 Job</text><text class="k" x="73" y="252">ACTOR</text></g>
+  <g class="node" data-k="rankctl"><rect x="300" y="180" width="215" height="84" rx="10"/><text class="t" x="318" y="208">CopilotController</text><text class="m" x="318" y="230">CreateRanking</text><text class="k" x="318" y="250">ROLE: HR/MANAGER</text></g>
+  <g class="node" data-k="ranksvc"><rect x="575" y="175" width="235" height="120" rx="10"/><text class="t" x="593" y="205">CopilotService</text><text class="m" x="593" y="227">.CreateRankingAsync</text><text class="m" x="593" y="245">authorize conv+job</text><text class="m" x="593" y="263">gate ForceRanking</text><text class="k" x="593" y="285">ORCHESTRATOR</text></g>
+  <g class="node" data-k="pool"><rect x="870" y="150" width="220" height="72" rx="10"/><text class="t" x="888" y="178">GetCandidatePool</text><text class="m" x="888" y="198">SQL: Status = Screening</text><text class="k" x="888" y="215">REPO</text></g>
+  <g class="node" data-k="filter"><rect x="870" y="240" width="220" height="64" rx="10"/><text class="t" x="888" y="268">FilterToScreeningPool</text><text class="m" x="888" y="290">defense-in-depth</text></g>
+  <g class="node" data-k="rules"><rect x="870" y="320" width="220" height="64" rx="10"/><text class="t" x="888" y="348">BuildRules (+Merge)</text><text class="m" x="888" y="370">skill/exp/priority/negative</text></g>
+  <g class="node" data-k="hash"><rect x="870" y="400" width="220" height="64" rx="10"/><text class="t" x="888" y="428">ComputeRankingInputHash</text><text class="m" x="888" y="450">SHA-256 · rules + evidence</text></g>
+  <g class="node gate" data-k="dedup"><rect x="870" y="480" width="220" height="74" rx="10"/><text class="t" x="888" y="508">GetLatestMatchingSession</text><text class="m" x="888" y="528">hit → reuse, KHÔNG gọi AI</text><text class="k" x="888" y="546">IDEMPOTENT</text></g>
+  <g class="node" data-k="core"><rect x="575" y="360" width="235" height="130" rx="10"/><text class="t" x="593" y="390">RunRankingCoreAsync</text><text class="m" x="593" y="412">deterministic trước</text><text class="m" x="593" y="430">AI chỉ enrich prose</text><text class="m" x="593" y="448">order do luật quyết định</text><text class="k" x="593" y="472">CORE</text></g>
+  <g class="node do" data-k="rank"><rect x="400" y="560" width="215" height="80" rx="10"/><text class="t" x="418" y="588">RankCandidates</text><text class="m" x="418" y="610">score + xếp hạng (thuần)</text><text class="k" x="418" y="630">SOURCE OF TRUTH</text></g>
+  <g class="node do" data-k="fit"><rect x="640" y="560" width="215" height="80" rx="10"/><text class="t" x="658" y="588">Vietnamese Fit</text><text class="m" x="658" y="610">FitLabel · evidence VI</text></g>
+  <g class="node" data-k="merge"><rect x="880" y="560" width="215" height="80" rx="10"/><text class="t" x="898" y="588">MergeProviderEnrichment</text><text class="m" x="898" y="610">chỉ prose · giữ score/order</text></g>
+
+  <g class="node" data-k="telem"><rect x="1150" y="360" width="220" height="74" rx="10"/><text class="t" x="1168" y="388">TelemetryAiCopilotProvider</text><text class="m" x="1168" y="410">decorator · đo + log</text></g>
+  <g class="node" data-k="aiprov"><rect x="1150" y="450" width="220" height="80" rx="10"/><text class="t" x="1168" y="478">AiCopilotProvider</text><text class="m" x="1168" y="500">build prompt · cap 50 CV</text></g>
+  <g class="node ext" data-k="gemini"><rect x="1150" y="555" width="220" height="80" rx="10"/><text class="t" x="1168" y="583">Gemini (OpenAI-compat)</text><text class="m" x="1168" y="605">/chat/completions · JSON</text><text class="k" x="1168" y="625">EXTERNAL AI</text></g>
+
+  <g class="node store" data-k="sessTbl"><rect x="1470" y="180" width="220" height="90" rx="10"/><text class="t" x="1488" y="208">copilot_ranking_sessions</text><text class="m" x="1488" y="230">input_hash (dedup)</text><text class="m" x="1488" y="248">NormalizedRulesJson</text><text class="k" x="1488" y="266">TABLE</text></g>
+  <g class="node store" data-k="resTbl"><rect x="1470" y="300" width="220" height="80" rx="10"/><text class="t" x="1488" y="328">copilot_ranking_results</text><text class="m" x="1488" y="350">score · recommendation</text><text class="k" x="1488" y="368">TABLE</text></g>
+  <g class="node store" data-k="fitTbl"><rect x="1470" y="410" width="220" height="80" rx="10"/><text class="t" x="1488" y="438">CandidateFitAnalyses</text><text class="m" x="1488" y="460">snapshot fit (read-only)</text><text class="k" x="1488" y="478">TABLE</text></g>
+  <g class="node store" data-k="telTbl"><rect x="1470" y="700" width="220" height="80" rx="10"/><text class="t" x="1488" y="728">ai_run_telemetry</text><text class="m" x="1488" y="750">metadata · cost · tokens</text><text class="k" x="1488" y="768">TABLE</text></g>
+
+  <g class="node" data-k="aitelsvc"><rect x="1150" y="680" width="220" height="74" rx="10"/><text class="t" x="1168" y="708">AiTelemetryService</text><text class="m" x="1168" y="730">enqueue (non-blocking)</text></g>
+  <g class="node ext" data-k="telworker"><rect x="1150" y="780" width="220" height="74" rx="10"/><text class="t" x="1168" y="808">AiTelemetry write-behind</text><text class="m" x="1168" y="830">batch → DB</text></g>
+
+  <g class="node" data-k="passctl"><rect x="300" y="900" width="220" height="80" rx="10"/><text class="t" x="318" y="928">CopilotController</text><text class="m" x="318" y="950">PassCvToHeadReview</text></g>
+  <g class="node" data-k="passsvc"><rect x="600" y="895" width="235" height="100" rx="10"/><text class="t" x="618" y="923">PassCvToHeadReviewAsync</text><text class="m" x="618" y="945">guard: thuộc session</text><text class="m" x="618" y="963">chỉ Status=Screening</text><text class="k" x="618" y="983">HR ACTION · KHÔNG AI</text></g>
+  <g class="node" data-k="appsvc"><rect x="900" y="900" width="235" height="90" rx="10"/><text class="t" x="918" y="928">ApplicationService</text><text class="m" x="918" y="950">UpdateApplicationDecision</text><text class="m" x="918" y="968">CanTransition + tx</text></g>
+  <g class="node store" data-k="appsTbl"><rect x="1200" y="900" width="230" height="90" rx="10"/><text class="t" x="1218" y="928">applications</text><text class="m" x="1218" y="950">→ ManagerReview</text><text class="m" x="1218" y="968">stamp ReviewRequestedAt</text><text class="k" x="1218" y="984">TABLE</text></g>
+
+  <g class="node" data-k="extctl"><rect x="300" y="1060" width="235" height="80" rx="10"/><text class="t" x="318" y="1088">ExternalScoreController</text><text class="m" x="318" y="1110">GET …/external-score</text></g>
+  <g class="node ext" data-k="grpc"><rect x="620" y="1060" width="215" height="80" rx="10"/><text class="t" x="638" y="1088">gRPC Scorer.ScoreCandidate</text><text class="m" x="638" y="1110">Services:ScoringUrl</text></g>
+  <g class="node" data-k="calc"><rect x="900" y="1060" width="235" height="80" rx="10"/><text class="t" x="918" y="1088">ScoreCalculator</text><text class="m" x="918" y="1110">skill 60% + exp 40% · stateless</text></g>
+  </g>
+</svg>
+
+  <div class="viewctl">
+    <button id="zoomOut" title="Thu nhỏ">−</button><span id="zlvl">100%</span>
+    <button id="zoomIn" title="Phóng to">+</button><button id="zoomReset" title="Về 100%">⤢</button>
+  </div>
+  <div class="hint">Kéo để di chuyển · lăn chuột để zoom · bấm node để xem chi tiết · bấm chip để chạy luồng</div>
+
+  <div class="card" id="flowcap"><button class="x" data-close="flowcap">×</button><div class="fname" id="f-name"></div><ol id="f-steps"></ol></div>
+  <div class="card" id="detail"><button class="x" data-close="detail">×</button>
+    <h3 id="d-title">Bấm vào một node</h3>
+    <div class="meta" id="d-meta">chi tiết</div>
+    <p id="d-body">Copilot v2 ranking: chấm điểm <b>deterministic</b> là source of truth; AI (Gemini) chỉ enrich phần văn bản tiếng Việt, không đổi điểm/thứ tự. <code>input_hash</code> làm re-click idempotent. Lane <b>ScoringService</b> (gRPC) là hệ độc lập, không nằm trong luồng ranking.</p>
+  </div>
+</div>
+
+<script>
+const DETAIL = {
+  hr:       { t:"HR / Manager", m:"actor", b:"Mở 1 Copilot conversation gắn với 1 Job, nhập tiêu chí và bấm 'Rank'. Cũng là người bấm Pass CV và xem external-score. AI không bao giờ tự chuyển trạng thái." },
+  rankctl:  { t:"CopilotController.CreateRanking", m:"controller · HR/Manager", b:"<code>POST /api/copilot/conversations/{id}/rankings</code>. Delegate sang <code>CreateRankingAsync</code>." },
+  ranksvc:  { t:"CopilotService.CreateRankingAsync", m:"orchestrator", b:"Authorize conversation thuộc user & đúng job. Gate <code>ForceRanking && (prompt|criteria)</code> — nếu không thì chỉ chat, không ranking. Sau đó build pool → rules → hash → dedup → core → persist." },
+  pool:     { t:"GetCandidatePoolAsync", m:"repository", b:"Truy vấn đã scope sẵn ở SQL: chỉ ứng viên có application <b>Status = Screening</b> của job đó. Gom skills, CvSummary (narrative), experience, resume URL." },
+  filter:   { t:"FilterToScreeningPool", m:"defense-in-depth", b:"Lọc lại Screening lần nữa ở code — trùng với SQL nhưng đảm bảo bất biến 'screening-only pool'." },
+  rules:    { t:"BuildRules (+MergeRules)", m:"parse tiêu chí", b:"Parse required/preferred skill từ prompt, min experience (regex), priority/negative criteria, auto-reject; fold rule đã lưu + context phiên trước. Đây là rule 'effective' dùng cho cả hash lẫn chấm điểm." },
+  hash:     { t:"ComputeRankingInputHash", m:"idempotency key", b:"SHA-256 trên payload canonical: jobId + userId + effective rules + evidence từng ứng viên (sắp theo ApplicationId). Hash rule <b>đã merge</b> nên re-click cho cùng input → cùng hash." },
+  dedup:    { t:"GetLatestMatchingSession", m:"gate · idempotent", b:"Tra session cũ theo (job,user,input_hash) qua index. <b>Trúng</b> → trả lại session cũ (ReusedRankingSession), KHÔNG gọi AI, KHÔNG tạo dòng mới. Đây là chốt idempotency." },
+  core:     { t:"RunRankingCoreAsync", m:"core", b:"Chạy khi không trúng dedup: RankCandidates (điểm+thứ tự) → Vietnamese Fit → tối đa 1 lần gọi AI → MergeProviderEnrichment. Điểm & thứ tự luôn do luật quyết định." },
+  rank:     { t:"RankCandidates", m:"deterministic · SoT", b:"Chấm skill (≤40, match trong CV text nặng hơn), experience (≤30), education, project; trừ điểm negative; auto-reject. Recommendation = Interview/Consider/Hold/Reject. Sắp xếp + gán RankPosition. <b>Đây là kết quả chính thức.</b>" },
+  fit:      { t:"Vietnamese Fit evaluation", m:"deterministic fallback", b:"Gán FitLabel (StrongFit/PotentialFit/RiskFit/NotRecommended), ConfidenceScore, Evidence &amp; Summary tiếng Việt — bản dự phòng khi không có AI." },
+  merge:    { t:"MergeProviderEnrichment", m:"prose only", b:"Nếu có AI: chỉ ghi đè phần văn bản VI (Summary/Strengths/Weaknesses/Evidence) cho ứng viên có trong pool. Score/label/recommendation giữ nguyên; thứ tự giữ deterministic (trừ khi bật AllowProviderReordering, mặc định off)." },
+  telem:    { t:"TelemetryAiCopilotProvider", m:"decorator", b:"Bọc AiCopilotProvider: đo thời gian, ghi AiRunTelemetry (feature='ranking'), cờ fallback/risk. Isolated try/catch — telemetry không bao giờ làm hỏng ranking." },
+  aiprov:   { t:"AiCopilotProvider", m:"external client", b:"Build payload (job, prompt, rules, candidates cap MaxCandidatesForAi=50, deterministicRanking), system prompt yêu cầu JSON-only + giữ auto-reject cuối + summary tiếng Việt. Gọi endpoint chat/completions." },
+  gemini:   { t:"Gemini (OpenAI-compatible)", m:"external AI", b:"Base URL generativelanguage…/openai, model gemini-2.5-flash-lite, temperature 0.1. Trả JSON (fenced được strip); token dùng cho telemetry. Có thể fail → fallback deterministic + warning." },
+  sessTbl:  { t:"copilot_ranking_sessions", m:"bảng", b:"1 dòng/lần rank: UserPrompt, NormalizedRulesJson, <b>input_hash</b> (index dedup), ModelName ('deterministic-copilot-v2' hoặc tên model AI). Conversation trỏ LatestRankingSessionId vào đây." },
+  resTbl:   { t:"copilot_ranking_results", m:"bảng", b:"1 dòng/ứng viên trong phiên: điểm, recommendation, strengths/weaknesses/explanation JSON." },
+  fitTbl:   { t:"CandidateFitAnalyses", m:"bảng", b:"Snapshot fit đọc lại bởi endpoint fit read-only (không re-rank)." },
+  telTbl:   { t:"ai_run_telemetry", m:"bảng", b:"Chỉ metadata/summary + cost ước tính từ token — KHÔNG lưu CV/prompt." },
+  aitelsvc: { t:"AiTelemetryService", m:"enqueue", b:"Map thành AiRunTelemetry, ước tính USD từ token, ghi vào channel non-blocking; đầy thì drop + warn throttled." },
+  telworker:{ t:"AiTelemetry write-behind", m:"background", b:"Drain channel, batch theo BatchSize/FlushInterval, ghi DB qua scoped repo; retry-once, drain khi shutdown." },
+  passctl:  { t:"CopilotController.PassCvToHeadReview", m:"controller", b:"<code>POST /api/copilot/ranking-sessions/{id}/pass-cv</code>. Hành động HR tường minh; AI không kích hoạt." },
+  passsvc:  { t:"PassCvToHeadReviewAsync", m:"service", b:"Guard mỗi application: phải thuộc result set của session, đúng job, và đang <b>Screening</b> (không thì Skipped kèm lý do VI). Rồi gọi ApplicationService để chuyển trạng thái." },
+  appsvc:   { t:"UpdateApplicationDecisionAsync", m:"service · transition", b:"Kiểm <code>ApplicationStatusWorkflow.CanTransition</code>, set Screening→ManagerReview, stamp <code>DepartmentHeadReviewRequestedAt</code>, commit tx, rồi best-effort publish DepartmentHeadReviewRequested (→ luồng automation)." },
+  appsTbl:  { t:"applications", m:"bảng", b:"Ứng viên pass rời pool Screening (query pool là Screening-only) nên lần refresh sau không còn xuất hiện." },
+  extctl:   { t:"ExternalScoreController", m:"controller · lane riêng", b:"<code>GET /api/hr/applications/{id}/external-score</code>. Demo service-to-service — <b>KHÔNG</b> nằm trong luồng Copilot ranking. Lấy skills/exp từ DB, gọi gRPC." },
+  grpc:     { t:"gRPC Scorer.ScoreCandidate", m:"external microservice", b:"Client gọi RecruitPro.ScoringService qua địa chỉ <code>Services:ScoringUrl</code> (h2c). Request: candidate/required skills + experience years." },
+  calc:     { t:"ScoreCalculator", m:"RecruitPro.ScoringService", b:"Thuần/deterministic: skill = matched/required×60 + exp = min(1,cand/req)×40; label Strong/Moderate/Weak. Stateless, không ghi DB, không đụng bảng ranking." },
+};
+
+const FLOWS = {
+  rank: { name:"Ranking — request chính", edges:["e-r1","e-r2","e-r3","e-r4","e-r5","e-r6","e-r7","e-r8","e-r9"], nodes:["hr","rankctl","ranksvc","pool","filter","rules","hash","dedup","core"],
+    steps:["HR bấm Rank → CreateRankingAsync (authorize + gate ForceRanking)","Lấy pool Screening-only → filter → BuildRules","ComputeRankingInputHash → tra dedup","Không trúng dedup → RunRankingCoreAsync"] },
+  idempotent: { name:"Idempotency — input_hash", edges:["e-r6","e-r7","e-r17"], nodes:["rules","hash","dedup","sessTbl"],
+    steps:["Hash = SHA-256(rules đã merge + evidence từng ứng viên)","Tra session cũ theo (job,user,input_hash) qua index","Trúng → trả session cũ, KHÔNG gọi AI/không tạo dòng mới","Re-click cùng input là no-op → tiết kiệm token + ổn định"] },
+  score: { name:"Chấm điểm — deterministic (SoT)", edges:["e-r9","e-r10","e-r11","e-r12"], nodes:["core","rank","fit","merge"],
+    steps:["RankCandidates: skill/exp/education/project + penalty + auto-reject","Gán recommendation + RankPosition (đây là kết quả chính thức)","Vietnamese Fit: FitLabel + evidence/summary tiếng Việt","MergeProviderEnrichment giữ nguyên điểm & thứ tự"] },
+  ai: { name:"AI enrich — chỉ prose, không đổi điểm", edges:["e-r13","e-r14","e-r15","e-r16"], nodes:["core","telem","aiprov","gemini","merge"],
+    steps:["Tối đa 1 lần gọi (nếu Enabled + có ApiKey)","Telemetry decorator → AiCopilotProvider build prompt (cap 50 CV)","Gemini /chat/completions trả JSON tiếng Việt","Merge: chỉ ghi đè văn bản; fail → fallback deterministic + warning"] },
+  persist: { name:"Lưu kết quả", edges:["e-r17","e-r18","e-r19"], nodes:["core","sessTbl","resTbl","fitTbl"],
+    steps:["Ghi copilot_ranking_sessions (kèm input_hash) + 2 message chat","1 copilot_ranking_results / ứng viên","Snapshot CandidateFitAnalyses (cho endpoint fit read-only)","Conversation.LatestRankingSessionId trỏ tới phiên mới"] },
+  telemetry: { name:"AI telemetry (out-of-band)", edges:["e-r20","e-r21","e-r22"], nodes:["telem","aitelsvc","telworker","telTbl"],
+    steps:["Decorator ghi AiRunTelemetry (feature='ranking')","AiTelemetryService enqueue non-blocking (đầy thì drop)","Worker write-behind batch → ai_run_telemetry","Chỉ metadata/cost, không lưu CV/prompt"] },
+  passcv: { name:"Pass CV → ManagerReview", edges:["e-p1","e-p2","e-p3","e-p4"], nodes:["hr","passctl","passsvc","appsvc","appsTbl"],
+    steps:["HR bấm Pass CV (tường minh, AI không kích hoạt)","Guard: application thuộc session + đúng job + đang Screening","ApplicationService kiểm CanTransition → Screening→ManagerReview","Stamp ReviewRequestedAt + publish event; ứng viên rời pool"] },
+  external: { name:"ScoringService — lane gRPC riêng", edges:["e-e1","e-e2","e-e3"], nodes:["hr","extctl","grpc","calc"],
+    steps:["<b>Độc lập</b> với Copilot ranking (endpoint demo external-score)","ExternalScoreController lấy skills/exp từ DB → gRPC","RecruitPro.ScoringService: ScoreCalculator (skill 60% + exp 40%)","Stateless, không ghi bảng ranking"] },
+};
+
+const stage = document.getElementById('stage');
+const svg = document.getElementById('svg');
+const content = document.getElementById('svg-content');
+const nodes = document.querySelectorAll('.node');
+const edges = document.querySelectorAll('.edge');
+const elbls = document.querySelectorAll('.elbl');
+const chips = document.querySelectorAll('.chip');
+const fcap = document.getElementById('flowcap');
+const detail = document.getElementById('detail');
+
+function setFlow(key) {
+  chips.forEach(c => c.classList.toggle('on', c.dataset.flow === key));
+  edges.forEach(e => e.classList.remove('lit'));
+  elbls.forEach(l => l.classList.remove('lit'));
+  nodes.forEach(n => n.classList.remove('lit'));
+  if (key === 'all') { stage.classList.remove('flowing'); fcap.classList.remove('show'); return; }
+  const f = FLOWS[key];
+  stage.classList.add('flowing');
+  f.edges.forEach(id => document.getElementById(id)?.classList.add('lit'));
+  elbls.forEach(l => { if (f.edges.includes(l.dataset.e)) l.classList.add('lit'); });
+  f.nodes.forEach(k => document.querySelector(`.node[data-k="${k}"]`)?.classList.add('lit'));
+  document.getElementById('f-name').textContent = f.name;
+  document.getElementById('f-steps').innerHTML = f.steps.map(s => `<li>${s}</li>`).join('');
+  fcap.classList.add('show');
+}
+chips.forEach(c => c.addEventListener('click', () => setFlow(c.dataset.flow)));
+
+let suppressClick = false;
+nodes.forEach(n => n.addEventListener('click', () => {
+  if (suppressClick) return;
+  nodes.forEach(x => x.classList.remove('sel'));
+  n.classList.add('sel');
+  const d = DETAIL[n.dataset.k];
+  if (!d) return;
+  document.getElementById('d-title').textContent = d.t;
+  document.getElementById('d-meta').textContent = d.m;
+  document.getElementById('d-body').innerHTML = d.b;
+  detail.style.display = 'block';
+}));
+document.querySelectorAll('.card .x').forEach(x => x.addEventListener('click', () => {
+  document.getElementById(x.dataset.close).style.display = 'none';
+  if (x.dataset.close === 'flowcap') fcap.classList.remove('show');
+}));
+
+let tx = 0, ty = 0, k = 1;
+const MIN_K = 0.35, MAX_K = 3.2;
+function apply() { content.setAttribute('transform', `translate(${tx},${ty}) scale(${k})`); document.getElementById('zlvl').textContent = Math.round(k * 100) + '%'; }
+function clientToSvg(cx, cy) { const pt = svg.createSVGPoint(); pt.x = cx; pt.y = cy; return pt.matrixTransform(svg.getScreenCTM().inverse()); }
+function zoomAt(cx, cy, factor) { const p = clientToSvg(cx, cy); const k2 = Math.min(MAX_K, Math.max(MIN_K, k * factor)); tx = p.x - (p.x - tx) * (k2 / k); ty = p.y - (p.y - ty) * (k2 / k); k = k2; apply(); }
+svg.addEventListener('wheel', e => { e.preventDefault(); zoomAt(e.clientX, e.clientY, e.deltaY < 0 ? 1.12 : 1 / 1.12); }, { passive: false });
+let panning = false, moved = false, downClient = null, startSvg = null;
+svg.addEventListener('pointerdown', e => { if (e.button !== 0) return; panning = true; moved = false; downClient = { x: e.clientX, y: e.clientY }; startSvg = clientToSvg(e.clientX, e.clientY); stage.classList.add('grabbing'); svg.setPointerCapture(e.pointerId); });
+svg.addEventListener('pointermove', e => { if (!panning) return; if (Math.hypot(e.clientX - downClient.x, e.clientY - downClient.y) > 5) moved = true; const cur = clientToSvg(e.clientX, e.clientY); tx += cur.x - startSvg.x; ty += cur.y - startSvg.y; startSvg = cur; apply(); });
+function endPan() { if (!panning) return; panning = false; stage.classList.remove('grabbing'); if (moved) { suppressClick = true; setTimeout(() => suppressClick = false, 0); } }
+svg.addEventListener('pointerup', endPan); svg.addEventListener('pointercancel', endPan);
+document.getElementById('zoomIn').addEventListener('click', () => { const r = svg.getBoundingClientRect(); zoomAt(r.left + r.width / 2, r.top + r.height / 2, 1.2); });
+document.getElementById('zoomOut').addEventListener('click', () => { const r = svg.getBoundingClientRect(); zoomAt(r.left + r.width / 2, r.top + r.height / 2, 1 / 1.2); });
+document.getElementById('zoomReset').addEventListener('click', () => { tx = 0; ty = 0; k = 1; apply(); });
+document.getElementById('themeToggle').addEventListener('click', () => { const dark = !document.documentElement.classList.contains('dark'); document.documentElement.classList.toggle('dark', dark); localStorage.setItem('theme', dark ? 'dark' : 'light'); });
+apply();
+</script>
+</body>
+</html>
